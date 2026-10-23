@@ -76,18 +76,32 @@ The site must set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Em
 
 ### 2.3 Protocol (browser ⇄ server)
 
-JSON over WebSocket. Mirrors UCI so that `engine-core` can parse both local and remote output with the same code.
+JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by `type`. The schemas, types and parsers live in `packages/engine-core/src/protocol.ts` (Zod); the design is recorded in ADR-006. `PROTOCOL_VERSION` is carried by `hello`/`welcome`; a mismatch is answered with `error: protocol_mismatch`.
 
 ```jsonc
 // client → server
-{ "type": "analyze", "sessionId": "...", "engine": "stockfish-18", "fen": "...", "multipv": 3, "depth": 24 }
-{ "type": "stop", "sessionId": "..." }
+{ "type": "hello", "protocolVersion": 1, "client": { "name": "chesslab-web", "version": "0.1.0" } }
+{ "type": "analyze", "sessionId": "tab-1", "searchId": 7, "engine": "stockfish", "fen": "...",
+  "multipv": 3, "depth": 24, "movetime": 5000, "threads": 4, "hash": 256 }   // all after fen optional; no depth/movetime = infinite
+{ "type": "stop", "sessionId": "tab-1" }        // stops the running search, bestmove follows
+{ "type": "release", "sessionId": "tab-1" }     // frees the leased engine instance
+{ "type": "ping", "t": 1700000000000 }
 
-// server → client (streamed)
-{ "type": "info", "sessionId": "...", "depth": 18, "multipv": 1, "score": { "cp": 35 }, "pv": ["e2e4","e7e5"], "nps": 1200000 }
-{ "type": "bestmove", "sessionId": "...", "move": "e2e4" }
-{ "type": "error", "sessionId": "...", "message": "..." }
+// server → client
+{ "type": "welcome", "protocolVersion": 1, "serverVersion": "0.1.0",
+  "limits": { "maxDepth": 30, "maxMultipv": 5, "maxThreads": 4, "maxHash": 512, "maxMovetimeMs": 600000, "maxSessionsPerConnection": 2 },
+  "engines": [{ "id": "stockfish", "name": "Stockfish 19", "enabled": true, "defaults": { "threads": 4, "hash": 256 } }] }
+{ "type": "info", "sessionId": "tab-1", "searchId": 7,
+  "info": { "depth": 18, "multipv": 1, "score": { "cp": 35 }, "pv": ["e2e4", "e7e5"], "nps": 1200000 } }  // score = side to move (raw UCI)
+{ "type": "bestmove", "sessionId": "tab-1", "searchId": 7, "bestMove": { "move": "e2e4", "ponder": "e7e5" }, "reason": "completed" }
+{ "type": "error", "code": "limit_exceeded", "message": "depth 40 exceeds the server limit of 30", "sessionId": "tab-1", "searchId": 8 }
+{ "type": "pong", "t": 1700000000000 }
 ```
+
+- A **session** (`sessionId`, client-chosen) leases one engine instance; it is created by the first `analyze`, freed by `release`, by an idle timeout or when the socket closes. Several sessions per connection allow multi-engine comparison, bounded by `limits.maxSessionsPerConnection`.
+- Each `analyze` starts a **search** (`searchId`, client-chosen, unique per session). A new `analyze` on a session with a running search stops it first; every accepted search ends with exactly one `bestmove` (or an `error` carrying its `searchId`).
+- `info` scores are side-to-move, like UCI; the client converts with `infoToWhitePov` exactly as the WASM client does.
+- Error codes: `invalid_message`, `protocol_mismatch`, `handshake_required`, `unknown_engine`, `limit_exceeded`, `no_capacity`, `session_not_found`, `engine_crashed`, `rate_limited`, `internal_error`.
 
 ### 2.4 Shared (`packages/engine-core`)
 
