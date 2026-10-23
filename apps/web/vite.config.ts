@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { stockfishEngines } from './vite-plugin-stockfish';
 
 const headers = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -9,7 +10,7 @@ const headers = {
 };
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), stockfishEngines()],
   resolve: {
     alias: {
       '@chesslab/engine-core': fileURLToPath(

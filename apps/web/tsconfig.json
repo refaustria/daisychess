@@ -8,5 +8,5 @@
     "baseUrl": ".",
     "paths": { "@chesslab/engine-core": ["../../packages/engine-core/src/index.ts"] }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "vite-plugin-stockfish.ts"]
 }
