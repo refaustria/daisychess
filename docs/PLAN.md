@@ -40,15 +40,15 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M4 — Game review
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M4-1 | Batch analysis runner (both backends) | senior | in-progress |
+| M4-1 | Batch analysis runner (both backends) | senior | done |
 | M4-2 | Move classification + accuracy in `engine-core` (tested) | worker | done |
-| M4-3 | Review UI: eval graph, key moments, annotated PGN export | worker | todo |
+| M4-3 | Review UI: eval graph, key moments, annotated PGN export | worker | in-progress |
 
 ## M5 — Engines & themes
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M5-1 | Engine registry (browser + server), enable/disable, multi-engine comparison tabs | senior | todo |
-| M5-2 | Theming UI: board colors, piece sets, coordinates, sounds, persisted in localStorage | worker | todo |
+| M5-2 | Theming UI: board colors, piece sets, coordinates, sounds, persisted in localStorage | worker | in-progress |
 
 ## M6 — Polish & deploy
 | ID | Task | Tier | Status |

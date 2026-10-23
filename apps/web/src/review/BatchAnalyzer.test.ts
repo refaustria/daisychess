@@ -1,0 +1,184 @@
+import { Chess } from 'chess.js';
+import { describe, expect, it, vi } from 'vitest';
+import { BatchAnalyzer, type BatchGame } from './BatchAnalyzer';
+import { FakeReviewEngine } from './fakeEngine';
+
+function gameFrom(sans: string[], startFen?: string): BatchGame {
+  const c = new Chess(startFen);
+  const start = c.fen();
+  const moves = sans.map((san) => {
+    const m = c.move(san);
+    return { uci: `${m.from}${m.to}${m.promotion ?? ''}`, san: m.san, fenAfter: m.after };
+  });
+  return { startFen: start, moves };
+}
+
+const SCHOLAR = ['e4', 'e5', 'Bc4', 'Nc6', 'Qh5', 'Nf6', 'Qxf7#'];
+const fens = (g: BatchGame): string[] => [g.startFen, ...g.moves.map((m) => m.fenAfter)];
+
+function scholarEngine(): { engine: FakeReviewEngine; game: BatchGame; p: string[] } {
+  const game = gameFrom(SCHOLAR);
+  const p = fens(game);
+  const engine = new FakeReviewEngine();
+  // White POV evals with the engine's best moves.
+  engine.scripts.set(p[0]!, { score: { cp: 30 }, pv: ['e2e4', 'e7e5'] });
+  engine.scripts.set(p[1]!, { score: { cp: 30 }, pv: ['e7e5'] });
+  engine.scripts.set(p[2]!, { score: { cp: 30 }, pv: ['g1f3'] });
+  engine.scripts.set(p[3]!, { score: { cp: 20 }, pv: ['b8c6'] });
+  engine.scripts.set(p[4]!, { score: { cp: 20 }, pv: ['d1h5'] });
+  engine.scripts.set(p[5]!, { score: { cp: -10 }, pv: ['g7g6'] });
+  engine.scripts.set(p[6]!, { score: { mate: 1 }, pv: ['h5f7'], bestMove: null });
+  return { engine, game, p };
+}
+
+describe('BatchAnalyzer', () => {
+  it('analyses every non-terminal position sequentially and reviews the game', async () => {
+    const { engine, game, p } = scholarEngine();
+    const progress: Array<[number, number]> = [];
+    const onDone = vi.fn();
+    const a = new BatchAnalyzer({ engine, options: {}, concurrency: 1 });
+    const summary = await a.run(game, { onProgress: (d, t) => progress.push([d, t]), onDone })
+      .promise;
+
+    expect(engine.analysed).toEqual(p.slice(0, 7)); // final (checkmate) position not searched
+    expect(engine.calls[0]).toEqual({ depth: 18, multipv: 1 });
+    expect(engine.maxActive).toBe(1);
+    expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8].map((d) => [d, 8]));
+    expect(onDone).toHaveBeenCalledWith(summary);
+
+    expect(summary.moves).toHaveLength(7);
+    const m = summary.moves;
+    expect(m[0]!.evalBefore).toEqual({ cp: 30 }); // last info, not the first (cp 12345)
+    expect(m[0]!.bestMove).toBe('e2e4');
+    expect(m[0]!.classification).toBe('best');
+    expect(m[5]!.san).toBe('Nf6');
+    expect(m[5]!.evalAfter).toEqual({ mate: 1 });
+    expect(m[5]!.classification).toBe('blunder');
+    // bestMove null → falls back to pv[0]; checkmate → {mate: 0} → mover won.
+    expect(m[6]!.bestMove).toBe('h5f7');
+    expect(m[6]!.evalAfter).toEqual({ mate: 0 });
+    expect(m[6]!.winProbAfter).toBe(100);
+    expect(m[6]!.classification).toBe('best');
+    expect(a.cache.size).toBe(8);
+  });
+
+  it('reports a partial summary with progress', async () => {
+    const { engine, game } = scholarEngine();
+    const partials: number[] = [];
+    await new BatchAnalyzer({ engine }).run(game, {
+      onProgress: (_d, _t, partial) => partials.push(partial?.moves.length ?? -1),
+    }).promise;
+    expect(partials).toEqual([-1, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('evaluates stalemate as 0 without searching it', async () => {
+    const game = gameFrom(['Qf7'], '7k/4Q3/6K1/8/8/8/8/8 w - - 0 1');
+    const engine = new FakeReviewEngine();
+    engine.scripts.set(game.startFen, { score: { mate: 2 }, pv: ['g6h6'] });
+    const s = await new BatchAnalyzer({ engine }).run(game).promise;
+    expect(engine.analysed).toEqual([game.startFen]);
+    expect(s.moves[0]!.evalAfter).toEqual({ cp: 0 });
+    expect(s.moves[0]!.classification).toBe('blunder');
+  });
+
+  it('counts legal moves (forced moves) from the position before the move', async () => {
+    // Rg1 covers g7/g8: Kh7 is the only legal move.
+    const game = gameFrom(['Kh7'], '7k/8/8/8/8/8/8/6RK b - - 0 1');
+    const engine = new FakeReviewEngine();
+    const s = await new BatchAnalyzer({ engine }).run(game).promise;
+    expect(s.moves[0]!.classification).toBe('forced');
+  });
+
+  it('uses movetime when given', async () => {
+    const { engine, game } = scholarEngine();
+    await new BatchAnalyzer({ engine, options: { movetime: 300, depth: 12 } }).run(game).promise;
+    expect(
+      engine.calls.every((c) => c.movetime === 300 && c.depth === undefined && c.multipv === 1),
+    ).toBe(true);
+  });
+
+  it('converts side-to-move scores with pov "stm"', async () => {
+    const game = gameFrom(['e4']);
+    const [p0, p1] = fens(game);
+    const engine = new FakeReviewEngine();
+    engine.scripts.set(p0!, { score: { cp: 40 }, pv: ['e2e4'] });
+    engine.scripts.set(p1!, { score: { cp: -35 }, pv: ['e7e5'] }); // Black to move: -35 for Black
+    const stm = await new BatchAnalyzer({ engine, options: { pov: 'stm' } }).run(game).promise;
+    expect(stm.moves[0]!.evalBefore).toEqual({ cp: 40 });
+    expect(stm.moves[0]!.evalAfter).toEqual({ cp: 35 });
+    const white = await new BatchAnalyzer({ engine, options: { pov: 'white' } }).run(game).promise;
+    expect(white.moves[0]!.evalAfter).toEqual({ cp: -35 });
+  });
+
+  it('cancel stops the engine, rejects with AbortError, keeps the cache; a rerun resumes', async () => {
+    const { engine, game, p } = scholarEngine();
+    engine.hang.add(p[2]!);
+    const a = new BatchAnalyzer({ engine });
+    const onError = vi.fn();
+    const ref: { run?: ReturnType<BatchAnalyzer['run']> } = {};
+    const run = a.run(game, {
+      onProgress: (done) => {
+        if (done === 2) setTimeout(() => ref.run!.cancel(), 5);
+      },
+      onError,
+    });
+    ref.run = run;
+    await expect(run.promise).rejects.toMatchObject({ name: 'AbortError' });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+    expect(engine.stopCalls).toBe(1);
+    expect(engine.active).toBe(0); // engine idle before the promise settled
+    expect([...a.cache.keys()]).toEqual([p[0], p[1]]); // the aborted (partial) search is not cached
+    run.cancel(); // idempotent
+    expect(engine.stopCalls).toBe(1);
+
+    engine.hang.clear();
+    engine.analysed.length = 0;
+    const rerun = new BatchAnalyzer({ engine, cache: a.cache });
+    const s = await rerun.run(game).promise;
+    expect(engine.analysed).toEqual(p.slice(2, 7));
+    expect(s.moves).toHaveLength(7);
+    expect(engine.maxActive).toBe(1);
+  });
+
+  it('cancel before the first search starts rejects without searching', async () => {
+    const { engine, game } = scholarEngine();
+    const run = new BatchAnalyzer({ engine }).run(game);
+    run.cancel();
+    await expect(run.promise).rejects.toMatchObject({ name: 'AbortError' });
+    expect(engine.analysed.length).toBeLessThanOrEqual(1);
+    expect(engine.active).toBe(0);
+  });
+
+  it('rejects on engine errors and reports them', async () => {
+    const { engine, game, p } = scholarEngine();
+    engine.fail.set(p[3]!, new Error('worker crashed'));
+    const onError = vi.fn();
+    const a = new BatchAnalyzer({ engine });
+    await expect(a.run(game, { onError }).promise).rejects.toThrow('worker crashed');
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'worker crashed' }));
+    expect(a.cache.size).toBe(3);
+  });
+
+  it('rejects when the engine yields no evaluation', async () => {
+    const engine = new FakeReviewEngine();
+    engine.analyze = () => ({
+      bestMove: Promise.resolve(null),
+      [Symbol.asyncIterator]: async function* () {
+        /* nothing */
+      },
+    });
+    await expect(new BatchAnalyzer({ engine }).run(gameFrom(['e4'])).promise).rejects.toThrow(
+      /no evaluation/,
+    );
+  });
+
+  it('rejects illegal moves and invalid options', async () => {
+    const engine = new FakeReviewEngine();
+    const g = gameFrom(['e4']);
+    g.moves[0]!.uci = 'e2e5';
+    await expect(new BatchAnalyzer({ engine }).run(g).promise).rejects.toThrow(/Illegal move e2e5/);
+    expect(() => new BatchAnalyzer({ engine, options: { depth: 0 } })).toThrow(/depth/);
+    // @ts-expect-error only concurrency 1 is supported
+    expect(() => new BatchAnalyzer({ engine, concurrency: 2 })).toThrow(/concurrency/);
+  });
+});

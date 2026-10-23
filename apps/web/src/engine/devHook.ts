@@ -20,4 +20,5 @@ window.__chesslab = {
     const { WasmEngineClient } = await import('./WasmEngineClient');
     return new WasmEngineClient(options);
   },
+  runReview: async (options) => (await import('../review/reviewDevHook')).runReview(options),
 };
