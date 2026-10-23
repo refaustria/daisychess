@@ -91,3 +91,10 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 |---|---|---|---|
 | M12-1 | Opening name + ECO from a vendored lichess/chess-openings table, shown live while playing/navigating | worker | done |
 | M12-2 | Position explorer (lichess masters + lichess DB): games count, W/D/L, popular moves, recent/top games with players, date, winner; load a game from the list | senior | done |
+
+## M13 — Play live on lichess (Board API)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M13-1 | "Log in with lichess" (OAuth PKCE), shared token store used by Explorer and Import ("my games"), logout/revoke | senior | in-progress |
+| M13-2 | Live games via Board API: seek/challenge/AI, event + game streams, clocks, moves, draw/resign/abort, hard engine lock during a live game, auto review afterwards | senior | in-progress |
+| M13-3 | Incoming challenges and ongoing games shown on open; Live tab wiring in App | senior | in-progress (part of M13-2) |
