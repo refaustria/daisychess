@@ -9,6 +9,21 @@ Two analysis backends are offered and can be switched at runtime:
 
 > **For Claude Code:** this repository is run by an orchestrating Claude Code session that acts as project manager only. It does not implement features itself; it plans, delegates to sub-agents, reviews and integrates. See [`CLAUDE.md`](./CLAUDE.md) and the section *Working Model for Claude Code* below.
 
+## Status
+
+All milestones M0–M6 are implemented; the live site is https://c.referee.at. Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
+
+| Area | State |
+|---|---|
+| Play (board, move list, undo, flip, FEN/PGN import, keyboard navigation) | done |
+| Browser engine (Stockfish 19 WASM, MultiPV, eval bar, arrows, line preview) | done |
+| Server engine (native Stockfish 19, WebSocket, limits, Origin check) | done |
+| Game review (accuracy, eval graph, key moments, annotated PGN export) | done |
+| Engine registry and multi-engine comparison | done (Stockfish only; other UCI engines are configurable on the server but none are shipped) |
+| Theming (board colours, piece sets Cburnett/Letters, coordinates, highlights, sounds, dark/light) | done |
+| Accessibility / performance pass | done (axe e2e checks, keyboard-operable tabs; the board itself is mouse/touch only) |
+| `full` big-NNUE WASM build, opening database, accounts, multiplayer | not built (non-goals for v1 or future work) |
+
 ---
 
 ## 1. Goals
@@ -53,15 +68,16 @@ chesslab/
 - **Engine access:** a single `EngineClient` interface with two implementations:
   - `WasmEngineClient` — loads a WASM engine inside a Web Worker.
   - `RemoteEngineClient` — talks to the server over WebSocket.
-- **Routing/pages:** `/` (play & analyze), `/review/:id` (game review), `/settings`.
+- **Layout:** a single page (`/`): board + eval bar, engine panel, and tabs for Moves, Import, Review and Settings (Review and Settings are lazy-loaded). There is no router.
+- Structure and dev hooks: [`apps/web/README.md`](./apps/web/README.md).
 
-Browser engine builds to support (from the `stockfish` npm package, Stockfish 17+):
+Browser engine builds (from the `stockfish` npm package, Stockfish 19; only the two lite builds are shipped, the `full` build is not built):
 
 | Build | Size | Needs COOP/COEP headers | Use |
 |---|---|---|---|
 | `lite-single` | small | no | default, works everywhere |
 | `lite` (multi-thread) | small | yes | if headers available |
-| `full` (multi-thread, big NNUE) | ~75 MB | yes | opt-in "maximum strength" |
+| `full` (multi-thread, big NNUE) | ~75 MB | yes | not shipped (idea: opt-in "maximum strength") |
 
 The site must set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` in production to unlock `SharedArrayBuffer` for multi-threaded WASM. Detect support at runtime and fall back gracefully.
 
@@ -125,7 +141,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 
 ### PGN import & navigation
 - Drop a `.pgn` file or paste text; multi-game files show a picker.
-- Move list with variations; keyboard navigation (←/→/Home/End); FEN copy.
+- Move list (main line, no variations yet); keyboard navigation (←/→/Home/End); FEN copy.
 
 ### Game review
 - Batch-analyze every position at configurable depth (server mode recommended).
@@ -133,7 +149,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - Export the annotated PGN.
 
 ### Customization
-- Board colors (presets + custom picker), piece sets (cburnett, merida, alpha, …), coordinates on/off, highlight style, sound on/off, dark/light mode.
+- Board colors (presets + custom picker), piece sets (Cburnett, Letters), coordinates on/off, highlight style, sound on/off, dark/light mode.
 - Stored in `localStorage`.
 
 ---
@@ -189,25 +205,43 @@ Sub-agent definitions live in `.claude/agents/` (one file per tier with its mode
 
 ## 6. Development
 
+Requirements: Node >= 20, pnpm. Ports: web dev server **5180**, engine server **8580** (ADR-001); Docker publishes the UI on 8080.
+
 ```bash
 pnpm install
-pnpm dev:web        # http://localhost:5180 (see docs/DECISIONS.md ADR-001)
-pnpm dev:server     # http://127.0.0.1:8580 (requires engines, see below)
-pnpm fetch-engines  # downloads native Stockfish 19 (NNUE embedded) into ./engines
-pnpm test
+pnpm fetch-engines  # downloads native Stockfish 19 (NNUE embedded, checksum-verified) into ./engines
+pnpm dev:web        # http://localhost:5180 (browser mode works without the server)
+pnpm dev:server     # http://127.0.0.1:8580 (/ws, /health); needs the engines above
+pnpm lint           # eslint + typecheck of all packages
+pnpm test           # Vitest, all packages
+pnpm e2e            # Playwright (builds the web app, serves it on :4180); first run: pnpm --filter @chesslab/web exec playwright install chromium
 pnpm build
 ```
 
-Server mode via Docker:
+Server configuration is read from the environment (see `apps/server/.env.example`; no `.env` auto-loading, use `node --env-file`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PORT` / `HOST` | `8580` / `127.0.0.1` | listen address |
+| `ALLOWED_ORIGINS` | same host as the request | comma-separated `scheme://host[:port]` allowed to open `/ws`, or `*` (ADR-008); production sets `https://c.referee.at` |
+| `MAX_SESSIONS` | `4` | global cap on leased engine instances |
+| `MAX_SESSIONS_PER_IP` | unset | per-client-address cap, must not exceed `MAX_SESSIONS` |
+| `MAX_SESSIONS_PER_CONNECTION`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_THREADS`, `MAX_HASH_MB`, `MAX_MOVETIME_MS` | see `.env.example` | per-request limits announced in `welcome.limits` |
+| `ENGINE_IDLE_MS`, `SESSION_IDLE_MS` | `300000`, `600000` | idle timeouts |
+| `ENGINES_CONFIG` | `apps/server/engines.json` | engine registry |
+| `LOG_LEVEL` | `info` | pino level |
+
+### Deployment
+
+- Production (nginx + Let's Encrypt, systemd unit, COOP/COEP): [`deploy/README.md`](./deploy/README.md).
+- Docker (server mode in one command):
 
 ```bash
 docker compose -f docker/docker-compose.yml up --build -d   # web UI + /ws + /health on http://localhost:8080
 docker compose -f docker/docker-compose.yml down
 ```
 
-- `server` (`docker/server.Dockerfile`): Node 22, Stockfish fetched at build time (`STOCKFISH_VERSION` / `STOCKFISH_ARCH` build args), runs as non-root `chesslab` under `tini`. Port 8580 is only reachable inside the compose network; uncomment `ports` in the compose file to publish it.
-- `web` (`docker/web.Dockerfile`, `docker/nginx.web.conf`): nginx serving the build with COOP/COEP headers and proxying `/ws` and `/health` to `server`. Public port: `WEB_PORT` (default 8080).
-- Configuration: `docker/server.env` (`MAX_SESSIONS`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_THREADS`, `MAX_HASH_MB`, ... see `apps/server/.env.example`); engine registry `docker/engines.docker.json` (baked into the image as `ENGINES_CONFIG`). Suggested `cpus`/`mem_limit` are commented in the compose file.
+`server` (`docker/server.Dockerfile`) runs Node 22 with Stockfish fetched at build time (`STOCKFISH_VERSION` / `STOCKFISH_ARCH` build args) as non-root under `tini`; port 8580 is only reachable inside the compose network. `web` (`docker/web.Dockerfile`, `docker/nginx.web.conf`) serves the build with COOP/COEP headers and proxies `/ws` and `/health`. Configure with `docker/server.env`; the registry is `docker/engines.docker.json`.
 
 ---
 

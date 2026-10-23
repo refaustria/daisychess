@@ -10,10 +10,17 @@ export function Controls() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Widgets that own the arrow keys (tabs, selects, inputs) call preventDefault or are skipped.
+      if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) return;
       const t = e.target;
       if (
         t instanceof HTMLElement &&
-        (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable ||
+          t.getAttribute('role') === 'tab' ||
+          t.getAttribute('role') === 'radio')
       )
         return;
       if (e.key === 'ArrowLeft') prev();

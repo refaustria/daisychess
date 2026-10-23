@@ -1,5 +1,5 @@
 import '@chesslab/ui-theme/base.css';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState, type KeyboardEvent } from 'react';
 import { AnalysisPanel } from './components/Analysis/AnalysisPanel';
 import { PreviewBanner } from './components/Analysis/PreviewBanner';
 import { analysisShapes } from './components/Analysis/shapes';
@@ -8,8 +8,6 @@ import { Controls } from './components/Controls/Controls';
 import { EngineToggle } from './components/EngineToggle/EngineToggle';
 import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
-import { ReviewPanel } from './components/Review/ReviewPanel';
-import { SettingsPanel } from './components/Settings/SettingsPanel';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
 import { selectPrimary, useAnalysisStore } from './store/analysisStore';
@@ -23,6 +21,47 @@ import {
   type GameState,
 } from './store/gameStore';
 import styles from './App.module.css';
+
+const ReviewPanel = lazy(() =>
+  import('./components/Review/ReviewPanel').then((m) => ({ default: m.ReviewPanel })),
+);
+const SettingsPanel = lazy(() =>
+  import('./components/Settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })),
+);
+
+type TabId = 'moves' | 'import' | 'review' | 'settings';
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'moves', label: 'Moves' },
+  { id: 'import', label: 'Import' },
+  { id: 'review', label: 'Review' },
+  { id: 'settings', label: 'Settings' },
+];
+
+/** WAI-ARIA tabs: arrows/Home/End move focus and activate (automatic activation), roving tabindex. */
+function onTabKeyDown(e: KeyboardEvent<HTMLElement>, tab: TabId, setTab: (t: TabId) => void) {
+  const i = TABS.findIndex((t) => t.id === tab);
+  let next: number;
+  switch (e.key) {
+    case 'ArrowRight':
+      next = (i + 1) % TABS.length;
+      break;
+    case 'ArrowLeft':
+      next = (i - 1 + TABS.length) % TABS.length;
+      break;
+    case 'Home':
+      next = 0;
+      break;
+    case 'End':
+      next = TABS.length - 1;
+      break;
+    default:
+      return;
+  }
+  e.preventDefault();
+  const id = TABS[next]!.id;
+  setTab(id);
+  document.getElementById(`tab-${id}`)?.focus();
+}
 
 export function statusText(s: GameState): string {
   const side = turn(s);
@@ -78,6 +117,10 @@ export function App() {
         <div className={styles.boardCol}>
           <ConnectedEvalBar />
           <div className={styles.boardWrap}>
+            <p id="board-note" className={styles.srOnly}>
+              The board is operated with the mouse or touch. Keyboard users: step through the game
+              with the arrow keys, use the move list, the FEN field or the Import tab.
+            </p>
             <ConnectedBoard />
             <PreviewBanner />
           </div>
@@ -87,50 +130,43 @@ export function App() {
           <p
             className={alert ? `${styles.status} ${styles.statusAlert}` : styles.status}
             data-testid="status"
+            role="status"
+            aria-live="polite"
           >
             {statusText(state)}
           </p>
           <Controls />
           <AnalysisPanel />
-          <div className={styles.tabs} role="tablist">
-            <button
-              role="tab"
-              aria-selected={tab === 'moves'}
-              className={tab === 'moves' ? styles.tabActive : styles.tab}
-              onClick={() => setTab('moves')}
-            >
-              Moves
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === 'import'}
-              className={tab === 'import' ? styles.tabActive : styles.tab}
-              onClick={() => setTab('import')}
-            >
-              Import
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === 'review'}
-              className={tab === 'review' ? styles.tabActive : styles.tab}
-              onClick={() => setTab('review')}
-            >
-              Review
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === 'settings'}
-              className={tab === 'settings' ? styles.tabActive : styles.tab}
-              onClick={() => setTab('settings')}
-            >
-              Settings
-            </button>
+          <div className={styles.tabs} role="tablist" aria-label="Game panels">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`tab-${t.id}`}
+                aria-selected={tab === t.id}
+                aria-controls="tabpanel-main"
+                tabIndex={tab === t.id ? 0 : -1}
+                className={tab === t.id ? styles.tabActive : styles.tab}
+                onClick={() => setTab(t.id)}
+                onKeyDown={(e) => onTabKeyDown(e, tab, setTab)}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-          <div className={styles.content}>
+          <div
+            className={styles.content}
+            role="tabpanel"
+            id="tabpanel-main"
+            aria-labelledby={`tab-${tab}`}
+          >
             {tab === 'moves' && <MoveList />}
             {tab === 'import' && <ImportPanel onLoaded={() => setTab('moves')} />}
-            {tab === 'review' && <ReviewPanel />}
-            {tab === 'settings' && <SettingsPanel />}
+            <Suspense fallback={<p className={styles.loading}>Loading…</p>}>
+              {tab === 'review' && <ReviewPanel />}
+              {tab === 'settings' && <SettingsPanel />}
+            </Suspense>
           </div>
         </section>
       </main>

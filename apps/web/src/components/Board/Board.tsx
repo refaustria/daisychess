@@ -124,6 +124,9 @@ export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}
     <div
       className={styles.board}
       data-testid="board"
+      role="group"
+      aria-label="Chess board"
+      aria-describedby="board-note"
       data-preview={previewing || undefined}
       data-pieces-ready={readySet === pieceSet || undefined}
       ref={ref}

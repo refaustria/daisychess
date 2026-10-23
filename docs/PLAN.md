@@ -54,5 +54,5 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M6-1 | Docker image + compose for server mode | worker | done |
-| M6-2 | Performance pass, accessibility, docs | worker | in-progress |
+| M6-2 | Performance pass, accessibility, docs | worker | done |
 | M6-3 | Security review of server + hosting — `docs/SECURITY.md`, ADR-008 (Origin check), Stockfish-safe FEN validation, verified engine downloads, systemd/nginx/docker hardening; P1–P3 follow-ups listed in SECURITY.md | architect | done |

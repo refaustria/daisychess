@@ -121,7 +121,7 @@ function Done({ summary, onAgain }: { summary: ReviewSummary; onAgain: () => voi
         </tbody>
       </table>
       <EvalGraph summary={summary} ply={ply} onSeek={goTo} />
-      <h3 className={styles.h}>Key moments</h3>
+      <h2 className={styles.h}>Key moments</h2>
       <KeyMoments summary={summary} />
       <div className={styles.row}>
         <button type="button" className={styles.btn} onClick={() => download(pgn)}>
@@ -166,7 +166,7 @@ export function ReviewPanel() {
         >
           <div className={styles.barFill} style={{ width: `${pct}%` }} />
         </div>
-        <p className={styles.muted}>
+        <p className={styles.muted} role="status" aria-live="polite">
           {progress.done}/{progress.total} ({pct}%)
         </p>
         <div className={styles.row}>
