@@ -1,0 +1,21 @@
+{
+  "_comment": "Engine registry. Paths in 'binary' are relative to this file. To enable Fairy-Stockfish, install the binary at engines/fairy-stockfish/fairy-stockfish and set enabled to true on the second entry.",
+  "engines": [
+    {
+      "id": "stockfish",
+      "name": "Stockfish 19",
+      "binary": "../../engines/stockfish/stockfish",
+      "enabled": true,
+      "options": { "Threads": 4, "Hash": 256 },
+      "maxInstances": 3
+    },
+    {
+      "id": "fairy-stockfish",
+      "name": "Fairy-Stockfish",
+      "binary": "../../engines/fairy-stockfish/fairy-stockfish",
+      "enabled": false,
+      "options": { "Threads": 2, "Hash": 128 },
+      "maxInstances": 1
+    }
+  ]
+}
