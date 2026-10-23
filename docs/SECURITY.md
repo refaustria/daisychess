@@ -113,6 +113,7 @@ Tokens never appear in a URL, a log line or an error message (the token exchange
 |---|---|
 | Protocol | Zod schemas with hard bounds; Stockfish-equivalent FEN validation; no free-form UCI options; 16 KiB frames; outgoing validation |
 | Server | Origin policy (403); `hello` handshake + timeout; per-connection rate limits; per-connection/per-IP/global session caps; wall-clock cap; backpressure; `shell: false` spawns; allow-listed options; crash isolation per lease; exponential respawn backoff with `degraded` state; graceful shutdown kills the cgroup |
+| Rooms (ADR-013) | unguessable ids (128 bit) and seat tokens (256 bit, constant-time compare, never logged); server-side rules and clocks; per-address creation rate, room cap, spectator cap, TTLs, 10 room msgs/s per connection; token-less connections restricted to rooms (`analyze` → `unauthorized`); players in a running game get `forbidden` on `analyze` |
 | nginx | TLS (certbot), HSTS (1 year, no subdomains), `limit_conn 10`, `limit_req 5r/s burst 20`, 429s, `/health` only, COOP/COEP/CORP, nosniff, Referrer-Policy, full enforced CSP (§2.8), `server_tokens off`, per-vhost access log with timings (no query strings) |
 | systemd | unprivileged user, no capabilities, seccomp `@system-service`, no egress, read-only FS, private /tmp and /dev, `ProtectProc`, `MemoryMax`, `TasksMax`, `KillMode=control-group` |
 | Docker | non-root, read-only, `cap_drop ALL`, `no-new-privileges`, tini, base images pinned by digest, pinned Stockfish release + digest, same CSP as production |

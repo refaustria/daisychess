@@ -2,6 +2,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_LIMITS } from '@chesslab/engine-core';
 import { loadConfig } from './config.js';
+import { DEFAULT_ROOM_CONFIG } from './rooms/RoomManager.js';
 
 describe('loadConfig', () => {
   it('applies defaults (ADR-001 port, ADR-006 limits)', () => {
@@ -14,6 +15,7 @@ describe('loadConfig', () => {
       engineIdleMs: 300_000,
       sessionIdleMs: 600_000,
       logLevel: 'info',
+      rooms: DEFAULT_ROOM_CONFIG,
     });
     expect(path.basename(c.enginesConfig)).toBe('engines.json');
     expect(path.isAbsolute(c.enginesConfig)).toBe(true);
@@ -96,5 +98,39 @@ describe('loadConfig', () => {
     expect(loadConfig({ ACCESS_TOKEN: '' }).accessToken).toBeNull();
     expect(loadConfig({ ACCESS_TOKEN: 'abc123' }).accessToken).toBe('abc123');
     expect(() => loadConfig({ ACCESS_TOKEN: 'x'.repeat(257) })).toThrow(/ACCESS_TOKEN/);
+  });
+
+  it('parses the room policy (ADR-013) and rejects values out of range', () => {
+    expect(DEFAULT_ROOM_CONFIG).toEqual({
+      maxRooms: 200,
+      maxSpectators: 10,
+      createRateLimit: { max: 10, windowMs: 600_000 },
+      waitingTtlMs: 900_000,
+      finishedTtlMs: 600_000,
+      idleTtlMs: 7_200_000,
+      claimGraceMs: 60_000,
+    });
+    expect(
+      loadConfig({
+        ROOM_MAX_ROOMS: '5',
+        ROOM_MAX_SPECTATORS: '0',
+        ROOM_CREATE_PER_IP: '3',
+        ROOM_CREATE_WINDOW_MS: '1000',
+        ROOM_WAITING_TTL_MS: '2000',
+        ROOM_FINISHED_TTL_MS: '3000',
+        ROOM_IDLE_TTL_MS: '4000',
+        ROOM_CLAIM_GRACE_MS: '5000',
+      }).rooms,
+    ).toEqual({
+      maxRooms: 5,
+      maxSpectators: 0,
+      createRateLimit: { max: 3, windowMs: 1000 },
+      waitingTtlMs: 2000,
+      finishedTtlMs: 3000,
+      idleTtlMs: 4000,
+      claimGraceMs: 5000,
+    });
+    expect(() => loadConfig({ ROOM_MAX_ROOMS: '0' })).toThrow(/ROOM_MAX_ROOMS/);
+    expect(() => loadConfig({ ROOM_CLAIM_GRACE_MS: '10' })).toThrow(/ROOM_CLAIM_GRACE_MS/);
   });
 });

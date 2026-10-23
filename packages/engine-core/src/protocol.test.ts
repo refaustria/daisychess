@@ -10,12 +10,43 @@ import {
   PROTOCOL_ERROR_CODES,
   MAX_TOKEN_LENGTH,
   PROTOCOL_VERSION,
+  ROOM_BOUNDS,
+  ROOM_ERROR_CODES,
+  ROOM_STATUSES,
+  ROOM_RESULTS,
+  ROOM_END_REASONS,
+  normalizeNick,
+  NickSchema,
+  RoomIdSchema,
+  PlayerTokenSchema,
+  RoomSideSchema,
+  RoomColorChoiceSchema,
+  RoomClockSettingSchema,
+  RoomClockStateSchema,
+  RoomPlayerSchema,
+  RoomCreateMessageSchema,
+  RoomJoinMessageSchema,
+  RoomAttachMessageSchema,
+  RoomMoveMessageSchema,
+  RoomResignMessageSchema,
+  RoomDrawMessageSchema,
+  RoomAbortMessageSchema,
+  RoomClaimMessageSchema,
+  RoomLeaveMessageSchema,
+  RoomSeatMessageSchema,
+  RoomStateMessageSchema,
+  RoomErrorMessageSchema,
+  CapabilitiesSchema,
+  UciMoveSchema,
   type AnalyzeMessage,
   type ClientMessage,
+  type RoomStateMessage,
   type ServerMessage,
 } from './index.js';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const ROOM_ID = 'Ab3_dEfGh-jKlMnOpQrStU';
+const TOKEN = 'x'.repeat(43);
 
 const analyze: AnalyzeMessage = {
   type: 'analyze',
@@ -43,7 +74,38 @@ const clientMessages: ClientMessage[] = [
   { type: 'release', sessionId: 'tab-1_A' },
   { type: 'ping', t: 1_700_000_000_000 },
   { type: 'ping' },
+  {
+    type: 'room.create',
+    nick: 'Alice',
+    clock: { initialMs: 180_000, incrementMs: 2_000 },
+    color: 'random',
+  },
+  { type: 'room.create', nick: 'Bob', clock: null, color: 'white' },
+  { type: 'room.join', roomId: ROOM_ID, nick: 'Carol' },
+  { type: 'room.join', roomId: ROOM_ID },
+  { type: 'room.attach', roomId: ROOM_ID, playerToken: TOKEN },
+  { type: 'room.move', roomId: ROOM_ID, uci: 'e7e8q' },
+  { type: 'room.resign', roomId: ROOM_ID },
+  { type: 'room.draw', roomId: ROOM_ID, action: 'offer' },
+  { type: 'room.abort', roomId: ROOM_ID },
+  { type: 'room.claim', roomId: ROOM_ID },
+  { type: 'room.leave', roomId: ROOM_ID },
 ];
+
+const roomState: RoomStateMessage = {
+  type: 'room.state',
+  roomId: ROOM_ID,
+  status: 'playing',
+  players: { white: { nick: 'Alice', connected: true }, black: { nick: 'Bob', connected: false } },
+  you: 'white',
+  spectators: 1,
+  startFen: START,
+  fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+  moves: ['e2e4'],
+  clock: { initialMs: 180_000, incrementMs: 2_000, white: 180_000, black: 180_000, running: null },
+  claimableAt: 1_700_000_060_000,
+  serverTime: 1_700_000_000_000,
+};
 
 const serverMessages: ServerMessage[] = [
   {
@@ -102,6 +164,47 @@ const serverMessages: ServerMessage[] = [
   { type: 'error', code: 'engine_crashed', message: 'exit code 139', sessionId: 'x', searchId: 3 },
   { type: 'pong', t: 1_700_000_000_000 },
   { type: 'pong' },
+  {
+    type: 'welcome',
+    protocolVersion: PROTOCOL_VERSION,
+    serverVersion: '0.1.0',
+    limits: { ...DEFAULT_LIMITS },
+    engines: [],
+    capabilities: { analysis: false, rooms: true },
+  },
+  {
+    type: 'error',
+    code: 'forbidden',
+    message: 'no analysis while playing',
+    sessionId: 'x',
+    searchId: 1,
+  },
+  { type: 'room.seat', roomId: ROOM_ID, playerToken: TOKEN, color: 'black' },
+  roomState,
+  {
+    type: 'room.state',
+    roomId: ROOM_ID,
+    status: 'finished',
+    players: { white: { nick: 'Alice', connected: true } },
+    you: 'spectator',
+    spectators: 0,
+    startFen: START,
+    fen: START,
+    moves: [],
+    clock: null,
+    reason: 'abort',
+    serverTime: 1_700_000_000_000,
+  },
+  {
+    ...roomState,
+    status: 'finished',
+    result: '1/2-1/2',
+    reason: 'agreement',
+    drawOffer: 'black',
+    clock: { ...roomState.clock!, running: 'white' },
+  },
+  { type: 'room.error', roomId: ROOM_ID, code: 'not_your_turn', message: 'wait' },
+  { type: 'room.error', code: 'too_many_rooms', message: 'server full' },
 ];
 
 describe('round trips', () => {
@@ -116,8 +219,32 @@ describe('round trips', () => {
   it('covers every message type of both unions', () => {
     const clientTypes = new Set(clientMessages.map((m) => m.type));
     const serverTypes = new Set(serverMessages.map((m) => m.type));
-    expect([...clientTypes].sort()).toEqual(['analyze', 'hello', 'ping', 'release', 'stop']);
-    expect([...serverTypes].sort()).toEqual(['bestmove', 'error', 'info', 'pong', 'welcome']);
+    expect([...clientTypes].sort()).toEqual([
+      'analyze',
+      'hello',
+      'ping',
+      'release',
+      'room.abort',
+      'room.attach',
+      'room.claim',
+      'room.create',
+      'room.draw',
+      'room.join',
+      'room.leave',
+      'room.move',
+      'room.resign',
+      'stop',
+    ]);
+    expect([...serverTypes].sort()).toEqual([
+      'bestmove',
+      'error',
+      'info',
+      'pong',
+      'room.error',
+      'room.seat',
+      'room.state',
+      'welcome',
+    ]);
   });
   it('welcome carries the current protocol version', () => {
     expect(PROTOCOL_VERSION).toBe(1);
@@ -567,5 +694,203 @@ describe('checkAnalyzeLimits', () => {
     expect(DEFAULT_LIMITS.maxSessionsPerConnection).toBeLessThanOrEqual(
       PROTOCOL_BOUNDS.sessionsPerConnection.max,
     );
+  });
+});
+
+describe('rooms (ADR-013)', () => {
+  const okC = (m: unknown) => expect(parseClientMessage(m).ok, JSON.stringify(m)).toBe(true);
+  const badC = (m: unknown, re: RegExp) => {
+    const r = parseClientMessage(m);
+    expect(r.ok, JSON.stringify(m)).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(re);
+  };
+  const okS = (m: unknown) => expect(parseServerMessage(m).ok, JSON.stringify(m)).toBe(true);
+  const badS = (m: unknown, re: RegExp) => {
+    const r = parseServerMessage(m);
+    expect(r.ok, JSON.stringify(m)).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(re);
+  };
+
+  it('stays additive: protocol 1, forbidden error code, capabilities optional', () => {
+    expect(PROTOCOL_VERSION).toBe(1);
+    expect(PROTOCOL_ERROR_CODES).toContain('forbidden');
+    const welcome = serverMessages[0] as Extract<ServerMessage, { type: 'welcome' }>;
+    expect(welcome.capabilities).toBeUndefined();
+    expect(CapabilitiesSchema.safeParse({ analysis: true, rooms: false }).success).toBe(true);
+    expect(CapabilitiesSchema.safeParse({ analysis: true }).success).toBe(false);
+    badS({ ...welcome, capabilities: { analysis: 'yes', rooms: true } }, /capabilities\.analysis/);
+  });
+
+  it('constants are consistent and frozen-shaped', () => {
+    expect(ROOM_STATUSES).toEqual(['waiting', 'playing', 'finished']);
+    expect(ROOM_RESULTS).toEqual(['1-0', '0-1', '1/2-1/2']);
+    expect([...ROOM_END_REASONS].sort()).toEqual(
+      [
+        'abandoned',
+        'abort',
+        'agreement',
+        'checkmate',
+        'draw',
+        'resign',
+        'stalemate',
+        'timeout',
+      ].sort(),
+    );
+    expect(ROOM_ERROR_CODES).toHaveLength(8);
+    expect(ROOM_BOUNDS.maxPlies).toBe(1_000);
+    expect(ROOM_BOUNDS.nick).toEqual({ min: 1, max: 20 });
+    // A 1000-ply snapshot stays within one frame.
+    const big = { ...roomState, moves: Array.from({ length: 1_000 }, () => 'e7e8q') };
+    expect(JSON.stringify(big).length).toBeLessThan(MAX_MESSAGE_BYTES);
+    okS(big);
+    badS({ ...roomState, moves: [...big.moves, 'e2e4'] }, /moves/);
+  });
+
+  it('normalizeNick strips controls and bidi marks, collapses whitespace, trims', () => {
+    expect(normalizeNick('  Alice  ')).toBe('Alice');
+    expect(normalizeNick('Al\u0000ice​‮')).toBe('Alice');
+    expect(normalizeNick('A\t\n  B')).toBe('A B');
+    expect(normalizeNick('\u0007')).toBe('');
+    expect(normalizeNick('Zoë 😀')).toBe('Zoë 😀');
+  });
+
+  it('NickSchema normalises, then requires 1–20 characters', () => {
+    expect(NickSchema.parse('  Bob ')).toBe('Bob');
+    expect(NickSchema.safeParse('').success).toBe(false);
+    expect(NickSchema.safeParse('   ').success).toBe(false);
+    expect(NickSchema.safeParse('\u0001\u0002').success).toBe(false);
+    expect(NickSchema.safeParse('x'.repeat(20)).success).toBe(true);
+    expect(NickSchema.safeParse('x'.repeat(21)).success).toBe(false);
+    expect(NickSchema.safeParse('x'.repeat(ROOM_BOUNDS.nickRawMaxLength + 1)).success).toBe(false);
+    // the normalised nick is what the message carries
+    const r = parseClientMessage({
+      type: 'room.create',
+      nick: ' A\u0000lice ',
+      clock: null,
+      color: 'white',
+    });
+    expect(r.ok && r.message.type === 'room.create' && r.message.nick).toBe('Alice');
+    badC(
+      { type: 'room.create', nick: ' \u0000 ', clock: null, color: 'white' },
+      /nick must not be empty/,
+    );
+    badC({ type: 'room.join', roomId: ROOM_ID, nick: 'x'.repeat(21) }, /nick must be at most 20/);
+  });
+
+  it('room ids and player tokens are URL-safe strings of bounded length', () => {
+    expect(RoomIdSchema.safeParse(ROOM_ID).success).toBe(true);
+    expect(RoomIdSchema.safeParse('x'.repeat(16)).success).toBe(true);
+    expect(RoomIdSchema.safeParse('x'.repeat(15)).success).toBe(false);
+    expect(RoomIdSchema.safeParse('x'.repeat(65)).success).toBe(false);
+    expect(RoomIdSchema.safeParse('abc/def+ghi=jkl=mno=').success).toBe(false);
+    expect(PlayerTokenSchema.safeParse(TOKEN).success).toBe(true);
+    expect(PlayerTokenSchema.safeParse('x'.repeat(22)).success).toBe(true);
+    expect(PlayerTokenSchema.safeParse('x'.repeat(21)).success).toBe(false);
+    expect(PlayerTokenSchema.safeParse('x'.repeat(129)).success).toBe(false);
+    badC({ type: 'room.attach', roomId: 'short', playerToken: TOKEN }, /roomId/);
+    badC({ type: 'room.attach', roomId: ROOM_ID, playerToken: 'short' }, /playerToken/);
+  });
+
+  it('sides, colour choices, UCI moves', () => {
+    expect(RoomSideSchema.options).toEqual(['white', 'black']);
+    expect(RoomColorChoiceSchema.options).toEqual(['white', 'black', 'random']);
+    expect(UciMoveSchema.safeParse('e2e4').success).toBe(true);
+    expect(UciMoveSchema.safeParse('e7e8q').success).toBe(true);
+    expect(UciMoveSchema.safeParse('e7e8k').success).toBe(false);
+    expect(UciMoveSchema.safeParse('Nf3').success).toBe(false);
+    badC({ type: 'room.create', nick: 'a', clock: null, color: 'both' }, /color/);
+    badC({ type: 'room.move', roomId: ROOM_ID, uci: 'e2-e4' }, /uci/);
+  });
+
+  it('clock settings mirror the custom time control bounds (0.25–180 min, 0–60 s)', () => {
+    expect(RoomClockSettingSchema.safeParse({ initialMs: 15_000, incrementMs: 0 }).success).toBe(
+      true,
+    );
+    expect(
+      RoomClockSettingSchema.safeParse({ initialMs: 10_800_000, incrementMs: 60_000 }).success,
+    ).toBe(true);
+    expect(RoomClockSettingSchema.safeParse({ initialMs: 14_999, incrementMs: 0 }).success).toBe(
+      false,
+    );
+    expect(
+      RoomClockSettingSchema.safeParse({ initialMs: 60_000, incrementMs: 60_001 }).success,
+    ).toBe(false);
+    expect(RoomClockSettingSchema.safeParse({ initialMs: 60_000.5, incrementMs: 0 }).success).toBe(
+      false,
+    );
+    badC(
+      { type: 'room.create', nick: 'a', clock: { initialMs: 1, incrementMs: 0 }, color: 'white' },
+      /clock\.initialMs/,
+    );
+    badC({ type: 'room.create', nick: 'a', color: 'white' }, /clock/); // null must be explicit
+    okC({ type: 'room.create', nick: 'a', clock: null, color: 'white' });
+  });
+
+  it('clock state: non-negative remaining times, running side or null', () => {
+    const c = { initialMs: 60_000, incrementMs: 0, white: 1, black: 0, running: 'black' };
+    expect(RoomClockStateSchema.safeParse(c).success).toBe(true);
+    expect(RoomClockStateSchema.safeParse({ ...c, white: -1 }).success).toBe(false);
+    expect(RoomClockStateSchema.safeParse({ ...c, running: 'both' }).success).toBe(false);
+    expect(RoomClockStateSchema.safeParse({ ...c, running: undefined }).success).toBe(false);
+  });
+
+  it('players and room.state fields', () => {
+    expect(RoomPlayerSchema.safeParse({ nick: 'A', connected: true }).success).toBe(true);
+    expect(RoomPlayerSchema.safeParse({ nick: '', connected: true }).success).toBe(false);
+    expect(RoomPlayerSchema.safeParse({ nick: 'A' }).success).toBe(false);
+    badS({ ...roomState, status: 'open' }, /status/);
+    badS({ ...roomState, you: 'host' }, /you/);
+    badS({ ...roomState, spectators: -1 }, /spectators/);
+    badS({ ...roomState, fen: 'nope' }, /fen/);
+    badS({ ...roomState, result: '*' }, /result/);
+    badS({ ...roomState, reason: 'flag' }, /reason/);
+    badS({ ...roomState, drawOffer: 'spectator' }, /drawOffer/);
+    badS({ ...roomState, serverTime: undefined }, /serverTime/);
+    okS({ ...roomState, players: {} });
+    expect(RoomStateMessageSchema.safeParse(roomState).success).toBe(true);
+    expect(
+      RoomSeatMessageSchema.safeParse({
+        type: 'room.seat',
+        roomId: ROOM_ID,
+        playerToken: TOKEN,
+        color: 'white',
+      }).success,
+    ).toBe(true);
+    badS({ type: 'room.seat', roomId: ROOM_ID, playerToken: TOKEN, color: 'random' }, /color/);
+    expect(
+      RoomErrorMessageSchema.safeParse({ type: 'room.error', code: 'bad_state', message: 'x' })
+        .success,
+    ).toBe(true);
+    badS({ type: 'room.error', code: 'unauthorized', message: 'x' }, /code/);
+    badS({ type: 'room.error', code: 'bad_state', message: 'x'.repeat(1_001) }, /message/);
+  });
+
+  it('every room request needs its roomId (create excepted) and valid enums', () => {
+    for (const schema of [
+      RoomJoinMessageSchema,
+      RoomAttachMessageSchema,
+      RoomMoveMessageSchema,
+      RoomResignMessageSchema,
+      RoomDrawMessageSchema,
+      RoomAbortMessageSchema,
+      RoomClaimMessageSchema,
+      RoomLeaveMessageSchema,
+    ]) {
+      const type = schema.shape.type.value;
+      const r = parseClientMessage({
+        type,
+        nick: 'a',
+        playerToken: TOKEN,
+        uci: 'e2e4',
+        action: 'offer',
+      });
+      expect(r.ok, type).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/roomId/);
+    }
+    expect(RoomCreateMessageSchema.shape.type.value).toBe('room.create');
+    badC({ type: 'room.draw', roomId: ROOM_ID, action: 'maybe' }, /action/);
+    okC({ type: 'room.draw', roomId: ROOM_ID, action: 'accept' });
+    okC({ type: 'room.draw', roomId: ROOM_ID, action: 'decline' });
+    okC({ type: 'room.join', roomId: ROOM_ID });
   });
 });

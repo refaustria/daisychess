@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
 import WebSocket, { type RawData } from 'ws';
 import {
   BestMoveSchema,
@@ -21,6 +20,10 @@ import {
 import type { EnginePool, Lease, PoolLogger } from '../engines/EnginePool.js';
 import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
 import type { IpSessionLedger } from './clientIp.js';
+import type { RoomClient, RoomManager } from '../rooms/RoomManager.js';
+import { tokenMatches } from './token.js';
+
+export { tokenMatches };
 
 export interface RateLimit {
   max: number;
@@ -46,19 +49,15 @@ export interface ConnectionOptions {
   messageRateLimit?: RateLimit;
   /** `info` messages are dropped (never terminal messages) while the socket buffers more than this. */
   maxBufferedBytes?: number;
-  /** When set (non-empty), `hello.token` must equal it (ADR-010); otherwise `unauthorized`. */
+  /**
+   * When set (non-empty), a `hello` whose `token` does not equal it gets a restricted welcome
+   * (ADR-010/013): no engines, `capabilities.analysis: false`, `analyze` → `unauthorized`.
+   */
   accessToken?: string | null;
-}
-
-/**
- * Constant-time token check: both sides are hashed first, so neither the content nor the length
- * of the expected token leaks through timing.
- */
-export function tokenMatches(given: string | undefined, expected: string): boolean {
-  if (given === undefined) return false;
-  const a = createHash('sha256').update(given, 'utf8').digest();
-  const b = createHash('sha256').update(expected, 'utf8').digest();
-  return timingSafeEqual(a, b);
+  /** Rooms of this server (ADR-013). */
+  rooms: RoomManager;
+  /** `room.*` messages per window. Default 10 per second. */
+  roomRateLimit?: RateLimit;
 }
 
 /** Who a connection is accounted to for the per-IP session cap. */
@@ -110,15 +109,18 @@ let nextConnectionId = 1;
  * were superseded before they started are terminated with `bestmove null, reason: stopped`
  * without ever reaching the engine.
  */
-export class Connection {
+export class Connection implements RoomClient {
   readonly id = nextConnectionId++;
   private handshaken = false;
+  /** False on a token-protected server when this connection's `hello.token` was missing/wrong. */
+  private analysisAllowed = true;
   private closed = false;
   private readonly sessions = new Map<string, Session>();
   /** Chains of released sessions still stopping/returning their engine, by sessionId. */
   private readonly retiring = new Map<string, Promise<void>>();
   private readonly analyzeTimes: number[] = [];
   private readonly messageTimes: number[] = [];
+  private readonly roomTimes: number[] = [];
   private handshakeTimer: ReturnType<typeof setTimeout> | null;
   private readonly enginesById: Map<string, EngineDescriptor>;
   private readonly closedPromise: Promise<void>;
@@ -130,6 +132,7 @@ export class Connection {
   private readonly stopTimeoutMs: number;
   private readonly analyzeRate: RateLimit;
   private readonly messageRate: RateLimit;
+  private readonly roomRate: RateLimit;
   private readonly maxBufferedBytes: number;
   private readonly log: PoolLogger;
 
@@ -141,6 +144,7 @@ export class Connection {
     this.stopTimeoutMs = opts.stopTimeoutMs ?? 5_000;
     this.analyzeRate = opts.analyzeRateLimit ?? { max: 20, windowMs: 1_000 };
     this.messageRate = opts.messageRateLimit ?? { max: 100, windowMs: 1_000 };
+    this.roomRate = opts.roomRateLimit ?? { max: 10, windowMs: 1_000 };
     this.maxBufferedBytes = opts.maxBufferedBytes ?? 1024 * 1024;
     this.log = opts.logger;
     this.enginesById = new Map(opts.engines.map((e) => [e.id, e]));
@@ -190,6 +194,21 @@ export class Connection {
     return this.sessions.size;
   }
 
+  /** Client address (see `resolveClientIp`). */
+  get ip(): string {
+    return this.peer.ip;
+  }
+
+  /** Sends a message to this client (used by the room manager). */
+  deliver(msg: ServerMessage): void {
+    this.send(msg);
+  }
+
+  /** Fair play: a game started in this connection's room; its engine sessions are dropped. */
+  onGameStarted(): void {
+    for (const session of [...this.sessions.values()]) this.retire(session);
+  }
+
   // -------------------------------------------------------------------------------------------
   // Incoming
 
@@ -227,14 +246,13 @@ export class Connection {
       }
       const required = this.opts.accessToken;
       if (required && !tokenMatches(msg.token, required)) {
-        // Never log the token itself, only whether one was sent.
-        this.log.warn(
+        // Restricted mode (ADR-013): rooms work, analysis does not. Never log the token itself,
+        // only whether one was sent.
+        this.analysisAllowed = false;
+        this.log.info(
           { conn: this.id, tokenSent: msg.token !== undefined },
-          'rejecting handshake: access token missing or wrong',
+          'handshake without a valid access token: restricted to rooms',
         );
-        this.sendError('unauthorized', 'access token required or wrong');
-        this.close(1008, 'unauthorized');
-        return;
       }
       this.handshaken = true;
       if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
@@ -245,7 +263,10 @@ export class Connection {
         protocolVersion: PROTOCOL_VERSION,
         serverVersion: this.opts.serverVersion,
         limits: { ...this.opts.limits },
-        engines: this.opts.engines.map((e) => ({ ...e, defaults: { ...e.defaults } })),
+        engines: this.analysisAllowed
+          ? this.opts.engines.map((e) => ({ ...e, defaults: { ...e.defaults } }))
+          : [],
+        capabilities: { analysis: this.analysisAllowed, rooms: true },
       });
       return;
     }
@@ -267,11 +288,34 @@ export class Connection {
       case 'ping':
         this.send(msg.t === undefined ? { type: 'pong' } : { type: 'pong', t: msg.t });
         break;
+      case 'room.create':
+      case 'room.join':
+      case 'room.attach':
+      case 'room.move':
+      case 'room.resign':
+      case 'room.draw':
+      case 'room.abort':
+      case 'room.claim':
+      case 'room.leave':
+        if (!this.allow(this.roomTimes, this.roomRate)) {
+          this.sendError('rate_limited', 'too many room requests');
+          return;
+        }
+        this.opts.rooms.handle(this, msg);
+        break;
     }
   }
 
   private onAnalyze(msg: AnalyzeMessage): void {
     const { sessionId, searchId } = msg;
+    if (!this.analysisAllowed) {
+      this.sendError('unauthorized', 'access token required or wrong', sessionId, searchId);
+      return;
+    }
+    if (this.opts.rooms.isPlaying(this)) {
+      this.sendError('forbidden', 'no analysis while you play in a room', sessionId, searchId);
+      return;
+    }
     if (!this.allow(this.analyzeTimes, this.analyzeRate)) {
       this.sendError('rate_limited', 'too many analyze requests', sessionId, searchId);
       return;
@@ -713,6 +757,7 @@ export class Connection {
     this.closed = true;
     if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
     this.handshakeTimer = null;
+    this.opts.rooms.disconnect(this);
     const pending = [...this.sessions.values()].map((s) => this.retire(s));
     pending.push(...this.retiring.values());
     void Promise.allSettled(pending).then(() => this.resolveClosed());

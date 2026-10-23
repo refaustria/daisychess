@@ -9,6 +9,7 @@ import {
 } from '@chesslab/engine-core';
 import { parseAllowedOrigins, type OriginPolicy } from './ws/origin.js';
 import { parseTrustedProxies, type TrustedProxies } from './ws/clientIp.js';
+import { DEFAULT_ROOM_CONFIG, type RoomConfig } from './rooms/RoomManager.js';
 
 /** apps/server (one level above src/ or dist/). */
 const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -95,6 +96,22 @@ export const EnvSchema = z.object({
     .string()
     .max(MAX_TOKEN_LENGTH, `must be at most ${MAX_TOKEN_LENGTH} characters`)
     .optional(),
+  // Rooms (ADR-013).
+  /** Live rooms of any status at once. */
+  ROOM_MAX_ROOMS: int(1, 100_000, DEFAULT_ROOM_CONFIG.maxRooms),
+  /** Spectators per room (0 disables spectating). */
+  ROOM_MAX_SPECTATORS: int(0, 1_000, DEFAULT_ROOM_CONFIG.maxSpectators),
+  /** `room.create` per client address within ROOM_CREATE_WINDOW_MS. */
+  ROOM_CREATE_PER_IP: int(1, 100_000, DEFAULT_ROOM_CONFIG.createRateLimit.max),
+  ROOM_CREATE_WINDOW_MS: int(1_000, 86_400_000, DEFAULT_ROOM_CONFIG.createRateLimit.windowMs),
+  /** A room nobody joined is abandoned after this many ms. */
+  ROOM_WAITING_TTL_MS: int(1_000, 86_400_000, DEFAULT_ROOM_CONFIG.waitingTtlMs),
+  /** A finished room is deleted this many ms after its game ended. */
+  ROOM_FINISHED_TTL_MS: int(1_000, 86_400_000, DEFAULT_ROOM_CONFIG.finishedTtlMs),
+  /** A running game without a move for this many ms is abandoned. */
+  ROOM_IDLE_TTL_MS: int(1_000, 604_800_000, DEFAULT_ROOM_CONFIG.idleTtlMs),
+  /** A player must be disconnected this many ms before the opponent may claim. */
+  ROOM_CLAIM_GRACE_MS: int(1_000, 3_600_000, DEFAULT_ROOM_CONFIG.claimGraceMs),
 });
 
 export interface ServerConfig {
@@ -111,8 +128,12 @@ export interface ServerConfig {
   logLevel: z.infer<typeof EnvSchema>['LOG_LEVEL'];
   allowedOrigins: OriginPolicy;
   trustedProxies: TrustedProxies;
-  /** Required `hello.token`, or null when the server is public. */
+  /**
+   * Access token (ADR-010/013): with one set, a `hello` without it gets a restricted welcome
+   * (rooms only, no analysis). Null when the server is public.
+   */
   accessToken: string | null;
+  rooms: RoomConfig;
 }
 
 /** Parses the environment; throws with a readable message on invalid values. */
@@ -157,5 +178,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     allowedOrigins: e.ALLOWED_ORIGINS ?? null,
     trustedProxies: e.TRUSTED_PROXIES ?? [],
     accessToken: e.ACCESS_TOKEN ?? null,
+    rooms: {
+      maxRooms: e.ROOM_MAX_ROOMS,
+      maxSpectators: e.ROOM_MAX_SPECTATORS,
+      createRateLimit: { max: e.ROOM_CREATE_PER_IP, windowMs: e.ROOM_CREATE_WINDOW_MS },
+      waitingTtlMs: e.ROOM_WAITING_TTL_MS,
+      finishedTtlMs: e.ROOM_FINISHED_TTL_MS,
+      idleTtlMs: e.ROOM_IDLE_TTL_MS,
+      claimGraceMs: e.ROOM_CLAIM_GRACE_MS,
+    },
   };
 }

@@ -20,6 +20,11 @@
  *   White's point of view with `infoToWhitePov(info, sideToMove(fen))`, exactly like the WASM
  *   client does, so both backends share one conversion path.
  * - Unknown fields are stripped (not rejected); unknown `type` is rejected.
+ *
+ * Rooms (ADR-013, additive in protocol 1): `room.*` messages let two people play each other on
+ * the server (link + nickname, no account). The server validates moves and runs the clocks; after
+ * every change it sends the full `room.state` snapshot to every member. Room-level failures come
+ * as `room.error`; envelope-level failures (`invalid_message`, `rate_limited`, …) stay on `error`.
  */
 import { z } from 'zod';
 import type { BestMove, EngineInfo } from './types.js';
@@ -52,10 +57,16 @@ export const PROTOCOL_ERROR_CODES = [
   /** Unexpected server failure. */
   'internal_error',
   /**
-   * The server requires an access token and `hello.token` is missing or wrong; the server closes
-   * the connection (1008). Added in protocol 1 (additive, ADR-010).
+   * The server requires an access token (ADR-010) and this connection's `hello.token` was missing
+   * or wrong, so analysis is not available (`welcome.capabilities.analysis` is false; ADR-013).
+   * Sent for `analyze`; before ADR-013 it was sent for `hello` and the socket closed (1008).
    */
   'unauthorized',
+  /**
+   * `analyze` while this connection plays in a room whose game is running (fair play, ADR-013).
+   * Added in protocol 1 (additive).
+   */
+  'forbidden',
 ] as const;
 export type ProtocolErrorCode = (typeof PROTOCOL_ERROR_CODES)[number];
 
@@ -266,7 +277,8 @@ export const EngineIdSchema = z
     'engine id must be 1-64 alphanumeric characters (plus - and _)',
   );
 
-const UciMoveSchema = z
+/** A move in UCI notation; promotions carry the piece as 5th character (`e7e8q`). */
+export const UciMoveSchema = z
   .string()
   .regex(/^[a-h][1-8][a-h][1-8][nbrq]?$/, 'move must be in UCI notation (e.g. e2e4, e7e8q)');
 
@@ -334,6 +346,141 @@ export const EngineDescriptorSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------------------------
+// Rooms (ADR-013): building blocks
+
+/** Hard bounds of the room messages (the server's `RoomConfig` can only be stricter). */
+export const ROOM_BOUNDS = {
+  /** Room ids are URL-safe base64 of ≥ 96 random bits (the server uses 128 → 22 chars). */
+  roomIdPattern: /^[A-Za-z0-9_-]{16,64}$/,
+  /** Player tokens are URL-safe base64 of ≥ 128 random bits (the server uses 256 → 43 chars). */
+  playerTokenPattern: /^[A-Za-z0-9_-]{22,128}$/,
+  /** Nickname length after {@link normalizeNick}. */
+  nick: { min: 1, max: 20 },
+  /** Raw nickname length before normalisation (keeps the frame small). */
+  nickRawMaxLength: 100,
+  /** Same range as the custom time control of local play (0.25–180 min, 0–60 s). */
+  clockInitialMs: { min: 15_000, max: 10_800_000 },
+  clockIncrementMs: { min: 0, max: 60_000 },
+  /** A game is adjudicated a draw at this many plies (keeps `room.state` under MAX_MESSAGE_BYTES). */
+  maxPlies: 1_000,
+} as const;
+
+export const ROOM_ERROR_CODES = [
+  /** No room with this id (never existed, expired or was deleted). */
+  'room_not_found',
+  /** Both seats are taken and the spectator cap is reached. */
+  'room_full',
+  /** `room.attach.playerToken` does not belong to a seat of this room. */
+  'bad_token',
+  /** The sender is not a player of this room (spectator or not attached). */
+  'not_a_player',
+  /** `room.move` when it is the opponent's turn. */
+  'not_your_turn',
+  /** `room.move` with an illegal move (or a promotion without a piece). */
+  'illegal_move',
+  /** The action is not allowed in the room's current state (e.g. `room.abort` after move 2). */
+  'bad_state',
+  /** Room creation refused: server cap (`ROOM_MAX_ROOMS`) or the per-address creation rate. */
+  'too_many_rooms',
+] as const;
+export type RoomErrorCode = (typeof ROOM_ERROR_CODES)[number];
+
+export const ROOM_STATUSES = ['waiting', 'playing', 'finished'] as const;
+export type RoomStatus = (typeof ROOM_STATUSES)[number];
+
+export const ROOM_RESULTS = ['1-0', '0-1', '1/2-1/2'] as const;
+export type RoomResult = (typeof ROOM_RESULTS)[number];
+
+/**
+ * Why a room's game ended. `abort` (before both sides moved, or a waiting room cancelled) and
+ * `abandoned` without a `result` mean no game was played; `abandoned` with a `result` is a
+ * claimed win. `timeout` can be a draw (the opponent could not mate). `draw` covers the
+ * automatic draws (threefold repetition, 50-move rule, insufficient material, ply cap).
+ */
+export const ROOM_END_REASONS = [
+  'checkmate',
+  'stalemate',
+  'draw',
+  'resign',
+  'timeout',
+  'abort',
+  'abandoned',
+  'agreement',
+] as const;
+export type RoomEndReason = (typeof ROOM_END_REASONS)[number];
+
+export const RoomIdSchema = z
+  .string()
+  .regex(ROOM_BOUNDS.roomIdPattern, 'roomId must be 16-64 characters of [A-Za-z0-9_-]');
+
+export const PlayerTokenSchema = z
+  .string()
+  .regex(ROOM_BOUNDS.playerTokenPattern, 'playerToken must be 22-128 characters of [A-Za-z0-9_-]');
+
+/**
+ * Nickname normalisation applied by the schema (and usable by a client before sending):
+ * control, format and bidi characters removed, whitespace collapsed to single spaces, trimmed.
+ */
+/* eslint-disable no-control-regex -- removing control characters is the purpose */
+const NICK_STRIP =
+  /[\u0000-\u001F\u007F-\u009F\u00AD\u200B-\u200F\u2028-\u202E\u2060-\u2064\uFEFF]/g;
+/* eslint-enable no-control-regex */
+
+export function normalizeNick(raw: string): string {
+  return raw.replace(NICK_STRIP, '').replace(/\s+/g, ' ').trim();
+}
+
+/** A nickname: normalised with {@link normalizeNick}, then 1–20 characters. */
+export const NickSchema = z
+  .string()
+  .max(
+    ROOM_BOUNDS.nickRawMaxLength,
+    `nick must be at most ${ROOM_BOUNDS.nickRawMaxLength} characters`,
+  )
+  .transform(normalizeNick)
+  .pipe(
+    z
+      .string()
+      .min(ROOM_BOUNDS.nick.min, 'nick must not be empty')
+      .max(ROOM_BOUNDS.nick.max, `nick must be at most ${ROOM_BOUNDS.nick.max} characters`),
+  );
+
+export const RoomSideSchema = z.enum(['white', 'black']);
+export type RoomSide = z.infer<typeof RoomSideSchema>;
+
+/** The host's colour choice; `random` is decided by the server at creation. */
+export const RoomColorChoiceSchema = z.enum(['white', 'black', 'random']);
+export type RoomColorChoice = z.infer<typeof RoomColorChoiceSchema>;
+
+/** Fischer clock setting (same shape as the web's `ClockSetting`). */
+export const RoomClockSettingSchema = z.object({
+  initialMs: range('clock.initialMs', ROOM_BOUNDS.clockInitialMs),
+  incrementMs: range('clock.incrementMs', ROOM_BOUNDS.clockIncrementMs),
+});
+export type RoomClockSetting = z.infer<typeof RoomClockSettingSchema>;
+
+/**
+ * Clock state in a snapshot. `white`/`black` are the remaining ms as of `room.state.serverTime`;
+ * only `running`'s time decreases between snapshots. `running` is null before both sides have
+ * moved (the first two plies are untimed, like lichess) and after the game.
+ */
+export const RoomClockStateSchema = z.object({
+  initialMs: range('clock.initialMs', ROOM_BOUNDS.clockInitialMs),
+  incrementMs: range('clock.incrementMs', ROOM_BOUNDS.clockIncrementMs),
+  white: nonNegativeInt('clock.white'),
+  black: nonNegativeInt('clock.black'),
+  running: RoomSideSchema.nullable(),
+});
+export type RoomClockState = z.infer<typeof RoomClockStateSchema>;
+
+export const RoomPlayerSchema = z.object({
+  nick: z.string().min(ROOM_BOUNDS.nick.min).max(ROOM_BOUNDS.nick.max),
+  /** False while the player's connection is gone (the clock keeps running). */
+  connected: z.boolean(),
+});
+export type RoomPlayer = z.infer<typeof RoomPlayerSchema>;
+
+// ---------------------------------------------------------------------------------------------
 // Client → server
 
 /** Maximum length of `hello.token`. */
@@ -348,7 +495,11 @@ export const HelloMessageSchema = z.object({
       version: z.string().max(32).optional(),
     })
     .optional(),
-  /** Shared access token; required when the server sets `ACCESS_TOKEN` (ADR-010). */
+  /**
+   * Shared access token (ADR-010). On a server with `ACCESS_TOKEN`, a missing or wrong token
+   * gives a restricted `welcome` (`capabilities.analysis: false`, no engines): rooms work,
+   * `analyze` is answered with `unauthorized` (ADR-013).
+   */
   token: z.string().max(MAX_TOKEN_LENGTH).optional(),
 });
 
@@ -383,12 +534,103 @@ export const ReleaseMessageSchema = z.object({
 /** `t` (client timestamp) is echoed in `pong` for round-trip measurement. */
 export const PingMessageSchema = z.object({ type: z.literal('ping'), t: z.number().optional() });
 
+// Rooms (ADR-013), client → server. All carry `roomId` so the server can check that the
+// connection is in that room; a connection is a member of at most one room at a time (creating,
+// joining or attaching another room leaves the current one).
+
+/**
+ * Creates a room with the sender as host. `clock: null` = no clock. The server answers
+ * `room.seat` (room id, the player token for reconnects, the host's colour) and `room.state`.
+ */
+export const RoomCreateMessageSchema = z.object({
+  type: z.literal('room.create'),
+  nick: NickSchema,
+  clock: RoomClockSettingSchema.nullable(),
+  color: RoomColorChoiceSchema,
+});
+
+/**
+ * Joins a room by link. With `nick` the sender takes the free seat (the game starts) or, when
+ * both seats are taken, becomes a spectator; without `nick` the sender only ever spectates.
+ * A player gets `room.seat` + `room.state`; a spectator gets `room.state` (`you: 'spectator'`).
+ */
+export const RoomJoinMessageSchema = z.object({
+  type: z.literal('room.join'),
+  roomId: RoomIdSchema,
+  nick: NickSchema.optional(),
+});
+
+/**
+ * Re-takes a seat with the `playerToken` from `room.seat` (reload, new tab, reconnect). A
+ * connection that still holds that seat is demoted to spectator. Answer: `room.state`.
+ */
+export const RoomAttachMessageSchema = z.object({
+  type: z.literal('room.attach'),
+  roomId: RoomIdSchema,
+  playerToken: PlayerTokenSchema,
+});
+
+/** Plays a move (promotion as 5th character). Clears a pending draw offer. */
+export const RoomMoveMessageSchema = z.object({
+  type: z.literal('room.move'),
+  roomId: RoomIdSchema,
+  uci: UciMoveSchema,
+});
+
+export const RoomResignMessageSchema = z.object({
+  type: z.literal('room.resign'),
+  roomId: RoomIdSchema,
+});
+
+/**
+ * `offer` offers a draw (offering while the opponent's offer is pending accepts it); `accept`
+ * needs a pending offer of the opponent; `decline` withdraws or declines any pending offer.
+ */
+export const RoomDrawMessageSchema = z.object({
+  type: z.literal('room.draw'),
+  roomId: RoomIdSchema,
+  action: z.enum(['offer', 'accept', 'decline']),
+});
+
+/** Cancels a waiting room (host) or a game before both sides have moved (either player). */
+export const RoomAbortMessageSchema = z.object({
+  type: z.literal('room.abort'),
+  roomId: RoomIdSchema,
+});
+
+/**
+ * Claims the game while the opponent has been disconnected for the grace period
+ * (`room.state.claimableAt` has passed): a win if both sides had moved, otherwise an abort.
+ */
+export const RoomClaimMessageSchema = z.object({
+  type: z.literal('room.claim'),
+  roomId: RoomIdSchema,
+});
+
+/**
+ * Detaches the connection from the room. A spectator is removed; a player is marked
+ * disconnected (same as closing the socket) and can come back with `room.attach`.
+ */
+export const RoomLeaveMessageSchema = z.object({
+  type: z.literal('room.leave'),
+  roomId: RoomIdSchema,
+});
+
 export const ClientMessageSchema = z.discriminatedUnion('type', [
   HelloMessageSchema,
   AnalyzeMessageSchema,
   StopMessageSchema,
   ReleaseMessageSchema,
   PingMessageSchema,
+  RoomCreateMessageSchema,
+  RoomJoinMessageSchema,
+  RoomAttachMessageSchema,
+  RoomMoveMessageSchema,
+  RoomResignMessageSchema,
+  RoomDrawMessageSchema,
+  RoomAbortMessageSchema,
+  RoomClaimMessageSchema,
+  RoomLeaveMessageSchema,
 ]);
 
 export type HelloMessage = z.infer<typeof HelloMessageSchema>;
@@ -396,10 +638,32 @@ export type AnalyzeMessage = z.infer<typeof AnalyzeMessageSchema>;
 export type StopMessage = z.infer<typeof StopMessageSchema>;
 export type ReleaseMessage = z.infer<typeof ReleaseMessageSchema>;
 export type PingMessage = z.infer<typeof PingMessageSchema>;
+export type RoomCreateMessage = z.infer<typeof RoomCreateMessageSchema>;
+export type RoomJoinMessage = z.infer<typeof RoomJoinMessageSchema>;
+export type RoomAttachMessage = z.infer<typeof RoomAttachMessageSchema>;
+export type RoomMoveMessage = z.infer<typeof RoomMoveMessageSchema>;
+export type RoomResignMessage = z.infer<typeof RoomResignMessageSchema>;
+export type RoomDrawMessage = z.infer<typeof RoomDrawMessageSchema>;
+export type RoomAbortMessage = z.infer<typeof RoomAbortMessageSchema>;
+export type RoomClaimMessage = z.infer<typeof RoomClaimMessageSchema>;
+export type RoomLeaveMessage = z.infer<typeof RoomLeaveMessageSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
+/** Every `room.*` client message. */
+export type RoomClientMessage = Extract<
+  ClientMessage,
+  { roomId: string } | { type: 'room.create' }
+>;
 
 // ---------------------------------------------------------------------------------------------
 // Server → client
+
+/**
+ * What this connection may do (ADR-013). Omitted by servers older than ADR-013, which means
+ * `{ analysis: true, rooms: false }`. `analysis: false` (token missing/wrong on a server with
+ * `ACCESS_TOKEN`) comes with an empty `engines` list; `analyze` then fails with `unauthorized`.
+ */
+export const CapabilitiesSchema = z.object({ analysis: z.boolean(), rooms: z.boolean() });
+export type Capabilities = z.infer<typeof CapabilitiesSchema>;
 
 export const WelcomeMessageSchema = z.object({
   type: z.literal('welcome'),
@@ -407,6 +671,7 @@ export const WelcomeMessageSchema = z.object({
   serverVersion: z.string().max(64),
   limits: LimitsSchema,
   engines: z.array(EngineDescriptorSchema).max(64),
+  capabilities: CapabilitiesSchema.optional(),
 });
 
 export const InfoMessageSchema = z.object({
@@ -445,12 +710,70 @@ export const ErrorMessageSchema = z
 
 export const PongMessageSchema = z.object({ type: z.literal('pong'), t: z.number().optional() });
 
+// Rooms (ADR-013), server → client.
+
+/** The sender took a seat (on `room.create` and on `room.join` with a free seat). */
+export const RoomSeatMessageSchema = z.object({
+  type: z.literal('room.seat'),
+  roomId: RoomIdSchema,
+  /** Secret for `room.attach`; keep it in localStorage under the room id, never in the URL. */
+  playerToken: PlayerTokenSchema,
+  color: RoomSideSchema,
+});
+
+/**
+ * Full snapshot of a room, sent to every member after every change (and to a member right after
+ * it joins/attaches). Clients replace their state with it; nothing is sent incrementally.
+ *
+ * Displayed time of `clock.running` = `clock[running] - (now - receivedAt)`, where `receivedAt`
+ * is the client's own clock at arrival (skew-free); `serverTime` (epoch ms) orders snapshots and
+ * turns `claimableAt` into a countdown (`claimableAt - serverTime`).
+ */
+export const RoomStateMessageSchema = z.object({
+  type: z.literal('room.state'),
+  roomId: RoomIdSchema,
+  status: z.enum(ROOM_STATUSES),
+  players: z.object({ white: RoomPlayerSchema.optional(), black: RoomPlayerSchema.optional() }),
+  /** The receiver's role in this room. */
+  you: z.enum(['white', 'black', 'spectator']),
+  spectators: nonNegativeInt('spectators'),
+  /** Always the standard start position in protocol 1. */
+  startFen: FenSchema,
+  /** Position after `moves` (convenience; the client can also replay `moves`). */
+  fen: FenSchema,
+  moves: z.array(UciMoveSchema).max(ROOM_BOUNDS.maxPlies),
+  clock: RoomClockStateSchema.nullable(),
+  /** The side whose draw offer is pending. */
+  drawOffer: RoomSideSchema.optional(),
+  /**
+   * While exactly one player is disconnected in a running game: epoch ms from which the other
+   * player may `room.claim`. The server sends a fresh snapshot when it passes.
+   */
+  claimableAt: z.number().optional(),
+  /** Absent in a finished room means no result (abort / abandoned before both moved). */
+  result: z.enum(ROOM_RESULTS).optional(),
+  reason: z.enum(ROOM_END_REASONS).optional(),
+  /** Server wall clock (epoch ms) at which `clock` and `claimableAt` were computed. */
+  serverTime: z.number(),
+});
+
+/** A `room.*` request failed; the room (if any) is unchanged. */
+export const RoomErrorMessageSchema = z.object({
+  type: z.literal('room.error'),
+  roomId: RoomIdSchema.optional(),
+  code: z.enum(ROOM_ERROR_CODES),
+  message: z.string().max(1_000),
+});
+
 export const ServerMessageSchema = z.discriminatedUnion('type', [
   WelcomeMessageSchema,
   InfoMessageSchema,
   BestMoveMessageSchema,
   ErrorMessageSchema,
   PongMessageSchema,
+  RoomSeatMessageSchema,
+  RoomStateMessageSchema,
+  RoomErrorMessageSchema,
 ]);
 
 export type EngineDescriptor = z.infer<typeof EngineDescriptorSchema>;
@@ -459,6 +782,9 @@ export type InfoMessage = z.infer<typeof InfoMessageSchema>;
 export type BestMoveMessage = z.infer<typeof BestMoveMessageSchema>;
 export type ErrorMessage = z.infer<typeof ErrorMessageSchema>;
 export type PongMessage = z.infer<typeof PongMessageSchema>;
+export type RoomSeatMessage = z.infer<typeof RoomSeatMessageSchema>;
+export type RoomStateMessage = z.infer<typeof RoomStateMessageSchema>;
+export type RoomErrorMessage = z.infer<typeof RoomErrorMessageSchema>;
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 
 // Compile-time guarantee that the wire types stay interchangeable with the engine types.

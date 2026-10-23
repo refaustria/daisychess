@@ -6,8 +6,13 @@ import { MAX_MESSAGE_BYTES } from '@chesslab/engine-core';
 import { Connection, type ConnectionOptions } from './connection.js';
 import { isOriginAllowed, type OriginPolicy } from './origin.js';
 import { IpSessionLedger, resolveClientIp, type TrustedProxies } from './clientIp.js';
+import { RoomManager, type RoomConfig, type RoomManagerOptions } from '../rooms/RoomManager.js';
 
-export interface WsServerOptions extends ConnectionOptions {
+export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms'> {
+  /** Room policy (ADR-013). */
+  roomConfig: RoomConfig;
+  /** Room manager tuning for tests (clock, id generators). */
+  roomManager?: Omit<RoomManagerOptions, 'config' | 'logger'>;
   /** URL path that accepts upgrades. Default `/ws`. */
   path?: string;
   /** Interval of WebSocket pings; a connection that missed one pong is terminated. Default 30 s. */
@@ -24,6 +29,8 @@ export interface WsServerHandle {
   readonly connections: ReadonlySet<Connection>;
   /** Engine sessions per client address. */
   readonly ipSessions: IpSessionLedger;
+  /** "Play a friend" rooms (ADR-013). */
+  readonly rooms: RoomManager;
   /** Closes every connection (1001), waits until their sessions are released, closes the server. */
   close(): Promise<void>;
 }
@@ -42,6 +49,12 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
   });
   const connections = new Set<Connection>();
   const ledger = new IpSessionLedger(opts.maxSessionsPerIp ?? Number.POSITIVE_INFINITY);
+  const rooms = new RoomManager({
+    ...opts.roomManager,
+    config: opts.roomConfig,
+    logger: opts.logger,
+  });
+  const connOpts: ConnectionOptions = { ...opts, rooms };
   let closing = false;
 
   const reject = (socket: Duplex, status: string) => {
@@ -82,7 +95,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
       opts.trustedProxies ?? [],
     );
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const conn = new Connection(ws, opts, { ip, ledger });
+      const conn = new Connection(ws, connOpts, { ip, ledger });
       connections.add(conn);
       opts.logger.info({ conn: conn.id, ip }, 'websocket connected');
       void conn.whenClosed().then(() => {
@@ -108,10 +121,12 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
   return {
     connections,
     ipSessions: ledger,
+    rooms,
     async close() {
       if (closing) return;
       closing = true;
       clearInterval(heartbeat);
+      rooms.close();
       app.server.off('upgrade', onUpgrade);
       const all = [...connections].map((c) => {
         c.close(1001, 'server shutting down');

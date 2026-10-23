@@ -31,6 +31,7 @@ describe('GET /health', () => {
       sessions: 0,
       connections: 0,
       clientAddresses: 0,
+      rooms: { rooms: 0, waiting: 0, playing: 0, finished: 0, members: 0 },
     });
     await app.close();
   });

@@ -111,6 +111,7 @@ describe('WebSocket /ws', () => {
         { id: 'fake2', name: 'fake2', enabled: true, defaults: { threads: 1, hash: 16 } },
         { id: 'off', name: 'off', enabled: false, defaults: { threads: 1, hash: 16 } },
       ],
+      capabilities: { analysis: true, rooms: true },
     });
     c.send({ type: 'ping', t: 42 });
     expect(await c.waitFor((m) => m.type === 'pong')).toEqual({ type: 'pong', t: 42 });
@@ -573,18 +574,24 @@ describe('WebSocket /ws', () => {
       expect(await c.waitFor((m) => m.type === 'bestmove')).toBeTruthy();
     });
 
-    it('rejects a missing or wrong token with unauthorized and close 1008', async () => {
+    it('a missing or wrong token gets a restricted welcome (no engines, no analysis; rooms only)', async () => {
       const { url } = await start({ accessToken: 'secret-token' });
       for (const token of [undefined, 'wrong', 'secret-token ', '', 'secret-toke']) {
         const c = await TestClient.connect(url);
         clients.push(c);
         c.send(hello(token));
-        expect(await c.waitFor((m) => m.type === 'error')).toMatchObject({
+        expect(await c.waitFor((m) => m.type === 'welcome')).toMatchObject({
+          engines: [],
+          capabilities: { analysis: false, rooms: true },
+        });
+        c.send(analyze('s', 1, { depth: 2 }));
+        expect(await c.terminal('s', 1)).toMatchObject({
           type: 'error',
           code: 'unauthorized',
+          sessionId: 's',
+          searchId: 1,
         });
-        expect(await c.waitClosed()).toBe(1008);
-        expect(c.messages.some((m) => m.type === 'welcome')).toBe(false);
+        expect(c.closeCode).toBeNull();
       }
     });
 
@@ -604,7 +611,9 @@ describe('WebSocket /ws', () => {
         const c = await TestClient.connect(url);
         clients.push(c);
         c.send(hello(token));
-        expect(await c.waitFor((m) => m.type === 'welcome')).toBeTruthy();
+        expect(await c.waitFor((m) => m.type === 'welcome')).toMatchObject({
+          capabilities: { analysis: true, rooms: true },
+        });
       }
     });
   });

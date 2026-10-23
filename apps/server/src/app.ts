@@ -5,7 +5,7 @@ import type { EngineDescriptor, Limits } from '@chesslab/engine-core';
 import { loadConfig, type ServerConfig } from './config.js';
 import { EnginePool, type EnginePoolOptions, type SpawnEngine } from './engines/EnginePool.js';
 import { loadEngineRegistry, type EngineConfig, type EngineRegistry } from './engines/registry.js';
-import { attachWebSocketServer, type WsServerHandle } from './ws/server.js';
+import { attachWebSocketServer, type WsServerHandle, type WsServerOptions } from './ws/server.js';
 import type { ConnectionOptions } from './ws/connection.js';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -31,9 +31,12 @@ export interface BuildAppOptions {
       | 'handshakeTimeoutMs'
       | 'analyzeRateLimit'
       | 'messageRateLimit'
+      | 'roomRateLimit'
       | 'maxBufferedBytes'
     >
   >;
+  /** Room manager tuning for tests (clock, id generators). */
+  roomManager?: WsServerOptions['roomManager'];
   /** WebSocket heartbeat interval. */
   heartbeatMs?: number;
   /** Pool tuning for tests (respawn backoff timing, clock). */
@@ -84,6 +87,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     maxSessionsPerIp: config.maxSessionsPerIp,
     trustedProxies: config.trustedProxies,
     accessToken: config.accessToken,
+    roomConfig: config.rooms,
+    ...(opts.roomManager ? { roomManager: opts.roomManager } : {}),
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
   });
   app.decorate('chesslab', { pool, ws, config });
@@ -99,6 +104,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     sessions: pool.sessions,
     connections: ws.connections.size,
     clientAddresses: ws.ipSessions.addresses,
+    rooms: ws.rooms.stats(),
   }));
 
   // Close WebSockets before the HTTP server stops, then kill every engine process.
@@ -115,6 +121,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       limits: config.limits,
       maxSessions: config.maxSessions,
       maxSessionsPerIp: config.maxSessionsPerIp,
+      accessToken: config.accessToken !== null,
+      rooms: config.rooms,
     },
     'engine server configured',
   );

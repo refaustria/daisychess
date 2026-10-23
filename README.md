@@ -22,7 +22,8 @@ All milestones M0–M10 are implemented (play, browser and server analysis, game
 | Engine registry and multi-engine comparison | done (Stockfish only; other UCI engines are configurable on the server but none are shipped) |
 | Theming (board colours, piece sets Cburnett/Letters, coordinates, highlights, sounds, dark/light) | done |
 | Accessibility / performance pass | done (axe e2e checks, keyboard-operable tabs; the board itself is mouse/touch only) |
-| Opening database, accounts, multiplayer | not built (non-goals for v1) |
+| Play a friend via link (rooms on the server: nickname, time control, colour; reconnect, draw/resign/abort/claim, spectators) | server done (ADR-013); web UI in progress (M16-2) |
+| Opening database, accounts | not built (non-goals for v1) |
 
 ---
 
@@ -117,8 +118,35 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - A **session** (`sessionId`, client-chosen) leases one engine instance; it is created by the first `analyze`, freed by `release`, by an idle timeout or when the socket closes. Several sessions per connection allow multi-engine comparison, bounded by `limits.maxSessionsPerConnection`.
 - Each `analyze` starts a **search** (`searchId`, client-chosen, unique per session). A new `analyze` on a session with a running search stops it first; every accepted search ends with exactly one `bestmove` (or an `error` carrying its `searchId`).
 - `info` scores are side-to-move, like UCI; the client converts with `infoToWhitePov` exactly as the WASM client does.
-- **Access token** (optional, ADR-010): a server started with `ACCESS_TOKEN` answers a `hello` without the matching `token` (max 256 chars, compared in constant time) with `error: unauthorized` and closes the socket (1008). Unset, the server is public. Additive: `PROTOCOL_VERSION` stays 1.
-- Error codes: `invalid_message`, `protocol_mismatch`, `handshake_required`, `unknown_engine`, `limit_exceeded`, `no_capacity`, `session_not_found`, `engine_crashed`, `rate_limited`, `internal_error`, `unauthorized`.
+- **Access token** (optional, ADR-010/013): a server started with `ACCESS_TOKEN` answers a `hello` without the matching `token` (max 256 chars, compared in constant time) with a *restricted* `welcome` — `engines: []`, `capabilities: { analysis: false, rooms: true }` — and rejects every `analyze` with `error: unauthorized`; rooms work without the token. With the token (or on a public server) `capabilities` is `{ analysis: true, rooms: true }`. Additive: `PROTOCOL_VERSION` stays 1.
+- Error codes: `invalid_message`, `protocol_mismatch`, `handshake_required`, `unknown_engine`, `limit_exceeded`, `no_capacity`, `session_not_found`, `engine_crashed`, `rate_limited`, `internal_error`, `unauthorized`, `forbidden` (analysis while playing in a room).
+
+**Rooms — play a friend via link** (ADR-013, additive `room.*` messages on the same socket). The server validates moves (chess.js), runs the clocks and sends the full `room.state` snapshot to every member after each change; room-level failures come as `room.error`.
+
+```jsonc
+// client → server (all but room.create carry roomId; one room per connection)
+{ "type": "room.create", "nick": "Alice", "clock": { "initialMs": 180000, "incrementMs": 2000 }, "color": "random" }  // clock: null = no clock
+{ "type": "room.join", "roomId": "…", "nick": "Bob" }            // takes the free seat (game starts) or spectates; without nick: spectate only
+{ "type": "room.attach", "roomId": "…", "playerToken": "…" }    // reconnect / reload with the token from room.seat
+{ "type": "room.move", "roomId": "…", "uci": "e7e8q" }
+{ "type": "room.resign" | "room.abort" | "room.claim" | "room.leave", "roomId": "…" }
+{ "type": "room.draw", "roomId": "…", "action": "offer" | "accept" | "decline" }
+
+// server → client
+{ "type": "room.seat", "roomId": "…", "playerToken": "…", "color": "white" }   // on create / join with a free seat
+{ "type": "room.state", "roomId": "…", "status": "playing", "you": "white", "spectators": 0,
+  "players": { "white": { "nick": "Alice", "connected": true }, "black": { "nick": "Bob", "connected": false } },
+  "startFen": "…", "fen": "…", "moves": ["e2e4", "e7e5"],
+  "clock": { "initialMs": 180000, "incrementMs": 2000, "white": 171000, "black": 180000, "running": "white" },  // null without a clock
+  "drawOffer": "black", "claimableAt": 1700000060000, "result": "1-0", "reason": "timeout", "serverTime": 1700000000000 }
+{ "type": "room.error", "roomId": "…", "code": "not_your_turn", "message": "it is not your turn" }
+```
+
+- Link: `https://c.referee.at/#/room/<roomId>` (22 URL-safe chars, 128 random bits). The `playerToken` (43 chars, 256 bits) is kept in `localStorage`, never in the URL.
+- Clocks: Fischer increment; the first two plies are untimed; from the third the server charges on move arrival and flags (`reason: timeout`; a draw if the opponent cannot mate). Displayed time of `clock.running` = `clock[running] - (now - receivedAt)`.
+- Disconnects: the seat stays, the clock runs; the opponent may `room.claim` from `claimableAt` (60 s); both gone → `abandoned`. `abort` only before both sides moved; `reason` is one of `checkmate stalemate draw resign timeout abort abandoned agreement` (no `result` = no game was played).
+- Fair play: a player in a running room gets `forbidden` on `analyze`. Limits: `ROOM_MAX_ROOMS` 200, 10 creations / 10 min per address, waiting rooms expire after 15 min, finished rooms are kept 10 min, 10 spectators per room, nick 1–20 chars.
+- `room.error` codes: `room_not_found`, `room_full`, `bad_token`, `not_a_player`, `not_your_turn`, `illegal_move`, `bad_state`, `too_many_rooms`.
 
 ### 2.4 Shared (`packages/engine-core`)
 
@@ -240,6 +268,8 @@ Server configuration is read from the environment (see `apps/server/.env.example
 | `ENGINE_IDLE_MS`, `SESSION_IDLE_MS` | `300000`, `600000` | idle timeouts |
 | `ENGINES_CONFIG` | `apps/server/engines.json` | engine registry |
 | `LOG_LEVEL` | `info` | pino level |
+| `ACCESS_TOKEN` | unset (public) | shared token for analysis (ADR-010); without it clients are restricted to rooms (ADR-013) |
+| `ROOM_MAX_ROOMS`, `ROOM_MAX_SPECTATORS`, `ROOM_CREATE_PER_IP`, `ROOM_CREATE_WINDOW_MS`, `ROOM_WAITING_TTL_MS`, `ROOM_FINISHED_TTL_MS`, `ROOM_IDLE_TTL_MS`, `ROOM_CLAIM_GRACE_MS` | `200`, `10`, `10`, `600000`, `900000`, `600000`, `7200000`, `60000` | room limits and lifetimes (ADR-013) |
 
 ### Deployment
 

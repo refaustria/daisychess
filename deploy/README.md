@@ -75,7 +75,7 @@ systemctl status chesslab-server
 curl -s https://c.referee.at/health            # {status, version} only
 curl -s http://127.0.0.1:8580/health/detail   # pool stats, sessions, connections (loopback)
 node deploy/ws-smoke.mjs            # hello -> analyze depth 12 -> bestmove (Node 22+)
-# with ACCESS_TOKEN set: without the token the smoke test fails with `unauthorized`
+# with ACCESS_TOKEN set: without the token the smoke test fails (restricted welcome, `unauthorized`)
 CHESSLAB_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" node deploy/ws-smoke.mjs
 ```
 
@@ -91,10 +91,12 @@ other origins get 403 at the upgrade). Edit it, then
 The unit is read-only on the filesystem (`ProtectSystem=strict`,
 `ProtectHome=read-only`); add `ReadWritePaths=` if the server ever writes.
 
-**Access token (ADR-010).** If `ACCESS_TOKEN` is set in
-`apps/server/.env.production` (git-ignored, mode 600), every client must send it
-in `hello.token`; otherwise it gets `error unauthorized` and close 1008, before
-`welcome`. Empty or unset = public server. The token is never logged. Users enter
+**Access token (ADR-010, ADR-013).** If `ACCESS_TOKEN` is set in
+`apps/server/.env.production` (git-ignored, mode 600), a client must send it in
+`hello.token` to analyse; otherwise it gets a restricted `welcome` (no engines,
+`capabilities.analysis: false`) and `error unauthorized` on every `analyze`, while
+"play a friend" rooms (`room.*`) work without a token. Empty or unset = public
+server. The token is never logged. Users enter
 it once in the web app (Settings → "Server access token"; stored in the
 browser's `localStorage`). Rotate it:
 

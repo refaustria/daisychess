@@ -21,7 +21,12 @@ ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', protocolVersion: 1, cl
 ws.onmessage = (ev) => {
   const m = JSON.parse(String(ev.data));
   if (m.type === 'welcome') {
-    console.log('welcome', JSON.stringify({ serverVersion: m.serverVersion, engines: m.engines.map((e) => e.id) }));
+    console.log('welcome', JSON.stringify({ serverVersion: m.serverVersion, engines: m.engines.map((e) => e.id), capabilities: m.capabilities }));
+    if (m.capabilities && m.capabilities.analysis === false) {
+      // ADR-013: a missing/wrong access token no longer closes the socket; analysis is just unavailable.
+      console.error('restricted welcome: analysis unavailable; hint: set CHESSLAB_TOKEN=<access token>');
+      process.exit(1);
+    }
     ws.send(JSON.stringify({ type: 'analyze', sessionId: 'smoke', searchId: 1, engine: 'stockfish', fen: FEN, depth: 12 }));
   } else if (m.type === 'info') {
     lastInfo = m.info;
