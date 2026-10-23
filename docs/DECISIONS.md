@@ -62,3 +62,20 @@
 
 **Consequences.** M3-2 and M3-4 can be implemented independently against `@chesslab/engine-core`; the server sets `ws` `maxPayload` to `MAX_MESSAGE_BYTES`, maps `analyze.threads/hash` to `setoption`, and must emit the previous search's `bestmove` before the next search's `info`. `RemoteEngineClient` keeps a map `(sessionId, searchId) → handle`, converts POV itself and can fail fast using `welcome.limits`. `zod` ships to the browser bundle (≈ 15 kB gzipped). Changing message shapes incompatibly means bumping `PROTOCOL_VERSION` and this ADR. Engine-specific UCI options (Elo, skill level, variants) are deliberately not exposed; adding them later is an additive change (`analyze.options` with a server-side allow-list).
 
+
+## ADR-007 — Engine server policies (apps/server)
+**Date:** 2026-10-23 · **Status:** accepted
+
+**Context.** ADR-006 fixes the wire protocol; the server (M3-2) still had to decide resource and abuse policies for a shared 16-core host.
+
+**Decision.**
+- Every search has a wall-clock cap: `MAX_MOVETIME_MS` (600 s default), or `movetime + 2 s`. Hitting it ends the search with `bestmove … reason: 'limit'`.
+- Sessions without a running search give their engine back after `SESSION_IDLE_MS` (10 min) and are recreated transparently on the next `analyze`. Idle engine processes beyond one per engine are killed after `ENGINE_IDLE_MS` (5 min).
+- Backpressure: `info` messages are dropped while a socket buffers more than 1 MiB; terminal (`bestmove`) and `error` messages are never dropped.
+- Rate limits: more than 20 `analyze`/s per connection → `rate_limited`; more than 100 messages/s of any type → `rate_limited` and close 1008. Handshake timeout 10 s → close 1008. Heartbeat ping every 30 s.
+- `invalid_message` for a malformed `analyze` carries `sessionId`/`searchId` when they parse, so clients can settle the handle.
+- Only `Threads`, `Hash`, `MultiPV` (and `UCI_Chess960`, currently unused) can ever reach a native process; option values are cached so an unchanged `Hash` is not re-sent.
+- All outgoing messages are validated against `ServerMessageSchema` (always on; invalid ones are logged and dropped).
+- Enabled engines whose binary is missing are listed as disabled.
+
+**Consequences.** Defaults (`MAX_SESSIONS=4`, `MAX_THREADS=4`, `maxInstances=3`) use at most 12 of 16 cores. Open: no Origin check and no per-IP limit yet (to be decided in the M6-3 security review; nginx `limit_conn` is the likely answer).

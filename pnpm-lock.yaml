@@ -196,6 +196,9 @@ importers:
       fastify:
         specifier: ^5.2.0
         version: 5.12.7
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -203,6 +206,9 @@ importers:
       '@types/node':
         specifier: ^20.17.10
         version: 20.19.43
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       tsx:
         specifier: ^4.19.2
         version: 4.23.15
@@ -1016,6 +1022,9 @@ packages:
 
   '@types/react@18.3.31':
     resolution: {integrity: sha512-vfEqpXTvwT91yhmwdfouStN2hSKwTvyRs8qpLfADyrq/kxDw0hZM7Wk9Ug1FELj8hIby+S/+kQCSRFF32nv2Qw==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@typescript-eslint/eslint-plugin@8.72.0':
     resolution: {integrity: sha512-aysKgysPX9XOv/dk95UkvUDe++Q3n3dJPG9CEWT3RUccxfkPJ+Qn6nhKPDhZXU6Ofo9kgwGWwKyQCnZIXTgngg==}
@@ -2703,6 +2712,10 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.15
       csstype: 3.2.3
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 20.19.43
 
   '@typescript-eslint/eslint-plugin@8.72.0(@typescript-eslint/parser@8.72.0(eslint@9.39.5(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3))(eslint@9.39.5(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)':
     dependencies:

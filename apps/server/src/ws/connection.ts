@@ -1,0 +1,677 @@
+import WebSocket, { type RawData } from 'ws';
+import {
+  BestMoveSchema,
+  PROTOCOL_VERSION,
+  SearchIdSchema,
+  ServerMessageSchema,
+  SessionIdSchema,
+  checkAnalyzeLimits,
+  parseClientMessage,
+  type AnalyzeMessage,
+  type BestMove,
+  type BestMoveMessage,
+  type EngineDescriptor,
+  type EngineInfo,
+  type ErrorMessage,
+  type Limits,
+  type ProtocolErrorCode,
+  type ServerMessage,
+} from '@chesslab/engine-core';
+import type { EnginePool, Lease, PoolLogger } from '../engines/EnginePool.js';
+import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
+
+export interface RateLimit {
+  max: number;
+  windowMs: number;
+}
+
+export interface ConnectionOptions {
+  pool: EnginePool;
+  limits: Limits;
+  /** Engines as announced in `welcome` (disabled ones are rejected with `unknown_engine`). */
+  engines: readonly EngineDescriptor[];
+  serverVersion: string;
+  logger: PoolLogger;
+  /** A session without a running search releases its lease after this long. */
+  sessionIdleMs: number;
+  /** Time an engine gets to answer `stop` with `bestmove` before it is considered hung. */
+  stopTimeoutMs?: number;
+  /** Close the socket if no `hello` arrives within this time. */
+  handshakeTimeoutMs?: number;
+  /** `analyze` messages per window (ADR-006 / M3-2: 20 per second). */
+  analyzeRateLimit?: RateLimit;
+  /** All messages per window; exceeding it closes the connection. */
+  messageRateLimit?: RateLimit;
+  /** `info` messages are dropped (never terminal messages) while the socket buffers more than this. */
+  maxBufferedBytes?: number;
+}
+
+type TerminalMessage = BestMoveMessage | ErrorMessage;
+
+interface Search {
+  readonly searchId: number;
+  terminated: boolean;
+  stopReason: 'stopped' | 'limit' | null;
+  readonly done: Promise<void>;
+  resolveDone: () => void;
+  capTimer: ReturnType<typeof setTimeout> | null;
+  stopTimer: ReturnType<typeof setTimeout> | null;
+}
+
+interface Session {
+  readonly id: string;
+  lease: Lease | null;
+  offExit: (() => void) | null;
+  current: Search | null;
+  /** searchId of the most recent accepted `analyze`; 0 after `stop`/`release`. */
+  latest: number;
+  /** Serialises every operation on this session (analyze, stop, release, idle release). */
+  chain: Promise<void>;
+  pending: number;
+  idleTimer: ReturnType<typeof setTimeout> | null;
+  retired: boolean;
+}
+
+let nextConnectionId = 1;
+
+/**
+ * One WebSocket client (ADR-006).
+ *
+ * Ordering: every operation on a session runs on that session's promise chain. An `analyze`
+ * first stops the running search and awaits its terminal message (sent from the `bestmove`
+ * handler) before it sends `position`/`go`, so no `info` of the new search can precede the old
+ * search's `bestmove`. Each search has a single `finishSearch()` guarded by a flag, which is the
+ * only place terminal messages are sent: exactly one per accepted search. Queued `analyze`s that
+ * were superseded before they started are terminated with `bestmove null, reason: stopped`
+ * without ever reaching the engine.
+ */
+export class Connection {
+  readonly id = nextConnectionId++;
+  private handshaken = false;
+  private closed = false;
+  private readonly sessions = new Map<string, Session>();
+  /** Chains of released sessions still stopping/returning their engine, by sessionId. */
+  private readonly retiring = new Map<string, Promise<void>>();
+  private readonly analyzeTimes: number[] = [];
+  private readonly messageTimes: number[] = [];
+  private handshakeTimer: ReturnType<typeof setTimeout> | null;
+  private readonly enginesById: Map<string, EngineDescriptor>;
+  private readonly closedPromise: Promise<void>;
+  private resolveClosed!: () => void;
+  private droppedInfos = 0;
+  /** Heartbeat bookkeeping (managed by the server). */
+  isAlive = true;
+
+  private readonly stopTimeoutMs: number;
+  private readonly analyzeRate: RateLimit;
+  private readonly messageRate: RateLimit;
+  private readonly maxBufferedBytes: number;
+  private readonly log: PoolLogger;
+
+  constructor(
+    private readonly ws: WebSocket,
+    private readonly opts: ConnectionOptions,
+  ) {
+    this.stopTimeoutMs = opts.stopTimeoutMs ?? 5_000;
+    this.analyzeRate = opts.analyzeRateLimit ?? { max: 20, windowMs: 1_000 };
+    this.messageRate = opts.messageRateLimit ?? { max: 100, windowMs: 1_000 };
+    this.maxBufferedBytes = opts.maxBufferedBytes ?? 1024 * 1024;
+    this.log = opts.logger;
+    this.enginesById = new Map(opts.engines.map((e) => [e.id, e]));
+    this.closedPromise = new Promise((r) => (this.resolveClosed = r));
+
+    this.handshakeTimer = setTimeout(() => {
+      this.handshakeTimer = null;
+      if (!this.handshaken) this.close(1008, 'handshake timeout');
+    }, opts.handshakeTimeoutMs ?? 10_000);
+    this.handshakeTimer.unref?.();
+
+    ws.on('message', (data, isBinary) => this.onMessage(data, isBinary));
+    ws.on('pong', () => (this.isAlive = true));
+    ws.on('close', () => this.dispose());
+    ws.on('error', (err) => {
+      this.log.debug({ conn: this.id, err: err.message }, 'websocket error');
+      this.dispose();
+    });
+  }
+
+  /** Resolves once the socket is closed and every session has stopped and released its engine. */
+  whenClosed(): Promise<void> {
+    return this.closedPromise;
+  }
+
+  /** Closes the socket (with a hard terminate after 1 s) and cleans up. */
+  close(code: number, reason: string): void {
+    if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+      this.ws.close(code, reason);
+      setTimeout(() => this.ws.terminate(), 1_000).unref?.();
+    }
+    this.dispose();
+  }
+
+  /** Heartbeat probe; the peer's pong sets {@link isAlive}. */
+  ping(): void {
+    if (this.ws.readyState === WebSocket.OPEN) this.ws.ping();
+  }
+
+  /** Called by the server's heartbeat. */
+  kill(): void {
+    this.ws.terminate();
+    this.dispose();
+  }
+
+  get sessionCount(): number {
+    return this.sessions.size;
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Incoming
+
+  private onMessage(data: RawData, isBinary: boolean): void {
+    if (this.closed) return;
+    if (!this.allow(this.messageTimes, this.messageRate)) {
+      this.sendError('rate_limited', 'too many messages; closing connection');
+      this.close(1008, 'rate limited');
+      return;
+    }
+    if (isBinary) {
+      this.sendError('invalid_message', 'binary frames are not supported');
+      return;
+    }
+    const text = rawToString(data);
+    const parsed = parseClientMessage(text);
+    if (!parsed.ok) {
+      const ids = analyzeIdsOf(text);
+      this.sendError('invalid_message', parsed.error, ids?.sessionId, ids?.searchId);
+      return;
+    }
+    const msg = parsed.message;
+    if (msg.type === 'hello') {
+      if (this.handshaken) {
+        this.sendError('invalid_message', 'duplicate hello');
+        return;
+      }
+      if (msg.protocolVersion !== PROTOCOL_VERSION) {
+        this.sendError(
+          'protocol_mismatch',
+          `server speaks protocol ${PROTOCOL_VERSION}, client sent ${msg.protocolVersion}`,
+        );
+        this.close(1008, 'protocol mismatch');
+        return;
+      }
+      this.handshaken = true;
+      if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
+      this.handshakeTimer = null;
+      this.log.debug({ conn: this.id, client: msg.client }, 'handshake');
+      this.send({
+        type: 'welcome',
+        protocolVersion: PROTOCOL_VERSION,
+        serverVersion: this.opts.serverVersion,
+        limits: { ...this.opts.limits },
+        engines: this.opts.engines.map((e) => ({ ...e, defaults: { ...e.defaults } })),
+      });
+      return;
+    }
+    if (!this.handshaken) {
+      const ids = msg.type === 'analyze' ? msg : undefined;
+      this.sendError('handshake_required', 'send hello first', ids?.sessionId, ids?.searchId);
+      return;
+    }
+    switch (msg.type) {
+      case 'analyze':
+        this.onAnalyze(msg);
+        break;
+      case 'stop':
+        this.onStop(msg.sessionId);
+        break;
+      case 'release':
+        this.onRelease(msg.sessionId);
+        break;
+      case 'ping':
+        this.send(msg.t === undefined ? { type: 'pong' } : { type: 'pong', t: msg.t });
+        break;
+    }
+  }
+
+  private onAnalyze(msg: AnalyzeMessage): void {
+    const { sessionId, searchId } = msg;
+    if (!this.allow(this.analyzeTimes, this.analyzeRate)) {
+      this.sendError('rate_limited', 'too many analyze requests', sessionId, searchId);
+      return;
+    }
+    const engine = this.enginesById.get(msg.engine);
+    if (!engine || !engine.enabled) {
+      this.sendError('unknown_engine', `unknown engine "${msg.engine}"`, sessionId, searchId);
+      return;
+    }
+    const violation = checkAnalyzeLimits(msg, this.opts.limits);
+    if (violation) {
+      this.sendError('limit_exceeded', violation, sessionId, searchId);
+      return;
+    }
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      if (this.sessions.size >= this.opts.limits.maxSessionsPerConnection) {
+        this.sendError(
+          'limit_exceeded',
+          `at most ${this.opts.limits.maxSessionsPerConnection} sessions per connection`,
+          sessionId,
+          searchId,
+        );
+        return;
+      }
+      session = this.createSession(sessionId);
+    }
+    session.latest = searchId;
+    const s = session;
+    this.enqueue(s, () => this.runAnalyze(s, msg, engine));
+  }
+
+  private onStop(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      this.sendError('session_not_found', `no session "${sessionId}"`, sessionId);
+      return;
+    }
+    session.latest = 0; // queued analyzes of this session are superseded
+    this.enqueue(session, () => this.stopCurrent(session, 'stopped'));
+  }
+
+  private onRelease(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) this.retire(session);
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Sessions
+
+  private createSession(id: string): Session {
+    const session: Session = {
+      id,
+      lease: null,
+      offExit: null,
+      current: null,
+      latest: 0,
+      // A released session with the same id may still be finishing; keep the order.
+      chain: this.retiring.get(id) ?? Promise.resolve(),
+      pending: 0,
+      idleTimer: null,
+      retired: false,
+    };
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  /** Removes the session from the connection; stops its search and returns its engine. */
+  private retire(session: Session): Promise<void> {
+    this.sessions.delete(session.id);
+    session.retired = true;
+    session.latest = 0;
+    this.clearIdleTimer(session);
+    const p = this.enqueue(session, async () => {
+      await this.stopCurrent(session, 'stopped');
+      this.dropLease(session);
+    });
+    this.retiring.set(session.id, p);
+    void p.then(() => {
+      if (this.retiring.get(session.id) === p) this.retiring.delete(session.id);
+    });
+    return p;
+  }
+
+  private enqueue(session: Session, op: () => Promise<void>): Promise<void> {
+    this.clearIdleTimer(session);
+    session.pending++;
+    const run = async () => {
+      try {
+        await op();
+      } catch (err) {
+        this.log.error({ conn: this.id, session: session.id, err }, 'session operation failed');
+      } finally {
+        session.pending--;
+        this.maybeArmIdleTimer(session);
+      }
+    };
+    session.chain = session.chain.then(run, run);
+    return session.chain;
+  }
+
+  private maybeArmIdleTimer(session: Session): void {
+    if (session.retired || this.closed || session.pending > 0 || !session.lease) return;
+    if (session.current && !session.current.terminated) return;
+    this.clearIdleTimer(session);
+    const t = setTimeout(() => {
+      session.idleTimer = null;
+      this.enqueue(session, async () => {
+        if (session.pending > 1) return; // new work arrived meanwhile
+        if (session.current && !session.current.terminated) return;
+        this.log.debug({ conn: this.id, session: session.id }, 'idle session releases engine');
+        this.dropLease(session);
+      });
+    }, this.opts.sessionIdleMs);
+    t.unref?.();
+    session.idleTimer = t;
+  }
+
+  private clearIdleTimer(session: Session): void {
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    session.idleTimer = null;
+  }
+
+  private attachLease(session: Session, lease: Lease): void {
+    session.lease = lease;
+    session.offExit = lease.engine.onExit((exit) => this.onEngineExit(session, lease, exit));
+  }
+
+  /** Gives the engine back to the pool (which resets or kills it in the background). */
+  private dropLease(session: Session): void {
+    const lease = session.lease;
+    if (!lease) return;
+    session.lease = null;
+    session.offExit?.();
+    session.offExit = null;
+    void this.opts.pool.release(lease);
+  }
+
+  private onEngineExit(session: Session, lease: Lease, exit: ExitInfo): void {
+    if (session.lease !== lease) return;
+    this.dropLease(session);
+    this.log.warn(
+      {
+        conn: this.id,
+        session: session.id,
+        pid: lease.engine.pid,
+        code: exit.code,
+        signal: exit.signal,
+      },
+      'engine crashed during session',
+    );
+    const s = session.current;
+    if (s && !s.terminated) {
+      this.finishSearch(
+        session,
+        s,
+        this.errorMessage('engine_crashed', 'engine process crashed', session.id, s.searchId),
+      );
+    } else if (!session.retired) {
+      this.sendError('engine_crashed', 'engine process crashed', session.id);
+    }
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Searches
+
+  private async runAnalyze(
+    session: Session,
+    msg: AnalyzeMessage,
+    engine: EngineDescriptor,
+  ): Promise<void> {
+    const { searchId } = msg;
+    await this.stopCurrent(session, 'stopped');
+    if (this.closed) return;
+    if (session.latest !== searchId) {
+      this.sendTerminalNow(session.id, searchId);
+      return;
+    }
+    if (session.lease && session.lease.engineId !== msg.engine) this.dropLease(session);
+    if (!session.lease) {
+      const res = await this.opts.pool.acquire(msg.engine);
+      if (!res.ok) {
+        this.sendError(res.code, res.message, session.id, searchId);
+        return;
+      }
+      if (this.closed || session.retired) {
+        void this.opts.pool.release(res.lease);
+        if (!this.closed) this.sendTerminalNow(session.id, searchId);
+        return;
+      }
+      this.attachLease(session, res.lease);
+      this.log.info(
+        { conn: this.id, session: session.id, engine: msg.engine, pid: res.lease.engine.pid },
+        'session leased engine',
+      );
+    }
+    const lease = session.lease;
+    if (!lease) return;
+    const proc = lease.engine;
+    const search = this.createSearch(searchId);
+    session.current = search;
+    try {
+      await proc.setOptions({
+        Threads: msg.threads ?? engine.defaults.threads,
+        Hash: msg.hash ?? engine.defaults.hash,
+        MultiPV: msg.multipv ?? 1,
+      });
+      if (search.terminated) return; // crashed meanwhile
+      if (session.latest !== searchId || session.lease !== lease) {
+        this.finishSearch(
+          session,
+          search,
+          this.bestMoveMessage(session.id, searchId, null, 'stopped'),
+        );
+        return;
+      }
+      this.log.debug({ conn: this.id, session: session.id, searchId, fen: msg.fen }, 'go');
+      proc.position(msg.fen);
+      const params: GoParams = {};
+      if (msg.depth !== undefined) params.depth = msg.depth;
+      if (msg.movetime !== undefined) params.movetime = msg.movetime;
+      const result = proc.go(params, (info) => this.onInfo(session, search, info));
+      result.then(
+        (r) =>
+          this.finishSearch(
+            session,
+            search,
+            this.bestMoveMessage(
+              session.id,
+              searchId,
+              r.bestMove,
+              search.stopReason ?? 'completed',
+            ),
+          ),
+        () =>
+          this.finishSearch(
+            session,
+            search,
+            this.errorMessage('engine_crashed', 'engine process crashed', session.id, searchId),
+          ),
+      );
+      // Wall-clock cap for every search (infinite ones in particular).
+      const cap =
+        msg.movetime !== undefined ? msg.movetime + 2_000 : this.opts.limits.maxMovetimeMs;
+      search.capTimer = setTimeout(() => this.requestStop(session, search, 'limit'), cap);
+      search.capTimer.unref?.();
+    } catch (err) {
+      if (search.terminated) return;
+      this.log.warn(
+        { conn: this.id, session: session.id, err: (err as Error).message },
+        'engine failed to start search',
+      );
+      this.finishSearch(
+        session,
+        search,
+        this.errorMessage('engine_crashed', 'engine not responding', session.id, searchId),
+      );
+      this.dropLease(session); // the pool kills it if it stays unresponsive
+    }
+  }
+
+  private onInfo(session: Session, search: Search, info: EngineInfo): void {
+    if (search.terminated || session.current !== search || this.closed) return;
+    this.send({ type: 'info', sessionId: session.id, searchId: search.searchId, info });
+  }
+
+  private createSearch(searchId: number): Search {
+    let resolveDone!: () => void;
+    const done = new Promise<void>((r) => (resolveDone = r));
+    return {
+      searchId,
+      terminated: false,
+      stopReason: null,
+      done,
+      resolveDone,
+      capTimer: null,
+      stopTimer: null,
+    };
+  }
+
+  /** Stops the session's running search (if any) and waits until its terminal message is out. */
+  private async stopCurrent(session: Session, reason: 'stopped' | 'limit'): Promise<void> {
+    const s = session.current;
+    if (!s || s.terminated) return;
+    this.requestStop(session, s, reason);
+    await s.done;
+  }
+
+  private requestStop(session: Session, search: Search, reason: 'stopped' | 'limit'): void {
+    if (search.terminated) return;
+    search.stopReason ??= reason;
+    if (search.stopTimer) return;
+    const proc = session.lease?.engine;
+    if (proc) {
+      try {
+        // The rejection path is handled by the go() handler in runAnalyze.
+        proc.stop().catch(() => {});
+      } catch {
+        // process already gone; the exit handler terminates the search
+      }
+    }
+    search.stopTimer = setTimeout(() => {
+      if (search.terminated) return;
+      this.log.warn({ conn: this.id, session: session.id }, 'engine did not answer stop; dropping');
+      this.finishSearch(
+        session,
+        search,
+        this.errorMessage('engine_crashed', 'engine not responding', session.id, search.searchId),
+      );
+      this.dropLease(session); // pool reset times out and kills the process
+    }, this.stopTimeoutMs);
+    search.stopTimer.unref?.();
+  }
+
+  /** The only place a search's terminal message is sent. */
+  private finishSearch(session: Session, search: Search, msg: TerminalMessage): void {
+    if (search.terminated) return;
+    search.terminated = true;
+    if (search.capTimer) clearTimeout(search.capTimer);
+    if (search.stopTimer) clearTimeout(search.stopTimer);
+    if (session.current === search) session.current = null;
+    this.send(msg);
+    search.resolveDone();
+    this.maybeArmIdleTimer(session);
+  }
+
+  /** Terminal message for a search that never reached the engine (superseded while queued). */
+  private sendTerminalNow(sessionId: string, searchId: number): void {
+    this.send(this.bestMoveMessage(sessionId, searchId, null, 'stopped'));
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Outgoing
+
+  private bestMoveMessage(
+    sessionId: string,
+    searchId: number,
+    bestMove: BestMove | null,
+    reason: BestMoveMessage['reason'],
+  ): BestMoveMessage {
+    // A move the schema cannot represent (should not happen with standard chess) becomes null.
+    const valid = bestMove && BestMoveSchema.safeParse(bestMove).success ? bestMove : null;
+    return { type: 'bestmove', sessionId, searchId, bestMove: valid, reason };
+  }
+
+  private errorMessage(
+    code: ProtocolErrorCode,
+    message: string,
+    sessionId?: string,
+    searchId?: number,
+  ): ErrorMessage {
+    const msg: ErrorMessage = { type: 'error', code, message: message.slice(0, 1_000) };
+    if (sessionId !== undefined) {
+      msg.sessionId = sessionId;
+      if (searchId !== undefined) msg.searchId = searchId;
+    }
+    return msg;
+  }
+
+  private sendError(
+    code: ProtocolErrorCode,
+    message: string,
+    sessionId?: string,
+    searchId?: number,
+  ): void {
+    this.send(this.errorMessage(code, message, sessionId, searchId));
+  }
+
+  /**
+   * Validates every outgoing message with `ServerMessageSchema` (always on: a few µs per message
+   * at engine `info` rates, and it keeps a misbehaving engine from producing off-contract frames).
+   * `info` is dropped under backpressure; terminal and error messages never are.
+   */
+  private send(msg: ServerMessage): boolean {
+    if (this.ws.readyState !== WebSocket.OPEN) return false;
+    const check = ServerMessageSchema.safeParse(msg);
+    if (!check.success) {
+      this.log.warn(
+        { conn: this.id, type: msg.type, issues: check.error.issues.slice(0, 3) },
+        'dropping invalid outgoing message',
+      );
+      return false;
+    }
+    if (msg.type === 'info' && this.ws.bufferedAmount > this.maxBufferedBytes) {
+      if (this.droppedInfos++ % 100 === 0) {
+        this.log.debug(
+          { conn: this.id, dropped: this.droppedInfos },
+          'backpressure: dropping info',
+        );
+      }
+      return false;
+    }
+    this.ws.send(JSON.stringify(check.data));
+    return true;
+  }
+
+  // -------------------------------------------------------------------------------------------
+
+  private allow(times: number[], limit: RateLimit): boolean {
+    const now = Date.now();
+    while (times.length > 0 && now - times[0]! >= limit.windowMs) times.shift();
+    if (times.length >= limit.max) return false;
+    times.push(now);
+    return true;
+  }
+
+  private dispose(): void {
+    if (this.closed) return;
+    this.closed = true;
+    if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
+    this.handshakeTimer = null;
+    const pending = [...this.sessions.values()].map((s) => this.retire(s));
+    pending.push(...this.retiring.values());
+    void Promise.allSettled(pending).then(() => this.resolveClosed());
+    this.log.debug({ conn: this.id }, 'connection closed');
+  }
+}
+
+function rawToString(data: RawData): string {
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  if (data instanceof ArrayBuffer) return Buffer.from(data).toString('utf8');
+  return data.toString('utf8');
+}
+
+/** Best effort: ids of an invalid `analyze`, so the client can settle the right handle. */
+function analyzeIdsOf(text: string): { sessionId: string; searchId?: number } | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof value !== 'object' || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  if (v.type !== 'analyze') return undefined;
+  const sid = SessionIdSchema.safeParse(v.sessionId);
+  if (!sid.success) return undefined;
+  const search = SearchIdSchema.safeParse(v.searchId);
+  return search.success ? { sessionId: sid.data, searchId: search.data } : { sessionId: sid.data };
+}
