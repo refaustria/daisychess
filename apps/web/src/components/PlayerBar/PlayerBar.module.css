@@ -1,11 +1,11 @@
 .bar {
   box-sizing: border-box;
-  height: var(--player-bar-h, 3rem);
+  height: var(--player-bar-h, 2.25rem);
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   min-width: 0;
-  padding: 0 0.25rem 0 0.6rem;
+  padding: 0 0.2rem 0 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -18,8 +18,8 @@
 .swatchWhite,
 .swatchBlack {
   flex: none;
-  width: 0.85rem;
-  height: 0.85rem;
+  width: 0.7rem;
+  height: 0.7rem;
   border-radius: 50%;
   border: 1px solid var(--border);
 }
@@ -36,7 +36,7 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.5rem;
   overflow: hidden;
   white-space: nowrap;
@@ -58,9 +58,10 @@
   flex: none;
 }
 
-@media (max-width: 899px) {
-  .clock {
-    min-width: 5.5rem;
-    font-size: 1.6rem;
-  }
+/* Slim bar: the clock still dominates it. */
+.clock {
+  min-width: 5.5rem;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  padding-block: 0;
 }

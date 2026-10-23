@@ -260,19 +260,27 @@ test('layout: player bars with large clocks beside the board (desktop and mobile
   // The panel shows no clocks of its own.
   await expect(page.getByRole('tabpanel').getByRole('timer')).toHaveCount(0);
 
-  // Desktop: panel left of the board, bars above and below it, no page scroll.
+  // Desktop: panel right of the board, board >= 660px wide, bars above and below it, no page scroll.
   const board = (await page.getByTestId('board').boundingBox())!;
   const panel = (await page.getByRole('tabpanel').boundingBox())!;
   const topBox = (await top.boundingBox())!;
   const bottomBox = (await bottom.boundingBox())!;
-  expect(panel.x + panel.width).toBeLessThanOrEqual(board.x);
+  expect(board.x + board.width).toBeLessThanOrEqual(panel.x);
+  expect(board.width).toBeGreaterThanOrEqual(660);
   expect(topBox.y + topBox.height).toBeLessThanOrEqual(board.y);
   expect(bottomBox.y).toBeGreaterThanOrEqual(board.y + board.height - 1);
   expect(
     await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
   ).toBe(true);
   mkdirSync(SHOTS, { recursive: true });
-  await page.screenshot({ path: `${SHOTS}/layout-play-desktop.png` });
+  await page.screenshot({ path: `${SHOTS}/layout-right-1280.png` });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const big = (await page.getByTestId('board').boundingBox())!;
+  expect(big.width).toBeGreaterThanOrEqual(900);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true);
+  await page.screenshot({ path: `${SHOTS}/layout-right-1920.png` });
 
   await page.setViewportSize({ width: 390, height: 844 });
   const small = (await page.getByTestId('board').boundingBox())!;
@@ -281,6 +289,6 @@ test('layout: player bars with large clocks beside the board (desktop and mobile
     true,
   );
   await expect(page.getByTestId('play-clock-engine')).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/layout-play-mobile.png`, fullPage: true });
+  await page.screenshot({ path: `${SHOTS}/layout-right-mobile.png`, fullPage: true });
   await page.getByRole('button', { name: 'Stop' }).click();
 });

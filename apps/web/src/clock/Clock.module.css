@@ -13,10 +13,10 @@
 }
 
 .clockLarge {
-  min-width: 7rem;
-  padding: 0.1rem 0.6rem;
-  font-size: 2rem;
-  line-height: 1.2;
+  min-width: 5.5rem;
+  padding: 0 0.5rem;
+  font-size: 1.5rem;
+  line-height: 1.3;
   font-weight: 600;
 }
 

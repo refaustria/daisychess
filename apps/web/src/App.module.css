@@ -4,8 +4,9 @@
   --board-size: 100%;
   --eval-w: 30px;
   --eval-gap: 6px;
-  --player-bar-h: 3rem;
-  --bar-gap: 6px;
+  --player-bar-h: 2.25rem;
+  --bar-gap: 4px;
+  --pad-y: var(--gap);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -134,17 +135,20 @@
 }
 
 /*
- * Desktop: the side panel (tabs) on the left, the board column on the right. The board is as
- * large as the viewport height allows after the header and the two player bars, and as the
- * width allows after the panel (--side-w) and the eval bar; no page scroll.
+ * Desktop: the board column on the left, the side panel (tabs) on the right. The board is as
+ * large as the viewport height allows after the header and the two slim player bars, and as the
+ * width allows after the minimum panel width (--side-w) and the eval bar; no page scroll.
+ * The panel takes whatever width remains (340px up to 520px).
  */
 @media (min-width: 900px) {
   .app {
     height: 100vh;
     min-height: 0;
-    --side-w: clamp(380px, 32vw, 520px);
+    --header-h: 44px;
+    --pad-y: 6px;
+    --side-w: 340px;
     --board-size: min(
-      calc(100vh - var(--header-h) - 2 * var(--gap) - 2 * var(--player-bar-h) - 2 * var(--bar-gap)),
+      calc(100vh - var(--header-h) - 2 * var(--pad-y) - 2 * var(--player-bar-h) - 2 * var(--bar-gap)),
       calc(100vw - 3 * var(--gap) - var(--side-w) - var(--eval-w) - var(--eval-gap))
     );
   }
@@ -152,14 +156,18 @@
   .main {
     flex: 1;
     min-height: 0;
-    grid-template-columns: var(--side-w) calc(var(--board-size) + var(--eval-w) + var(--eval-gap));
-    grid-template-areas: 'side board';
+    padding: var(--pad-y) var(--gap);
+    grid-template-columns: calc(var(--board-size) + var(--eval-w) + var(--eval-gap)) minmax(
+        var(--side-w),
+        520px
+      );
+    grid-template-areas: 'board side';
     justify-content: center;
     align-items: start;
   }
 
   .side {
-    height: calc(100vh - var(--header-h) - 2 * var(--gap));
+    height: calc(100vh - var(--header-h) - 2 * var(--pad-y));
     min-height: 0;
   }
 
