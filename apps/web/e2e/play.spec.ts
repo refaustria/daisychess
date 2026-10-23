@@ -169,3 +169,38 @@ test('FEN import and invalid FEN error', async ({ page }) => {
   await expect(fen(page)).toHaveValue(target);
   await expect(page.locator('piece:not(.ghost)')).toHaveCount(3);
 });
+
+test('theme toggle: dark persists across reload, screenshots', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => localStorage.removeItem('chesslab.theme'));
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.reload();
+  await expect(page.locator('cg-board')).toBeVisible();
+  await drag(page, 'e2', 'e4');
+  await page.screenshot({ path: `${SHOTS}/desktop-light.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByRole('button', { name: 'Switch to light theme' })).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/desktop-dark.png`, fullPage: true });
+  // Desktop layout: no page scroll, board and panel side by side.
+  const noScroll = await page.evaluate(
+    () => document.documentElement.scrollHeight <= window.innerHeight,
+  );
+  expect(noScroll).toBe(true);
+});
+
+test('mobile layout: no horizontal overflow, board visible', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const board = page.getByTestId('board');
+  await expect(board).toBeVisible();
+  const box = (await board.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(300);
+  const ok = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth,
+  );
+  expect(ok).toBe(true);
+  await page.screenshot({ path: `${SHOTS}/mobile.png`, fullPage: true });
+});

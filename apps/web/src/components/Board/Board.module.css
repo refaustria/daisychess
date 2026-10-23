@@ -1,6 +1,10 @@
 .board {
-  width: min(90vw, 70vh);
-  height: min(90vw, 70vh);
+  width: var(--board-size, min(90vw, 70vh));
+  aspect-ratio: 1;
+  max-width: 100%;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
 }
 
 .board :global(cg-board) {
@@ -16,27 +20,22 @@
 
 /* chessground.brown.css is not imported, so highlights are defined here. */
 .board :global(cg-board square.last-move) {
-  background-color: rgba(155, 199, 0, 0.41);
+  background-color: var(--board-last-move);
 }
 
 .board :global(cg-board square.check) {
   background: radial-gradient(
     ellipse at center,
-    rgba(255, 0, 0, 1) 0%,
-    rgba(231, 0, 0, 1) 25%,
-    rgba(169, 0, 0, 0) 89%
+    var(--board-check) 0%,
+    var(--board-check) 25%,
+    transparent 89%
   );
 }
 
 .board :global(cg-board square.move-dest) {
-  background: radial-gradient(
-    rgba(20, 85, 30, 0.5) 22%,
-    #208530 0,
-    rgba(0, 0, 0, 0.3) 0,
-    rgba(0, 0, 0, 0) 0
-  );
+  background: radial-gradient(var(--board-move-dest) 22%, transparent 24%);
 }
 
 .board :global(cg-board square.selected) {
-  background-color: rgba(20, 85, 30, 0.5);
+  background-color: var(--board-selected);
 }

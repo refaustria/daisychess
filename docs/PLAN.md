@@ -19,7 +19,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M1-2 | Board component with chessground: legal moves, drag & drop, flip, last-move highlight | worker | done |
 | M1-3 | Move list with SAN, click-to-navigate, keyboard ←/→/Home/End | worker | done |
 | M1-4 | FEN input + PGN import (paste/file, multi-game picker) | worker | done |
-| M1-5 | App layout + basic light/dark theme via `ui-theme`; first deploy to c.referee.at | worker | todo |
+| M1-5 | App layout + basic light/dark theme via `ui-theme`; first deploy to c.referee.at | worker | done |
 
 ## M2 — Browser engine
 | ID | Task | Tier | Status |

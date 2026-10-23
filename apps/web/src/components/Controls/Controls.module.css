@@ -9,28 +9,54 @@
   gap: 0.5rem;
 }
 
+.row > button {
+  flex: 1;
+}
+
+.row > .fen + button {
+  flex: none;
+}
+
 .controls button {
-  padding: 0.4rem 0.8rem;
+  min-height: 36px;
+  padding: 0 0.6rem;
+  white-space: nowrap;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
+  font: inherit;
   cursor: pointer;
 }
 
+.controls button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.controls button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .controls button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
 .fen {
   flex: 1;
   min-width: 0;
-  padding: 0.4rem;
+  min-height: 36px;
+  padding: 0 0.5rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
+}
+
+.fen:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

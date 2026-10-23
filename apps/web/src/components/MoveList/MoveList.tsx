@@ -76,10 +76,12 @@ export function MoveList() {
     <div className={styles.wrap} data-testid="movelist">
       {(headers.White || headers.Black) && (
         <div className={styles.header}>
-          <div>
-            {headers.White ?? '?'} – {headers.Black ?? '?'}
+          <div className={styles.players}>
+            {[headers.White, headers.Black].filter(Boolean).join(' – ')}
           </div>
-          {headers.Result && <div className={styles.result}>{headers.Result}</div>}
+          {headers.Result && headers.Result !== '*' && (
+            <div className={styles.result}>{headers.Result}</div>
+          )}
         </div>
       )}
       <div className={styles.list}>
