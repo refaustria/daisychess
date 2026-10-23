@@ -1,0 +1,39 @@
+# systemd unit for the ChessLab engine server (ADR-001: 127.0.0.1:8580).
+# Install: see deploy/README.md. Not installed yet.
+[Unit]
+Description=ChessLab engine server
+After=network.target
+
+[Service]
+Type=simple
+User=bojan
+Group=bojan
+WorkingDirectory=/home/bojan/gitchess/apps/server
+ExecStart=/usr/bin/node dist/index.js
+Environment=PORT=8580 HOST=127.0.0.1 NODE_ENV=production
+Restart=on-failure
+RestartSec=2s
+# Engine child processes are part of the service cgroup; stop them all.
+KillMode=control-group
+TimeoutStopSec=15s
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+# /home is read-only (repo, dist, engine binaries + NNUE are only read).
+ProtectHome=read-only
+# Add writable paths here if the server ever needs them (e.g. logs, cache).
+#ReadWritePaths=/home/bojan/gitchess/apps/server/data
+# Do NOT set MemoryDenyWriteExecute: V8 JIT needs W+X memory.
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
