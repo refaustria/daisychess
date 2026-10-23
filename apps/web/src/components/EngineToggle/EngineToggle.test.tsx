@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { useLiveStore } from '../../live/liveStore';
 import { usePlayStore } from '../../play/playStore';
 import { UNAUTHORIZED_MESSAGE, useAnalysisStore } from '../../store/analysisStore';
 import { EngineToggle, engineStatusText } from './EngineToggle';
@@ -79,6 +80,30 @@ describe('engineStatusText', () => {
     const status = screen.getByTestId('engine-status');
     expect(status.textContent).toBe('Access token required or wrong (see Settings)');
     expect(status.getAttribute('title')).toMatch(/Settings tab/);
+  });
+});
+
+describe('EngineToggle during a live lichess game', () => {
+  it('is off and disabled with the fair-play tooltip, even if the analysis store says on', () => {
+    useAnalysisStore.setState({ enabled: true });
+    useLiveStore.setState({ status: 'playing' });
+    const { container } = render(<EngineToggle />);
+    const sw = screen.getByRole('switch', { name: 'Engine' }) as HTMLInputElement;
+    expect(sw.disabled).toBe(true);
+    expect(sw.checked).toBe(false);
+    expect(container.querySelector('label')?.getAttribute('title')).toBe(
+      'Disabled during a live game (lichess fair play)',
+    );
+    cleanup();
+    useLiveStore.setState({ status: 'seeking' });
+    render(<EngineToggle />);
+    expect((screen.getByRole('switch', { name: 'Engine' }) as HTMLInputElement).disabled).toBe(true);
+    cleanup();
+    useLiveStore.setState({ status: 'finished' });
+    useAnalysisStore.setState({ enabled: false });
+    render(<EngineToggle />);
+    expect((screen.getByRole('switch', { name: 'Engine' }) as HTMLInputElement).disabled).toBe(false);
+    useLiveStore.setState({ status: 'idle' });
   });
 });
 

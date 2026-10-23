@@ -20,6 +20,9 @@ src/
   play/              Play vs Engine: playStore (game lifecycle, pauses live analysis, aborts on
                      position load), PlayController (engine side, own WASM engine), outcome, strength
                      (Elo presets)
+  live/              Live lichess games (Board API): boardApi (typed client, NDJSON streams), liveStore,
+                     LiveGameController (mirrors the game into gameStore), premoves (queue), lock
+                     (the human-game engine lock), useHumanBoard (board movability/premoves)
   review/            BatchAnalyzer (both backends), reviewStore, annotatePgn, format
   sound/             move sounds
   lichess/           lichess login (OAuth PKCE): pkce helpers, auth store useLichessAuth, getLichessToken,
@@ -51,6 +54,19 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 - `logout()` forgets the token and revokes it (`DELETE /api/token`, failures ignored). A `401` through `lichessFetch` logs out with "please log in again". Other tabs follow via the `storage` event.
 - Non-React code uses `getLichessToken()`, `hasScope()` and `lichessFetch(urlOrPath, init)` (adds `Authorization: Bearer` while logged in; only `https://lichess.org` / `https://explorer.lichess.org`, paths are resolved against lichess.org).
 - Consumers: the explorer prefers the login token over a pasted one; Import → "My games" (visible when logged in) fetches the user's own games with the token. Token handling: `docs/SECURITY.md` §2.8a.
+
+## Live games on lichess
+
+The Live tab (`components/Live/LivePanel`, state in `src/live/`) plays real lichess games through the [Board API](https://lichess.org/api#tag/Board) with the login token (`board:play`, `challenge:read`, `challenge:write`; see "lichess login"). Without a login (or without `board:play`) the panel offers "Log in with lichess" / "Log in again".
+
+- **Setup:** Quick pairing (lobby seek; the Board API only allows Rapid and Classical there: 10+0, 10+5, 15+10, 30+0, 30+20), "Play the lichess computer" (level 1–8, blitz clocks allowed), "Challenge a friend" (username, clock, rated). Incoming challenges (Accept/Decline) and ongoing games (Resume) are listed. A seek or pending challenge shows a spinner and Cancel (the seek is a kept-open `POST /api/board/seek`, aborting it cancels).
+- **Streams** (`boardApi.ts`): `fetch` + `ReadableStream` + `TextDecoder` NDJSON reader (keep-alive blank lines skipped, lines and UTF-8 characters split across chunks joined). The event stream (`/api/stream/event`) runs while the panel is open or a game/seek is on and reconnects with exponential backoff (0.5 s → 30 s; `429` waits `Retry-After`; `401` stops). A `gameStart` is joined only when the user is waiting for it (a seek: a game id not ongoing before; a challenge/AI/accept: its id); other games appear under "ongoing". The game stream reconnects the same way; lichess resends `gameFull`.
+- **Mirror** (`LiveGameController`): lichess is the source of truth. The game store holds the lichess moves (replayed with chess.js), new moves are appended without moving a user who browses earlier moves, a store changed locally (New game, a move on an earlier ply) is rebuilt. The user's board move is sent (optimistic) and rolled back when lichess rejects it (`400`). The board only accepts the user's colour, at the tip, on their turn.
+- **Clocks:** from the last `gameState` (`wtime/btime` at receive time); only the side to move ticks, and only after both sides have moved (lichess rule); the Live panel re-renders every 100 ms only while a clock runs. m:ss, tenths below 10 s, red below 20 s, `role="timer"`, `aria-live="off"`; the status line (`Your move`, `Waiting for opponent`, `Opponent left`) is `aria-live="polite"`.
+- **Game actions:** Offer draw / Accept / Decline (banner), Abort (fewer than 2 moves), Resign (with confirmation), Claim victory (after `opponentGone.claimWinInSeconds`). The finish (status other than created/started) shows result and reason, "New game", "Review this game" and a link to the game on lichess. The Board API has no rematch.
+- **Premoves** (Settings → Premoves, `settings.premoves`): `none`, `single` (chessground's premove, a new one replaces it; default) or `queue` (several, drawn as numbered grey arrows and listed in the Live panel as "Premoves: e4, Nf3 (Esc to clear)"). `live/premoves.ts` plays the first one when it is the user's turn at the tip, if chess.js says it is legal; an illegal one (also one made illegal by the opponent's move) clears the whole queue; Escape or a right-click on the board clears it too. In queue mode each premove is entered from the current position (the board does not show earlier premoves as played). The same setting applies to the game against the local engine (Play tab).
+- **Fair play:** while a live game runs or a seek/challenge is pending, all engine help is hard-locked (`live/lock.ts`, the single rule used by the engine switch, the review and the explorer): the live analysis is forced off and any attempt to switch it on is reverted at once by the live store (the switch is disabled with "Disabled during a live game (lichess fair play)"), review Start/Run Deep are disabled, a running review is cancelled and the auto review is skipped. A game against the local engine cannot start during a live game and vice versa (a `gameStart` while an engine game runs ends the engine game). When the live game ends the analysis comes back (if it was on) and a fast review starts in the background (setting `autoReview`).
+- **Tests:** Vitest for the client (NDJSON, requests, errors), controller (mirror, send/rollback, premoves, clocks, finish, opponent gone, reconnect), store, lock, premove queue and panel; `e2e/live.spec.ts` mocks lichess with `page.route()` (stored login in `localStorage['chesslab.lichess']`).
 
 ## Position explorer
 

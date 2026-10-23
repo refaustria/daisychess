@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useLiveStore } from '../live/liveStore';
 import { usePlayStore } from '../play/playStore';
 import { useGameStore } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -25,6 +26,7 @@ beforeEach(() => {
 afterEach(() => {
   uninstall();
   usePlayStore.setState({ mode: 'idle' });
+  useLiveStore.setState({ status: 'idle' });
 });
 
 describe('auto review', () => {
@@ -83,6 +85,32 @@ describe('auto review', () => {
     usePlayStore.setState({ mode: 'finished' });
     useGameStore.getState().loadPgn(SCHOLAR);
     expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('never runs while a live lichess game runs; reviews it when it finishes, staying on the Live tab', () => {
+    useUiStore.setState({ activeTab: 'live' });
+    useLiveStore.setState({ status: 'playing' });
+    useGameStore.getState().loadPgn(SCHOLAR); // e.g. the live controller installing the game
+    expect(start).not.toHaveBeenCalled();
+    useLiveStore.setState({ status: 'finished' });
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledWith({ movetime: 300 }, { auto: true });
+    expect(useUiStore.getState().activeTab).toBe('live');
+  });
+
+  it('a live game that ends with fewer than 2 moves (abort) is not reviewed', () => {
+    useLiveStore.setState({ status: 'playing' });
+    useGameStore.getState().makeMove('e2', 'e4');
+    useLiveStore.setState({ status: 'finished' });
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('cancels a running review when a live game or seek starts', () => {
+    const cancel = vi.fn();
+    useReviewStore.setState({ status: 'running', cancel });
+    useLiveStore.setState({ status: 'seeking' });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    useReviewStore.setState({ status: 'idle' });
   });
 
   it('isGameLoad needs replaced headers/start position and at least two moves', () => {

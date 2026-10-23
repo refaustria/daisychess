@@ -31,6 +31,9 @@ import styles from './App.module.css';
 const PlayPanel = lazy(() =>
   import('./components/Play/PlayPanel').then((m) => ({ default: m.PlayPanel })),
 );
+const LivePanel = lazy(() =>
+  import('./components/Live/LivePanel').then((m) => ({ default: m.LivePanel })),
+);
 const ReviewPanel = lazy(() =>
   import('./components/Review/ReviewPanel').then((m) => ({ default: m.ReviewPanel })),
 );
@@ -44,6 +47,7 @@ const SettingsPanel = lazy(() =>
 const TABS: { id: TabId; label: string }[] = [
   { id: 'moves', label: 'Moves' },
   { id: 'play', label: 'Play' },
+  { id: 'live', label: 'Live' },
   { id: 'import', label: 'Import' },
   { id: 'review', label: 'Review' },
   { id: 'explorer', label: 'Explorer' },
@@ -217,6 +221,7 @@ export function App() {
             )}
             <Suspense fallback={<p className={styles.loading}>Loading…</p>}>
               {tab === 'play' && <PlayPanel />}
+              {tab === 'live' && <LivePanel />}
               {tab === 'review' && <ReviewPanel />}
               {tab === 'explorer' && <ExplorerPanel />}
               {tab === 'settings' && <SettingsPanel />}

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { annotatePgn } from '../../review/annotatePgn';
 import { reviewHighlights } from '../../review/details';
 import { CLASS_INFO, bestMoveSan, moveNumberLabel } from '../../review/format';
-import { usePlayStore } from '../../play/playStore';
+import { useHumanGameLockReason } from '../../live/lock';
 import { REVIEW_PRESETS, useReviewStore } from '../../review/reviewStore';
 import { useGameStore } from '../../store/gameStore';
 import { EvalGraph } from './EvalGraph';
@@ -184,7 +184,8 @@ export function ReviewPanel() {
   const reset = useReviewStore((s) => s.reset);
   const dismiss = useReviewStore((s) => s.dismissAutoNotice);
   const hasMoves = useGameStore((s) => s.moves.length > 0);
-  const playing = usePlayStore((p) => p.mode === 'playing');
+  const lock = useHumanGameLockReason();
+  const playing = lock !== null;
   const [preset, setPreset] = useState<PresetKey>('deep');
 
   /** A manual start always (re)starts with the chosen preset, replacing a running review. */
@@ -232,7 +233,11 @@ export function ReviewPanel() {
           </button>
         )}
         {playing ? (
-          <span className={styles.muted}>Finish or stop the game first</span>
+          <span className={styles.muted}>
+            {lock === 'live'
+              ? 'Review is disabled during a live game (lichess fair play)'
+              : 'Finish or stop the game first'}
+          </span>
         ) : (
           !hasMoves && <span className={styles.muted}>Play or import a game first.</span>
         )}

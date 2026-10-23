@@ -23,6 +23,8 @@ describe('SettingsPanel', () => {
     expect(useSettingsStore.getState().sound).toBe(false);
     fireEvent.click(screen.getByLabelText('Analyse games automatically after loading'));
     expect(useSettingsStore.getState().autoReview).toBe(false);
+    fireEvent.change(screen.getByLabelText('Premoves'), { target: { value: 'queue' } });
+    expect(useSettingsStore.getState().premoves).toBe('queue');
     fireEvent.change(screen.getByLabelText('Highlight style'), { target: { value: 'subtle' } });
     expect(useSettingsStore.getState().highlightStyle).toBe('subtle');
     fireEvent.change(screen.getByLabelText('Piece set'), { target: { value: 'letters' } });

@@ -1,4 +1,5 @@
-import { usePlayStore } from '../play/playStore';
+import { isHumanGameRunning } from '../live/lock';
+import { isLiveLocked, useLiveStore } from '../live/liveStore';
 import { useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
@@ -26,22 +27,47 @@ export function isGameLoad(
 
 /**
  * Starts a fast review whenever a game is loaded (PGN paste/file, online import), if the
- * `autoReview` setting is on and no game against the engine is running, and switches the side
- * panel to the Review tab (except from the Explorer tab, which stays open). A running review (of the previous game) is replaced. Returns the
- * unsubscribe function.
+ * `autoReview` setting is on and no human game (engine game, live lichess game) is running, and
+ * switches the side panel to the Review tab (except from the Explorer tab, which stays open).
+ * Also reviews a live lichess game when it finishes (without switching tabs: the Live panel shows
+ * the result) and cancels a running review when a live game or seek starts. A running review (of
+ * the previous game) is replaced. Returns the unsubscribe function.
  */
 export function installAutoReview(): () => void {
-  return useGameStore.subscribe((s, prev) => {
+  const unwatchGame = useGameStore.subscribe((s, prev) => {
     if (!isGameLoad(s, prev)) return;
     if (!useSettingsStore.getState().autoReview) return;
     // Checked synchronously: a load during a game aborts it (play store), but it never counts as a
     // finished game here, so the engine game and the review never overlap.
-    if (usePlayStore.getState().mode === 'playing') return;
+    // Live lichess games are never reviewed while they run (fair play).
+    if (isHumanGameRunning()) return;
     // Loads from the Explorer keep the user there; the review runs in the background.
     const ui = useUiStore.getState();
     if (ui.activeTab !== 'explorer') ui.setActiveTab('review');
-    const review = useReviewStore.getState();
-    review.reset();
-    void review.start({ ...REVIEW_PRESETS.fast }, { auto: true });
+    startFast();
   });
+  const unwatchLive = useLiveStore.subscribe((s, prev) => {
+    // Lock engaged (seek or game started): a running review must not go on.
+    if (isLiveLocked(s) && !isLiveLocked(prev)) {
+      const review = useReviewStore.getState();
+      if (review.status === 'running') review.cancel();
+    }
+    // A live game just ended: review it (in the background, the Live panel shows the result).
+    if (s.status === 'finished' && prev.status === 'playing') {
+      if (!useSettingsStore.getState().autoReview) return;
+      if (useGameStore.getState().moves.length < AUTO_REVIEW_MIN_MOVES) return;
+      if (isHumanGameRunning()) return;
+      startFast();
+    }
+  });
+  return () => {
+    unwatchGame();
+    unwatchLive();
+  };
+}
+
+function startFast(): void {
+  const review = useReviewStore.getState();
+  review.reset();
+  void review.start({ ...REVIEW_PRESETS.fast }, { auto: true });
 }

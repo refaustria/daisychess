@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useAnalysisStore } from '../store/analysisStore';
 import { START_FEN, useGameStore } from '../store/gameStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { FakePlayEngine } from './fakePlayEngine';
 import { configurePlay, resetPlay, takeBackPlies, usePlayStore } from './playStore';
 
@@ -76,6 +77,23 @@ describe('playStore', () => {
     expect(p().result).toBe('1-0');
     expect(p().reason).toBe('resign');
     expect(useAnalysisStore.getState().enabled).toBe(true);
+  });
+
+  it('premoves (queue): played one per turn after the engine replies; cleared on stop', async () => {
+    useSettingsStore.setState({ premoves: 'queue' });
+    p().start({ color: 'white' });
+    g().makeMove('e2', 'e4');
+    p().addPremove('d2d4');
+    p().addPremove('g1f3');
+    expect(p().premoves).toEqual(['d2d4', 'g1f3']);
+    await flush();
+    // Engine reply, premove d4, engine reply, premove Nf3, engine reply.
+    expect(g().moves.map((m) => m.san).filter((_, i) => i % 2 === 0)).toEqual(['e4', 'd4', 'Nf3']);
+    expect(p().premoves).toEqual([]);
+    p().addPremove('a2a3');
+    p().stop();
+    expect(p().premoves).toEqual([]);
+    useSettingsStore.setState({ premoves: 'single' });
   });
 
   it('keeps live analysis off while playing, even if switched on', () => {

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import { PremoveQueue } from '../live/premoves';
 import { useAnalysisStore } from '../store/analysisStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { currentFen, useGameStore, type GameState, type Orientation } from '../store/gameStore';
 import { atTip, type EndReason, type GameResult, type Outcome } from './outcome';
 import { PlayController, type CreatePlayEngine } from './PlayController';
@@ -24,10 +26,12 @@ export interface PlayState {
   setup: PlaySetup;
   result?: GameResult;
   reason?: EndReason;
-  /** Error text for `reason: 'engine_error'`. */
+  /** Error text for `reason: 'engine_error'`, or why a game could not start (a live game runs). */
   message?: string;
   /** True while the engine has the move. */
   thinking: boolean;
+  /** The user's premoves (UCI), played one per turn (settings `premoves`). */
+  premoves: string[];
 }
 
 export interface PlayActions {
@@ -40,6 +44,9 @@ export interface PlayActions {
   stop(): void;
   /** A new game with the same setup. */
   rematch(): void;
+  /** Adds a premove while the engine thinks (replaces it in `single` mode, ignored in `none`). */
+  addPremove(uci: string): void;
+  clearPremoves(): void;
 }
 
 export type PlayStore = PlayState & PlayActions;
@@ -71,6 +78,18 @@ interface PlayHooks {
   random: () => number;
 }
 
+/**
+ * Returns a reason why a local engine game must not start (a live lichess game runs), or null.
+ * Registered by the live store (`live/liveStore.ts`), which keeps this module free of an import
+ * cycle; the shared rule for the UI is `live/lock.ts`.
+ */
+export type PlayStartGuard = () => string | null;
+let startGuard: PlayStartGuard = () => null;
+
+export function setPlayStartGuard(guard: PlayStartGuard): void {
+  startGuard = guard;
+}
+
 let hooks: PlayHooks = { createEngine: createWasmPlayEngine, random: Math.random };
 let controller: PlayController | null = null;
 let pagehideBound = false;
@@ -78,6 +97,23 @@ let pagehideBound = false;
 let analysisSuspended = false;
 let unwatchAnalysis: (() => void) | null = null;
 let unwatchGame: (() => void) | null = null;
+let premoveQueue: PremoveQueue | null = null;
+
+function startPremoves(): void {
+  premoveQueue?.dispose();
+  premoveQueue = new PremoveQueue({
+    game: useGameStore,
+    color: () => (usePlayStore.getState().mode === 'playing' ? usePlayStore.getState().playerColor : null),
+    mode: () => useSettingsStore.getState().premoves,
+    onChange: (list) => usePlayStore.setState({ premoves: [...list] }),
+  });
+}
+
+function stopPremoves(): void {
+  premoveQueue?.dispose();
+  premoveQueue = null;
+  if (usePlayStore.getState().premoves.length) usePlayStore.setState({ premoves: [] });
+}
 
 function suspendAnalysis(): void {
   const analysis = useAnalysisStore.getState();
@@ -148,6 +184,7 @@ function watchGame(): void {
 function finish(outcome: Outcome, message?: string): void {
   unwatchGame?.();
   unwatchGame = null;
+  stopPremoves();
   controller?.stop();
   usePlayStore.setState({
     mode: 'finished',
@@ -169,6 +206,7 @@ export async function configurePlay(next: Partial<PlayHooks>): Promise<void> {
 export async function resetPlay(): Promise<void> {
   unwatchGame?.();
   unwatchGame = null;
+  stopPremoves();
   const c = controller;
   controller = null;
   if (c) await c.dispose();
@@ -193,8 +231,14 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
   playerColor: 'white',
   setup: { color: 'white', strength: DEFAULT_STRENGTH, moveTime: DEFAULT_MOVE_TIME },
   thinking: false,
+  premoves: [],
 
   start: (partial) => {
+    const blocked = startGuard();
+    if (blocked) {
+      set({ message: blocked });
+      return;
+    }
     const setup = sanitizeSetup({ ...get().setup, ...partial });
     const playerColor: Orientation =
       setup.color === 'random' ? (hooks.random() < 0.5 ? 'white' : 'black') : setup.color;
@@ -205,6 +249,7 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
     useGameStore.setState({ orientation: playerColor });
     suspendAnalysis();
     watchGame();
+    startPremoves();
     set({
       mode: 'playing',
       playerColor,
@@ -229,6 +274,7 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
     const g = useGameStore.getState();
     const n = takeBackPlies(g, s.playerColor);
     if (n === 0) return;
+    premoveQueue?.clear();
     controller?.cancel();
     // One store update, so the controller never sees the intermediate (engine-to-move) position.
     const len = g.moves.length - n;
@@ -238,6 +284,7 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
   stop: () => {
     unwatchGame?.();
     unwatchGame = null;
+    stopPremoves();
     controller?.stop();
     set({
       mode: 'idle',
@@ -250,4 +297,10 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
   },
 
   rematch: () => get().start(get().setup),
+
+  addPremove: (uci) => {
+    if (get().mode === 'playing') premoveQueue?.add(uci);
+  },
+
+  clearPremoves: () => premoveQueue?.clear(),
 }));

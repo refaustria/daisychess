@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useLiveStore } from '../../live/liveStore';
 import { usePlayStore } from '../../play/playStore';
 import { buildMoveDetails } from '../../review/details';
 import { gameToBatch, useReviewStore } from '../../review/reviewStore';
@@ -52,6 +53,19 @@ describe('ReviewPanel', () => {
     );
     expect(screen.getByText('Finish or stop the game first')).toBeTruthy();
     act(() => usePlayStore.setState({ mode: 'idle' }));
+  });
+
+  it('Start and Run Deep are disabled during a live lichess game (fair play)', () => {
+    act(() => useGameStore.getState().loadPgn(PGN));
+    act(() => useLiveStore.setState({ status: 'playing' }));
+    useReviewStore.setState({ autoNotice: true });
+    render(<ReviewPanel />);
+    expect((screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Run Deep' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Review is disabled during a live game (lichess fair play)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(start).not.toHaveBeenCalled();
+    act(() => useLiveStore.setState({ status: 'idle' }));
   });
 
   it('idle: Start uses the chosen preset', () => {

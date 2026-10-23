@@ -2,7 +2,9 @@ import { Chessground } from 'chessground';
 import type { Api } from 'chessground/api';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { premoveShapes } from '../../live/premoves';
+import { useHumanBoard } from '../../live/useHumanBoard';
 import { startMoveSounds } from '../../sound/sounds';
 import { useSettingsStore } from '../../store/settingsStore';
 import { loadPieceSet } from './pieceCss';
@@ -27,7 +29,9 @@ export interface BoardProps {
   previewFen?: string | null;
   /**
    * Restricts who may move: `undefined` = the side to move (analysis board), a colour = only that
-   * colour and only on its turn (play mode), `null` = nobody.
+   * colour and only on its turn (play mode), `null` = nobody. A running game against an opponent
+   * (live lichess game, local engine game) overrides it: the user's colour at the tip, premoves on
+   * the opponent's turn (see `useHumanBoard`).
    */
   movableColor?: Orientation | null;
 }
@@ -52,6 +56,9 @@ export function Board({ shapes = NO_SHAPES, previewFen = null, movableColor }: B
   const [promotion, setPromotion] = useState<PendingPromotion | null>(null);
   /** Bumped to push the game position to chessground again (after a cancelled promotion). */
   const [resync, setResync] = useState(0);
+  const human = useHumanBoard();
+  const humanRef = useRef(human);
+  humanRef.current = human;
 
   useEffect(() => startMoveSounds(), []);
 
@@ -83,7 +90,23 @@ export function Board({ shapes = NO_SHAPES, previewFen = null, movableColor }: B
     if (!ref.current) return;
     api.current = Chessground(ref.current, {
       movable: { free: false },
-      premovable: { enabled: false },
+      premovable: {
+        enabled: false,
+        events: {
+          set: (from, to) => {
+            const h = humanRef.current;
+            if (!h) return;
+            h.onPremove(from, to);
+            // Queue mode: the queue is drawn as arrows, chessground keeps no premove of its own.
+            if (h.premoveMode === 'queue') api.current?.cancelPremove();
+          },
+          // A click elsewhere or a right-click cancels chessground's single premove.
+          unset: () => {
+            const h = humanRef.current;
+            if (h?.premoveMode === 'single') h.onPremoveCancel();
+          },
+        },
+      },
       draggable: { showGhost: true },
       highlight: { lastMove: true, check: true },
       coordinates: useSettingsStore.getState().coordinates,
@@ -117,7 +140,11 @@ export function Board({ shapes = NO_SHAPES, previewFen = null, movableColor }: B
   const last = lastMove(state);
   const check = !previewing && isCheck(state);
   const { orientation } = state;
-  const canMove = !previewing && (movableColor === undefined || movableColor === side);
+  const movable = human ? human.movableColor : movableColor;
+  const canMove = !previewing && (movable === undefined || movable === side);
+  // On the opponent's turn the user's pieces can be premoved (unless premoves are off).
+  const premoveColor =
+    !previewing && human && human.premoveMode !== 'none' && !canMove ? human.movableColor : null;
 
   // A pending promotion belongs to the position it was started in.
   useEffect(() => {
@@ -149,10 +176,32 @@ export function Board({ shapes = NO_SHAPES, previewFen = null, movableColor }: B
       lastMove: previewing ? undefined : (last as Key[] | undefined),
       movable: canMove
         ? { free: false, color: side, dests: legalDests(state) as Map<Key, Key[]> }
-        : { free: false, color: undefined, dests: new Map<Key, Key[]>() },
+        : { free: false, color: premoveColor ?? undefined, dests: new Map<Key, Key[]>() },
+      premovable: { enabled: premoveColor !== null },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- state is derived from fen/ply
-  }, [fen, side, orientation, check, canMove, resync, state.ply, state.startFen, state.moves]);
+  }, [fen, side, orientation, check, canMove, premoveColor, resync, state.ply, state.startFen, state.moves]);
+
+  // The premove was played or dropped by the game: clear chessground's premove highlight.
+  const hasPremove = (human?.premoves.length ?? 0) > 0;
+  const hadPremove = useRef(false);
+  useEffect(() => {
+    if (hadPremove.current && !hasPremove) api.current?.cancelPremove();
+    hadPremove.current = hasPremove;
+  }, [hasPremove]);
+
+  // Escape or a right-click on the board clears all premoves.
+  useEffect(() => {
+    if (!hasPremove) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') humanRef.current?.onPremoveCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hasPremove]);
+  const onMouseDown = useCallback((e: MouseEvent) => {
+    if (e.button === 2) humanRef.current?.onPremoveCancel();
+  }, []);
 
   useEffect(() => {
     // Coordinates are part of the wrap markup, so a redraw is needed after changing the option.
@@ -160,9 +209,15 @@ export function Board({ shapes = NO_SHAPES, previewFen = null, movableColor }: B
     api.current?.redrawAll();
   }, [coordinates]);
 
+  // Queued premoves are drawn (numbered) on top of the app's arrows.
+  const queued = human?.premoveMode === 'queue' ? human.premoves : undefined;
+  const allShapes = useMemo(
+    () => (queued && queued.length ? [...shapes, ...(premoveShapes(queued) as DrawShape[])] : shapes),
+    [shapes, queued],
+  );
   useEffect(() => {
-    api.current?.set({ drawable: { autoShapes: shapes } });
-  }, [shapes]);
+    api.current?.set({ drawable: { autoShapes: allShapes } });
+  }, [allShapes]);
 
   return (
     <div className={styles.root}>
@@ -174,6 +229,8 @@ export function Board({ shapes = NO_SHAPES, previewFen = null, movableColor }: B
         aria-describedby="board-note"
         data-preview={previewing || undefined}
         data-pieces-ready={readySet === pieceSet || undefined}
+        data-premoves={human?.premoves.length ? human.premoves.join(' ') : undefined}
+        onMouseDownCapture={onMouseDown}
         ref={ref}
       />
       {promotion && (

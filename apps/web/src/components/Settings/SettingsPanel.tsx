@@ -5,8 +5,10 @@ import {
   HIGHLIGHT_STYLES,
   MAX_SERVER_TOKEN_LENGTH,
   normalizeToken,
+  PREMOVE_MODES,
   useSettingsStore,
   type HighlightStyle,
+  type PremoveMode,
 } from '../../store/settingsStore';
 import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
 import styles from './SettingsPanel.module.css';
@@ -15,6 +17,12 @@ const HIGHLIGHT_LABEL: Record<HighlightStyle, string> = {
   classic: 'Classic',
   subtle: 'Subtle',
   none: 'None',
+};
+
+const PREMOVE_LABEL: Record<PremoveMode, string> = {
+  none: 'Off',
+  single: 'One premove',
+  queue: 'Queue (several)',
 };
 
 /**
@@ -185,6 +193,25 @@ export function SettingsPanel() {
         />
         Analyse games automatically after loading
       </label>
+
+      <label className={styles.field}>
+        Premoves
+        <select
+          value={s.premoves}
+          onChange={(e) => s.set({ premoves: e.target.value as PremoveMode })}
+          aria-describedby="premoves-note"
+        >
+          {PREMOVE_MODES.map((m) => (
+            <option key={m} value={m}>
+              {PREMOVE_LABEL[m]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p id="premoves-note" className={styles.help}>
+        Moves entered on the opponent’s turn in live lichess games. Queue: several premoves, played
+        one per turn while each is legal; Esc or a right-click clears them.
+      </p>
 
       <button type="button" className={styles.reset} onClick={() => s.reset()}>
         Reset to defaults

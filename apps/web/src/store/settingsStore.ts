@@ -5,6 +5,13 @@ import { create } from 'zustand';
 export type HighlightStyle = 'classic' | 'subtle' | 'none';
 export const HIGHLIGHT_STYLES: readonly HighlightStyle[] = ['classic', 'subtle', 'none'];
 
+/**
+ * Premoves in live games: `none` off, `single` one premove (replaced by a new one), `queue` any
+ * number, played one per turn while each is legal.
+ */
+export type PremoveMode = 'none' | 'single' | 'queue';
+export const PREMOVE_MODES: readonly PremoveMode[] = ['none', 'single', 'queue'];
+
 export interface Settings {
   /** Preset id from ui-theme, or 'custom' when `customBoard` is used. */
   boardTheme: string;
@@ -15,6 +22,7 @@ export interface Settings {
   sound: boolean;
   /** Start a fast review automatically after a game is loaded (PGN, file, online import). */
   autoReview: boolean;
+  premoves: PremoveMode;
   /**
    * Access token of the engine server (ADR-010), sent in `hello.token`. Empty = none. Stored in
    * localStorage like the other settings: it is a shared gate against casual use, not a secret
@@ -40,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   highlightStyle: 'classic',
   sound: true,
   autoReview: true,
+  premoves: 'single',
   serverToken: '',
 };
 
@@ -81,6 +90,9 @@ export function parseSettings(raw: string | null): Settings {
   }
   if (typeof o.sound === 'boolean') out.sound = o.sound;
   if (typeof o.autoReview === 'boolean') out.autoReview = o.autoReview;
+  if (typeof o.premoves === 'string' && (PREMOVE_MODES as readonly string[]).includes(o.premoves)) {
+    out.premoves = o.premoves as PremoveMode;
+  }
   if (typeof o.serverToken === 'string') out.serverToken = normalizeToken(o.serverToken);
   return out;
 }
@@ -121,6 +133,7 @@ function pick(s: Settings): Settings {
     highlightStyle: s.highlightStyle,
     sound: s.sound,
     autoReview: s.autoReview,
+    premoves: s.premoves,
     serverToken: s.serverToken,
   };
   if (s.customBoard) out.customBoard = s.customBoard;

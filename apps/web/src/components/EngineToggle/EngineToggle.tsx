@@ -1,4 +1,4 @@
-import { usePlayStore } from '../../play/playStore';
+import { lockText, useHumanGameLockReason } from '../../live/lock';
 import {
   isAuthError,
   isRemoteKey,
@@ -52,7 +52,8 @@ export function EngineToggle() {
   const setEnabled = useAnalysisStore((a) => a.setEnabled);
   const retry = useAnalysisStore((a) => a.retry);
   const fallBackToBrowser = useAnalysisStore((a) => a.fallBackToBrowser);
-  const playing = usePlayStore((p) => p.mode === 'playing');
+  const lock = useHumanGameLockReason();
+  const locked = lock !== null;
   const primary = usePrimaryAnalysis();
   const s = { ...primary, enabled, terminal, remote };
   const text = engineStatusText(s);
@@ -61,13 +62,13 @@ export function EngineToggle() {
     <div className={styles.engine}>
       <label
         className={styles.switch}
-        title={playing ? 'Paused while playing against the engine' : undefined}
+        title={lockText(lock)}
       >
         <input
           type="checkbox"
           role="switch"
-          checked={enabled}
-          disabled={playing}
+          checked={enabled && !locked}
+          disabled={locked}
           onChange={(e) => setEnabled(e.currentTarget.checked)}
           aria-describedby="engine-status"
         />

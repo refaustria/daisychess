@@ -132,3 +132,16 @@
 - *Explorer.* Position statistics use the lichess Opening Explorer at `https://explorer.lichess.org` (masters and lichess databases). Since November 2025 lichess requires an OAuth token for every explorer request (announced in the lichess blog); the app therefore asks the user for a free, scopeless lichess API token, stored only in localStorage (`chesslab.explorer`) and sent only as an `Authorization` header. `connect-src` in the CSP includes `https://explorer.lichess.org`. Requests are debounced (300 ms), cached (LRU 200) and stopped beyond 50 plies; 429 is honoured via `Retry-After`.
 
 **Consequences.** Without a lichess token the Explorer tab shows an explanatory message; everything else works offline. The explorer's rate limit (~20 requests/min per user) bounds how fast one can browse positions. "Log in with lichess" (OAuth PKCE) would remove the token paste and is a possible follow-up.
+
+## ADR-012 — lichess login and live games
+**Date:** 2026-10-23 · **Status:** accepted
+
+**Context.** The product owner wants to play live on lichess inside ChessLab and to use their lichess account for the explorer and game import.
+
+**Decision.**
+- *Login.* OAuth 2.0 PKCE against lichess (`client_id` `chesslab.c.referee.at`, redirect to the app's own origin, scopes `board:play challenge:read challenge:write`). The token lives in localStorage `chesslab.lichess`, is sent only as an `Authorization` header to `lichess.org`/`explorer.lichess.org`, is revoked on logout, and never appears in URLs, logs or error strings. Shared interface: `apps/web/src/lichess/auth.ts` (`useLichessAuth`, `getLichessToken`, `lichessFetch`, `hasScope`).
+- *Live games.* lichess Board API (event stream, game stream, seek/challenge/AI, move/resign/abort/draw/claim-victory) via NDJSON streams with reconnect; lichess is the source of truth and is mirrored into the game store. Lobby seeks are limited to Rapid/Classical by lichess; Blitz works for direct challenges and the AI.
+- *Fair play.* A single lock (`apps/web/src/live/lock.ts`) disables live analysis, review and the engine while a live game (or a local engine game) runs; it is not bypassable from the UI. A local engine game and a live game are mutually exclusive. The auto review starts only after the live game has finished.
+- *Premoves.* `settings.premoves` = `none | single | queue` (default `single`); `queue` is managed by the app (ordered, cleared on illegality or Escape) and applies to live and local engine games.
+
+**Consequences.** Users must log in on lichess once per browser; a manual login on the production origin should be confirmed. Chat, takebacks and rematch via the Board API are not implemented. The explorer and import also use the login token, removing the token paste for logged-in users.

@@ -36,6 +36,14 @@ describe('settingsStore', () => {
     expect(stored()).toMatchObject({ autoReview: false });
   });
 
+  it('parses and persists premoves (default single)', () => {
+    expect(useSettingsStore.getState().premoves).toBe('single');
+    expect(parseSettings(JSON.stringify({ premoves: 'queue' })).premoves).toBe('queue');
+    expect(parseSettings(JSON.stringify({ premoves: 'many' })).premoves).toBe('single');
+    useSettingsStore.getState().set({ premoves: 'none' });
+    expect(stored()).toMatchObject({ premoves: 'none' });
+  });
+
   it('persists changes under chesslab.settings', () => {
     useSettingsStore.getState().set({ boardTheme: 'blue', coordinates: false });
     expect(stored()).toMatchObject({ boardTheme: 'blue', coordinates: false });
