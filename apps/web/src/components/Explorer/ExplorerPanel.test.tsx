@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../explorer/client';
 import type { ExplorerFetch } from '../../explorer/client';
@@ -15,6 +15,10 @@ vi.mock('../../explorer/client', async (orig) => {
   const actual = await orig<typeof import('../../explorer/client')>();
   return { ...actual, fetchExplorerGamePgn: vi.fn() };
 });
+
+// The explorer store debounces requests by 300 ms of real time; under CPU load the default 1 s
+// async-util timeout is too tight, so give findBy*/waitFor generous headroom (it only matters on failure).
+configure({ asyncUtilTimeout: 10_000 });
 
 let fetchMock: ReturnType<typeof vi.fn<ExplorerFetch>>;
 
@@ -158,7 +162,7 @@ describe('ExplorerPanel', () => {
     fetchMock.mockResolvedValue(jsonResponse(LICHESS_E4));
     fireEvent.click(screen.getByRole('radio', { name: 'Lichess' }));
     expect(useExplorerStore.getState().db).toBe('lichess');
-    await screen.findByText('100 games', {}, { timeout: 2000 });
+    await screen.findByText('100 games');
   });
 
   it('empty position → not found', async () => {
