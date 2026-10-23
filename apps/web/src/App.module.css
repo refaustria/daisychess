@@ -44,6 +44,7 @@
 
 /* Takes the remaining width beside the eval bar; the board (sized by --board-size) stays square. */
 .boardWrap {
+  position: relative;
   flex: 1;
   min-width: 0;
 }

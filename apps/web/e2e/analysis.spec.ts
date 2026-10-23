@@ -136,3 +136,45 @@ test.describe('live analysis', () => {
     expect(stats.go).toBeLessThan(10);
   });
 });
+
+test('analysis panel: MultiPV lines in SAN, hover arrows, click preview', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto('/');
+  await page.evaluate(() => localStorage.removeItem('chesslab.analysis'));
+  await page.reload();
+  await page.getByRole('switch', { name: 'Engine' }).check();
+  const panel = page.getByTestId('analysis-panel');
+  await expect(panel).toBeVisible();
+  await page.getByLabel('Lines').selectOption('3');
+
+  const lines = page.getByTestId('analysis-line');
+  await expect(lines).toHaveCount(3, { timeout: 20_000 });
+  for (let i = 0; i < 3; i++) {
+    await expect(lines.nth(i).getByTestId('analysis-eval')).toHaveText(LABEL, { timeout: 20_000 });
+    await expect(lines.nth(i).getByTestId('analysis-pv')).toHaveText(/^1\. [KQRBN]?[a-h]?[1-8]?x?[a-h][1-8]/, {
+      timeout: 20_000,
+    });
+  }
+
+  // Best-move arrow (green) while idle.
+  const shapes = page.locator('.cg-shapes g');
+  await expect.poll(() => shapes.count(), { timeout: 20_000 }).toBeGreaterThanOrEqual(1);
+  const before = await page.locator('.cg-shapes').innerHTML();
+  await lines.nth(1).hover();
+  await expect.poll(async () => page.locator('.cg-shapes').innerHTML(), { timeout: 5_000 }).not.toBe(before);
+  expect(await shapes.count()).toBeGreaterThanOrEqual(1);
+
+  const fenInput = page.getByLabel('FEN');
+  const fen = await fenInput.inputValue();
+  await lines.nth(0).click();
+  const banner = page.getByTestId('preview-banner');
+  await expect(banner).toBeVisible();
+  await expect(page.getByTestId('board')).toHaveAttribute('data-preview', 'true');
+  await expect(fenInput).toHaveValue(fen);
+  await page.waitForTimeout(400);
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: `${SHOTS}/analysis-panel.png`, fullPage: true });
+  await page.keyboard.press('Escape');
+  await expect(banner).toHaveCount(0);
+  await expect(fenInput).toHaveValue(fen);
+});

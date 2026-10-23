@@ -1,5 +1,8 @@
 import '@chesslab/ui-theme/base.css';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { AnalysisPanel } from './components/Analysis/AnalysisPanel';
+import { PreviewBanner } from './components/Analysis/PreviewBanner';
+import { analysisShapes } from './components/Analysis/shapes';
 import { Board } from './components/Board/Board';
 import { Controls } from './components/Controls/Controls';
 import { EngineToggle } from './components/EngineToggle/EngineToggle';
@@ -7,7 +10,9 @@ import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
-import { gameStatus, isCheck, turn, useGameStore, type GameState } from './store/gameStore';
+import { useAnalysisStore } from './store/analysisStore';
+import { usePreviewStore } from './store/previewStore';
+import { currentFen, gameStatus, isCheck, turn, useGameStore, type GameState } from './store/gameStore';
 import styles from './App.module.css';
 
 export function statusText(s: GameState): string {
@@ -25,6 +30,30 @@ export function statusText(s: GameState): string {
   }
 }
 
+/** Board wired to the preview store and the engine's arrows. */
+function ConnectedBoard() {
+  const previewFen = usePreviewStore((s) => s.fen);
+  const hover = usePreviewStore((s) => s.hover);
+  const gameFen = useGameStore(currentFen);
+  const enabled = useAnalysisStore((s) => s.enabled);
+  const terminal = useAnalysisStore((s) => s.terminal);
+  const analysisFen = useAnalysisStore((s) => s.fen);
+  const best = useAnalysisStore((s) => s.lines[0]?.pv[0]);
+  const shapes = useMemo(
+    () =>
+      analysisShapes({
+        enabled,
+        terminal: terminal !== null,
+        previewing: previewFen !== null,
+        inSync: analysisFen === gameFen,
+        best,
+        hover,
+      }),
+    [enabled, terminal, previewFen, analysisFen, gameFen, best, hover],
+  );
+  return <Board shapes={shapes} previewFen={previewFen} />;
+}
+
 export function App() {
   const state = useGameStore();
   const [tab, setTab] = useState<'moves' | 'import'>('moves');
@@ -39,7 +68,8 @@ export function App() {
         <div className={styles.boardCol}>
           <ConnectedEvalBar />
           <div className={styles.boardWrap}>
-            <Board />
+            <ConnectedBoard />
+            <PreviewBanner />
           </div>
         </div>
         <section className={styles.side}>
@@ -51,6 +81,7 @@ export function App() {
             {statusText(state)}
           </p>
           <Controls />
+          <AnalysisPanel />
           <div className={styles.tabs} role="tablist">
             <button
               role="tab"

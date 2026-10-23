@@ -26,7 +26,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 |---|---|---|---|
 | M2-1 | `WasmEngineClient` (stockfish npm, Web Worker, lite-single default, multi-thread when `crossOriginIsolated`) | senior | done |
 | M2-2 | Eval bar component (win-prob mapping, mate display, flip with board) | senior | done |
-| M2-3 | Analysis panel: MultiPV lines, depth/time control, click-to-preview, best-move arrows | worker | todo |
+| M2-3 | Analysis panel: MultiPV lines, depth/time control, click-to-preview, best-move arrows | worker | done |
 
 ## M3 — Server engine
 | ID | Task | Tier | Status |
@@ -40,7 +40,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M4 — Game review
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M4-1 | Batch analysis runner (both backends) | senior | todo |
+| M4-1 | Batch analysis runner (both backends) | senior | in-progress |
 | M4-2 | Move classification + accuracy in `engine-core` (tested) | worker | done |
 | M4-3 | Review UI: eval graph, key moments, annotated PGN export | worker | todo |
 
