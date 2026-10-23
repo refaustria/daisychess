@@ -52,3 +52,12 @@ export type {
   ServerMessage,
   ParseResult,
 } from './protocol.js';
+export {
+  MOVE_CLASSES,
+  CLASSIFICATION_THRESHOLDS,
+  classifyMove,
+  moveAccuracy,
+  gameAccuracy,
+  reviewGame,
+} from './review.js';
+export type { MoveClass, ReviewedMove, SideSummary, ReviewSummary } from './review.js';
