@@ -1,9 +1,8 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 /**
- * Position explorer (M12-2). The Explorer tab is wired into App.tsx by the orchestrator; until
- * then the spec is skipped. Run with EXPLORER_TAB=1 once the tab exists (then drop the skip).
- * The live variant hits the real lichess explorer and needs EXPLORER_LIVE=1 and a token in
+ * Position explorer (M12-2). With a pasted token here; the lichess login token is covered in
+ * lichess-auth.spec.ts. The live variant hits the real lichess explorer and needs EXPLORER_LIVE=1 and a token in
  * LICHESS_TOKEN (lichess requires authentication for the explorer since Nov 2025).
  */
 
@@ -102,8 +101,9 @@ test.describe('mocked', () => {
   test('no token → token required, saving one fetches', async ({ page }) => {
     await mockExplorer(page, { anonymous401: true });
     await openExplorer(page);
-    await expect(page.getByRole('alert')).toContainText('lichess API token');
-    await page.getByLabel(/lichess token/).fill('lip_new');
+    await expect(page.getByRole('alert')).toContainText('requires authentication');
+    await expect(page.getByRole('alert').getByRole('button', { name: 'Log in with lichess' })).toBeVisible();
+    await page.getByLabel('or paste a token').fill('lip_new');
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('3,000 games')).toBeVisible();
   });

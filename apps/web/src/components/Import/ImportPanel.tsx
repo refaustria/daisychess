@@ -7,6 +7,7 @@ import {
   type OnlineGame,
   type OnlineSite,
 } from '../../import';
+import { lichessFetch, useLichessAuth } from '../../lichess/auth';
 import { splitPgnGames } from '../../store/pgn';
 import { useGameStore } from '../../store/gameStore';
 import styles from './ImportPanel.module.css';
@@ -89,8 +90,11 @@ export function ImportPanel({ onLoaded }: Props) {
   const [loadingId, setLoadingId] = useState('');
   const [onlineError, setOnlineError] = useState('');
   const [onlineOk, setOnlineOk] = useState('');
+  /** The listed games were fetched with the lichess login (so their PGNs are fetched with it too). */
+  const [withLogin, setWithLogin] = useState(false);
   const seq = useRef(0);
   const username = users[site] ?? '';
+  const me = useLichessAuth((a) => (a.status === 'authenticated' ? a.username : undefined));
 
   const chooseSite = (next: OnlineSite) => {
     seq.current++;
@@ -103,20 +107,22 @@ export function ImportPanel({ onLoaded }: Props) {
     writeSaved({ site: next, users });
   };
 
-  const fetchGames = async () => {
+  const fetchGames = async (forSite: OnlineSite = site, name: string = username.trim(), mine = false) => {
     const id = ++seq.current;
     setFetching(true);
     setOnlineError('');
     setOnlineOk('');
     setOnline(null);
     setLoadingId('');
-    const name = username.trim();
+    setWithLogin(mine);
     try {
-      const list = await fetchOnlineGames(site, name);
+      const list = await (mine
+        ? fetchOnlineGames(forSite, name, { fetch: lichessFetch })
+        : fetchOnlineGames(forSite, name));
       if (id !== seq.current) return;
       setOnline(list);
       setFetchedFor(name);
-      writeSaved({ site, users: { ...users, [site]: name } });
+      writeSaved({ site: forSite, users: { ...users, [forSite]: name } });
     } catch (e) {
       if (id === seq.current) setOnlineError(errorText(e));
     } finally {
@@ -130,7 +136,7 @@ export function ImportPanel({ onLoaded }: Props) {
     setOnlineError('');
     setOnlineOk('');
     try {
-      const text = await fetchOnlineGamePgn(game);
+      const text = await (withLogin ? fetchOnlineGamePgn(game, { fetch: lichessFetch }) : fetchOnlineGamePgn(game));
       if (id !== seq.current) return;
       if (loadPgn(text)) {
         useGameStore.getState().goTo(0);
@@ -305,6 +311,22 @@ export function ImportPanel({ onLoaded }: Props) {
             Fetch games
           </button>
         </div>
+        {me && (
+          <div className={styles.row}>
+            <button
+              type="button"
+              disabled={fetching}
+              title={`Your recent lichess games as ${me}, fetched with your lichess login`}
+              onClick={() => {
+                if (site !== 'lichess') chooseSite('lichess');
+                setUsers((u) => ({ ...u, lichess: me }));
+                void fetchGames('lichess', me, true);
+              }}
+            >
+              My games
+            </button>
+          </div>
+        )}
         {fetching && (
           <p className={styles.status} role="status">
             Loading games…

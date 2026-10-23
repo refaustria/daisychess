@@ -22,6 +22,8 @@ src/
                      (Elo presets)
   review/            BatchAnalyzer (both backends), reviewStore, annotatePgn, format
   sound/             move sounds
+  lichess/           lichess login (OAuth PKCE): pkce helpers, auth store useLichessAuth, getLichessToken,
+                     lichessFetch, hasScope (localStorage `chesslab.lichess`); UI in components/LichessAccount
 e2e/                 Playwright specs (see below)
 vite-plugin-stockfish.ts   emits the Stockfish WASM builds verbatim to
                      assets/engine/stockfish-<version>/ (versioned, cacheable as immutable)
@@ -40,11 +42,21 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 
 `src/openings/data/openings.json` (`[eco, name, epd][]`, ~464 kB, 63 kB gzipped) is generated from the lichess `chess-openings` TSVs (CC0) by `scripts/build-openings.mjs`; source commit in `data/SOURCE.md`. It is a separate lazy chunk, loaded by `useOpening()` the first time `MoveList` renders. `openingForGame` returns the deepest named position up to the current ply (so transpositions are recognised) and `null` for custom start positions; `MoveList` shows it as an ECO badge plus name (`aria-live="polite"`, hidden when null).
 
+## lichess login
+
+"Log in with lichess" (Settings → lichess account, or the account chip in the header, which opens Settings) uses the OAuth 2.0 authorization code flow with PKCE (`src/lichess/`; no client secret, `client_id` `chesslab.c.referee.at`, redirect URI = `location.origin + location.pathname`, so it works on `https://c.referee.at/` and `http://localhost:4180/`).
+
+- `login()` stores a random verifier + `state` in sessionStorage `chesslab.lichess.pkce` and navigates to `https://lichess.org/oauth` with the S256 challenge and the scopes `board:play challenge:read challenge:write` (for live games; shown in the button's tooltip).
+- `main.tsx` calls `handleCallback()` once at startup: with `?code&state` and a matching state it exchanges the code (`POST /api/token`), reads the username (`GET /api/account`), stores `{token, username, scopes, expiresAt}` in localStorage `chesslab.lichess` and removes the parameters with `history.replaceState`. `?error=` and a state mismatch end in status `error` with a message.
+- `logout()` forgets the token and revokes it (`DELETE /api/token`, failures ignored). A `401` through `lichessFetch` logs out with "please log in again". Other tabs follow via the `storage` event.
+- Non-React code uses `getLichessToken()`, `hasScope()` and `lichessFetch(urlOrPath, init)` (adds `Authorization: Bearer` while logged in; only `https://lichess.org` / `https://explorer.lichess.org`, paths are resolved against lichess.org).
+- Consumers: the explorer prefers the login token over a pasted one; Import → "My games" (visible when logged in) fetches the user's own games with the token. Token handling: `docs/SECURITY.md` §2.8a.
+
 ## Position explorer
 
 `src/explorer/` (client + Zustand store) and `src/components/Explorer/ExplorerPanel` show the lichess Opening Explorer for the viewed position: Masters or Lichess database (speed/rating filters, default all speeds and 1600+), total games, W/D/L bar, popular moves (click plays the move via `makeMove`, branching like a board move; disabled while playing vs the engine), top games (Masters) or top/recent games (Lichess) with a Load button (Masters PGN from `explorer.lichess.org/masters/pgn/{id}`, lichess games from `lichess.org/game/export/{id}`; after loading the board jumps to the explored position).
 
-- **Token required:** since November 2025 lichess answers every anonymous explorer request with `401` (DDoS protection, [lichess blog](https://lichess.org/@/thibault/blog/the-opening-explorer-now-requires-authentication/FSWh9Zg3)); limit about 20 requests/min per lichess account. The user pastes a lichess personal API token (no scopes) under Advanced; it is stored in localStorage `chesslab.explorer` (with db and filters) and sent only as `Authorization: Bearer` to `explorer.lichess.org`, never in URLs or logs and never to `lichess.org`. Without a token one request is tried; after a `401` the panel shows the token help instead of retrying.
+- **Token required:** since November 2025 lichess answers every anonymous explorer request with `401` (DDoS protection, [lichess blog](https://lichess.org/@/thibault/blog/the-opening-explorer-now-requires-authentication/FSWh9Zg3)); limit about 20 requests/min per lichess account. When logged in with lichess the login token is used (and a failed request is retried after logging in). Otherwise the user can paste a lichess personal API token (no scopes) under Advanced ("or paste a token"); it is stored in localStorage `chesslab.explorer` (with db and filters) and sent only as `Authorization: Bearer` to `explorer.lichess.org`, never in URLs or logs and never to `lichess.org`. Without a token one request is tried; after a `401` the panel shows the token help instead of retrying.
 - **Requests:** from the browser (CORS allows `Authorization`); host `https://explorer.lichess.org` is in CSP `connect-src`. Position changes are debounced 300 ms, stale requests aborted, results cached per (db, filters, start FEN + moves) for the session (LRU 200). Positions beyond 50 plies are not requested. `429` blocks requests for `Retry-After` (default 60 s; the header is not CORS-exposed) and retries automatically.
 - The panel calls `setActive(true/false)` on mount/unmount, so the store only follows the game while the tab is open.
 
@@ -57,7 +69,7 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 ## Tests
 
 - `pnpm --filter @chesslab/web test` - Vitest (jsdom), components, stores, engine clients with fakes.
-- `pnpm --filter @chesslab/web e2e` - Playwright. The config builds the app and serves it with `vite preview` on port 4180 (reused if already running), with COOP/COEP so the multi-threaded engine works. Specs: play, engine (lite, single and full builds), analysis, compare, backend (real server; also the access-token flow with `ACCESS_TOKEN` on port 8584)/remote (a fake WebSocket server in the spec), review, settings, `a11y.spec.ts` (axe on the main states, fails on serious/critical violations), `perf.spec.ts` (long-task budget during rapid navigation). Screenshots go to `test-results/screenshots` (override with `E2E_SHOTS_DIR`).
+- `pnpm --filter @chesslab/web e2e` - Playwright. The config builds the app and serves it with `vite preview` on port 4180 (reused if already running), with COOP/COEP so the multi-threaded engine works. Specs: lichess-auth (OAuth callback with mocked lichess, explorer with the login token, logout, login redirect URL), play, engine (lite, single and full builds), analysis, compare, backend (real server; also the access-token flow with `ACCESS_TOKEN` on port 8584)/remote (a fake WebSocket server in the spec), review, settings, `a11y.spec.ts` (axe on the main states, fails on serious/critical violations), `perf.spec.ts` (long-task budget during rapid navigation). Screenshots go to `test-results/screenshots` (override with `E2E_SHOTS_DIR`).
 
 ## Dev hooks
 

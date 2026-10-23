@@ -5,6 +5,7 @@ import * as client from '../../explorer/client';
 import type { ExplorerFetch } from '../../explorer/client';
 import { resetExplorerRuntime, setExplorerFetch, useExplorerStore } from '../../explorer/explorerStore';
 import { CASTLING, EMPTY, htmlResponse, jsonResponse, LICHESS_E4, MASTERS_PGN, MASTERS_START } from '../../explorer/fixtures';
+import { AUTH_STORAGE_KEY, resetLichessAuth } from '../../lichess/auth';
 import { usePlayStore } from '../../play/playStore';
 import { currentFen, useGameStore } from '../../store/gameStore';
 import { ExplorerPanel } from './ExplorerPanel';
@@ -18,6 +19,7 @@ let fetchMock: ReturnType<typeof vi.fn<ExplorerFetch>>;
 
 beforeEach(() => {
   localStorage.clear();
+  resetLichessAuth();
   resetExplorerRuntime();
   useExplorerStore.setState({ active: false, status: 'idle', key: undefined, data: undefined, error: undefined, db: 'masters', token: 'lip_t' });
   useGameStore.getState().reset();
@@ -148,18 +150,31 @@ describe('ExplorerPanel', () => {
       init.headers.Authorization ? jsonResponse(MASTERS_START) : htmlResponse(401),
     );
     render(<ExplorerPanel />);
-    expect((await screen.findByRole('alert')).textContent).toMatch(/requires a \(free\) lichess API token/);
-    expect(screen.getByRole('link', { name: 'Create a lichess token' }).getAttribute('href')).toContain(
+    expect((await screen.findByRole('alert')).textContent).toMatch(/requires authentication/);
+    expect(screen.getByRole('button', { name: 'Log in with lichess' }).getAttribute('title')).toContain('board:play');
+    expect(screen.getByRole('link', { name: 'create a lichess token' }).getAttribute('href')).toContain(
       'lichess.org/account/oauth/token/create',
     );
     const details = screen.getByText('Advanced').closest('details') as HTMLDetailsElement;
     expect(details.open).toBe(true);
-    const input = screen.getByLabelText(/lichess token/);
+    const input = screen.getByLabelText('or paste a token');
     expect(input.getAttribute('type')).toBe('password');
     fireEvent.change(input, { target: { value: 'lip_new' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByText('3,000 games');
     expect(useExplorerStore.getState().token).toBe('lip_new');
+  });
+
+  it('uses the lichess login token over the pasted one (requests and game loads)', async () => {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 'lio_login', username: 'Alice', scopes: [] }));
+    resetLichessAuth();
+    vi.mocked(client.fetchExplorerGamePgn).mockResolvedValue(MASTERS_PGN);
+    await renderReady();
+    expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toBe('Bearer lio_login');
+    expect(screen.getByTestId('explorer-auth').textContent).toBe('Using your lichess login (Alice)');
+    fireEvent.click(screen.getByRole('button', { name: 'Load Carlsen, M. – Caruana, F.' }));
+    await screen.findByText('Loaded: Carlsen, M. – Caruana, F.');
+    expect(client.fetchExplorerGamePgn).toHaveBeenCalledWith('masters', 'mAsTer01', { token: 'lio_login' });
   });
 
   it('401 with a token → rejected message', async () => {

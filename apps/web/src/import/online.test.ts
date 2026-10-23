@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AUTH_STORAGE_KEY, lichessFetch, resetLichessAuth } from '../lichess/auth';
 import {
   OnlineImportError,
   fetchChessComGames,
@@ -190,5 +191,28 @@ describe('facade', () => {
     expect(f).not.toHaveBeenCalled();
     const g = mock(res('1. d4 *'));
     expect(await fetchOnlineGamePgn({ ...base, site: 'lichess', pgnUrl: 'https://lichess.org/game/export/1' }, { fetch: g })).toBe('1. d4 *');
+  });
+});
+
+describe('lichess with the login', () => {
+  it('sends the Authorization header through lichessFetch', async () => {
+    const store = new Map<string, string>([[AUTH_STORAGE_KEY, JSON.stringify({ token: 'lio_x', username: 'Alice', scopes: [] })]]);
+    vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: () => {}, removeItem: () => {} });
+    resetLichessAuth();
+    const fetchMock = vi.fn(async () => res(`${JSON.stringify(LI_1)}\n`));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const games = await fetchLichessGames('Alice', { fetch: lichessFetch });
+      expect(games).toHaveLength(1);
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toContain('https://lichess.org/api/games/user/Alice');
+      expect(url).not.toContain('lio_x');
+      const h = new Headers(init.headers);
+      expect(h.get('Authorization')).toBe('Bearer lio_x');
+      expect(h.get('Accept')).toBe('application/x-ndjson');
+    } finally {
+      vi.unstubAllGlobals();
+      resetLichessAuth();
+    }
   });
 });

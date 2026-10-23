@@ -8,6 +8,7 @@ import {
   useSettingsStore,
   type HighlightStyle,
 } from '../../store/settingsStore';
+import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
 import styles from './SettingsPanel.module.css';
 
 const HIGHLIGHT_LABEL: Record<HighlightStyle, string> = {
@@ -89,6 +90,8 @@ export function SettingsPanel() {
   };
   return (
     <div className={styles.panel} data-testid="settings-panel">
+      <LichessAccountSection />
+
       <fieldset className={styles.group}>
         <legend>Board colours</legend>
         <div className={styles.swatches} role="radiogroup" aria-label="Board theme">

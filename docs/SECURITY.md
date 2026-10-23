@@ -68,7 +68,7 @@ Public `/health` exposed per-engine busy/idle counts and the session count (tell
 
 ### 2.8 Client side — Content-Security-Policy, fixed (M10-1)
 
-COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for threaded WASM and also isolate the page from cross-origin windows (no `window.opener` access, Spectre mitigation). `window.__chesslab` (`apps/web/src/engine/devHook.ts`) only exposes factories for code the page already ships; it grants nothing that an XSS would not already have. `localStorage` holds theme, board/piece settings and analysis settings — no secrets, no personal data.
+COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for threaded WASM and also isolate the page from cross-origin windows (no `window.opener` access, Spectre mitigation). `window.__chesslab` (`apps/web/src/engine/devHook.ts`) only exposes factories for code the page already ships; it grants nothing that an XSS would not already have. `localStorage` holds theme, board/piece settings and analysis settings — no secrets, no personal data — plus the lichess tokens described in §2.8a.
 
 **CSP (enforced since 2026-10-23).** Single source: `apps/web/csp.config.mjs` (`PRODUCTION_CSP`). nginx (`deploy/nginx/c.referee.at.conf`, `docker/nginx.web.conf`) holds a copy in `map $host $chesslab_csp` and sends it on every response (including `/assets/`, so the engine Workers get the same policy); `node scripts/check-csp.mjs [live conf]` fails on drift and runs in CI. `vite preview` sends the same policy (plus loopback `ws:` for the e2e engine servers, `'report-sample'` and a `report-uri`), so every Playwright spec runs under it.
 
@@ -89,6 +89,15 @@ default-src 'self'; script-src 'self' 'sha256-YOswKRJVs+FwLZbQstA9GmeqiOLqFnNMWa
 Rollout: Report-Only on the live site first (headless Chromium through the app: board, browser engine to depth, Import/Settings tabs → only the zod probe below), then enforcing; all e2e specs pass under the enforced policy with zero non-benign reports (`apps/web/e2e/csp-violations.ts` fails the run otherwise).
 
 *Known benign report:* zod v4 probes for JIT support with `new Function("")` in a try/catch and falls back to its interpreter; the probe is blocked and reported (`script-src`, `eval`, sample `(function anonymous(\n) {\n\n})`). Nothing breaks; the e2e check allow-lists exactly that sample. Removing it needs `z.config({ jitless: true })` at app start (open, §4).
+
+### 2.8a lichess tokens (M13-1)
+
+ChessLab holds two kinds of lichess credential, both only in this browser:
+
+- **Login token** ("Log in with lichess", `apps/web/src/lichess/auth.ts`): OAuth 2.0 authorization code flow with PKCE (S256), no client secret, `client_id` `chesslab.c.referee.at`, redirect URI = the page's own origin + path. The PKCE verifier and the random `state` live in `sessionStorage` only for the round trip and are deleted when the callback is handled; a callback whose `state` does not match is rejected without contacting lichess (CSRF). The code and state are removed from the address bar with `history.replaceState` before anything else happens. The token is requested with the scopes `board:play challenge:read challenge:write` (live games); the explorer and "My games" need no scope. It is stored in `localStorage` `chesslab.lichess` (`{token, username, scopes, expiresAt}`, lichess tokens last about a year) and sent only as `Authorization: Bearer` to `lichess.org` / `explorer.lichess.org` — `lichessFetch` refuses any other host. **Logout** deletes it locally first and then revokes it with `DELETE https://lichess.org/api/token` (failures ignored: offline logout still forgets it); a `401` on an authenticated request logs out with a message. A login that fails after the exchange revokes the half-issued token.
+- **Pasted explorer token** (fallback under Explorer → Advanced): a scope-less personal token in `localStorage` `chesslab.explorer`, sent only to the explorer, unused while logged in.
+
+Tokens never appear in a URL, a log line or an error message (the token exchange body goes in a `POST` form body; nginx logs paths without query strings anyway, §2.9). Anything able to run script in the page could read `localStorage`, so the protection is the absence of XSS: the enforced CSP (§2.8, no inline or eval'd script, `connect-src` limited to the listed hosts, so a token could not be posted elsewhere by injected markup either) and React's escaping of all lichess-provided strings. Worst case for a stolen login token: playing/challenging on the user's behalf until the user logs out here or revokes it on lichess (Preferences → Third-party access). The top-level redirect to `lichess.org/oauth` is a navigation (`location.assign`), not a form submission, so `form-action 'self'` does not apply and the CSP needs no change.
 
 ### 2.9 Transport, supply chain and abuse logging — fixed (M10-1)
 

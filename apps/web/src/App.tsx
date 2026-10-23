@@ -8,6 +8,7 @@ import { Controls } from './components/Controls/Controls';
 import { EngineToggle } from './components/EngineToggle/EngineToggle';
 import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
+import { AccountChip } from './components/LichessAccount/AccountChip';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
 import { PlayIndicator } from './components/Play/PlayIndicator';
@@ -151,7 +152,10 @@ export function App() {
     <div className={styles.app}>
       <header className={styles.header}>
         <h1 className={styles.title}>ChessLab</h1>
-        <ThemeToggle />
+        <div className={styles.headerActions}>
+          <AccountChip />
+          <ThemeToggle />
+        </div>
       </header>
       <main className={styles.main}>
         <div className={styles.boardCol}>

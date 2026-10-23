@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImportPanel } from './ImportPanel';
 import * as online from '../../import';
+import { AUTH_STORAGE_KEY, lichessFetch, resetLichessAuth } from '../../lichess/auth';
 import { currentFen, useGameStore } from '../../store/gameStore';
 
 vi.mock('../../import', async (orig) => {
@@ -14,6 +15,7 @@ afterEach(cleanup);
 beforeEach(() => {
   useGameStore.getState().reset();
   localStorage.clear();
+  resetLichessAuth();
   vi.mocked(online.fetchOnlineGames).mockReset();
   vi.mocked(online.fetchOnlineGamePgn).mockReset();
 });
@@ -125,6 +127,27 @@ describe('ImportPanel', () => {
       type('Username', 'ghost');
       fireEvent.keyDown(screen.getByLabelText('Username'), { key: 'Enter' });
       expect((await screen.findByRole('alert')).textContent).toBe('User "ghost" not found on lichess');
+    });
+
+    it('hides "My games" when not logged in with lichess', () => {
+      render(<ImportPanel />);
+      expect(screen.queryByRole('button', { name: 'My games' })).toBeNull();
+    });
+
+    it('"My games" fetches the logged-in user\'s games with the lichess login', async () => {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 'lio_x', username: 'Alice', scopes: [] }));
+      localStorage.setItem('chesslab.import.online', JSON.stringify({ site: 'chesscom', users: { chesscom: 'cc' } }));
+      resetLichessAuth();
+      vi.mocked(online.fetchOnlineGames).mockResolvedValue([game]);
+      vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue('[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0');
+      render(<ImportPanel />);
+      fireEvent.click(screen.getByRole('button', { name: 'My games' }));
+      expect(online.fetchOnlineGames).toHaveBeenCalledWith('lichess', 'Alice', { fetch: lichessFetch });
+      expect((screen.getByRole('radio', { name: 'lichess' }) as HTMLInputElement).checked).toBe(true);
+      expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('Alice');
+      const row = await screen.findByRole('button', { name: /Alice \(1800\)/ });
+      fireEvent.click(row);
+      await waitFor(() => expect(online.fetchOnlineGamePgn).toHaveBeenCalledWith(game, { fetch: lichessFetch }));
     });
 
     it('restores the saved username per site', () => {

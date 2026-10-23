@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AUTH_STORAGE_KEY, resetLichessAuth } from '../lichess/auth';
 import { useGameStore } from '../store/gameStore';
 import type { ExplorerFetch } from './client';
 import {
@@ -27,6 +28,7 @@ async function flush() {
 beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
+  resetLichessAuth();
   resetExplorerRuntime();
   useExplorerStore.setState({ active: false, status: 'idle', key: undefined, data: undefined, error: undefined, db: 'masters', token: '' });
   game().reset();
@@ -163,6 +165,32 @@ describe('explorerStore', () => {
     expect(fetchMock.mock.calls[1]?.[1].headers.Authorization).toBe('Bearer lip_abc');
     expect(store().status).toBe('ready');
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}').token).toBe('lip_abc');
+  });
+
+  it('uses the lichess login token over a pasted one', async () => {
+    useExplorerStore.setState({ token: 'lip_pasted' });
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 'lio_login', username: 'Alice', scopes: [] }));
+    resetLichessAuth();
+    store().setActive(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toBe('Bearer lio_login');
+  });
+
+  it('logging in with lichess retries a token-required error with the new token', async () => {
+    fetchMock.mockImplementation(async (_u, init) =>
+      init.headers.Authorization ? jsonResponse(MASTERS_START) : htmlResponse(401),
+    );
+    store().setActive(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store().error).toMatchObject({ kind: 'unauthorized', withToken: false });
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 'lio_login', username: 'Alice', scopes: [] }));
+    resetLichessAuth();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1].headers.Authorization).toBe('Bearer lio_login');
+    expect(store().status).toBe('ready');
+    // The login token is never written into the explorer's own storage.
+    expect(localStorage.getItem(STORAGE_KEY) ?? '').not.toContain('lio_login');
   });
 
   it('429 → rate_limited, holds requests back and retries after Retry-After', async () => {

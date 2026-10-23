@@ -124,6 +124,28 @@ test('remembers the username across reloads', async ({ page }) => {
   await expect(page.getByLabel('Username')).toHaveValue('Alice');
 });
 
+test('"My games" with the lichess login sends the token as a header', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'My games' })).toHaveCount(0);
+  const auth: string[] = [];
+  await page.route('https://lichess.org/api/games/user/**', (route) => {
+    const req = route.request();
+    const headers = { ...CORS, 'access-control-allow-headers': 'Accept,Authorization' };
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    auth.push(req.headers().authorization ?? '');
+    expect(req.url()).toContain('/api/games/user/Alice?');
+    return route.fulfill({ status: 200, headers, contentType: 'application/x-ndjson', body: `${JSON.stringify(LI_GAME)}\n` });
+  });
+  await page.evaluate(() =>
+    localStorage.setItem('chesslab.lichess', JSON.stringify({ token: 'lio_mine', username: 'Alice', scopes: [] })),
+  );
+  await page.reload();
+  await page.getByRole('tab', { name: 'Import' }).click();
+  await page.getByRole('button', { name: 'My games' }).click();
+  await expect(page.getByLabel('Username')).toHaveValue('Alice');
+  await expect(page.getByRole('list', { name: 'Recent games' }).getByRole('button')).toHaveCount(1);
+  expect(auth).toEqual(['Bearer lio_mine']);
+});
+
 test.describe('live', () => {
   test.skip(!process.env.ONLINE_IMPORT_LIVE, 'set ONLINE_IMPORT_LIVE=1 to hit the real lichess API');
   test('real lichess account', async ({ page }) => {

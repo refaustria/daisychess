@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getLichessToken, useLichessAuth } from '../lichess/auth';
 import { currentFen, useGameStore, type GameState } from '../store/gameStore';
 import {
   EXPLORER_MAX_PLY,
@@ -49,7 +50,10 @@ export interface ExplorerSettings {
   db: ExplorerDb;
   speeds: Speed[];
   ratings: RatingGroup[];
-  /** lichess personal API token (no scope). Stored only in localStorage, sent only as a header. */
+  /**
+   * Pasted lichess personal API token (no scope), the fallback when not logged in with lichess.
+   * Stored only in localStorage, sent only as a header. The login token wins (see `explorerToken`).
+   */
   token: string;
 }
 
@@ -157,6 +161,7 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let inflight: AbortController | undefined;
 let unsubscribe: (() => void) | undefined;
+let unsubscribeAuth: (() => void) | undefined;
 /** Requests are not sent before this time (after a 429). */
 let blockedUntil = 0;
 /** The explorer rejected an anonymous request: don't retry without a token. */
@@ -175,6 +180,8 @@ export function resetExplorerRuntime(): void {
   inflight = undefined;
   unsubscribe?.();
   unsubscribe = undefined;
+  unsubscribeAuth?.();
+  unsubscribeAuth = undefined;
   blockedUntil = 0;
   anonymousRejected = false;
 }
@@ -183,6 +190,11 @@ function clearTimers(): void {
   if (timer !== undefined) clearTimeout(timer);
   if (retryTimer !== undefined) clearTimeout(retryTimer);
   timer = retryTimer = undefined;
+}
+
+/** Token for explorer requests: the lichess login's token, else the pasted one, else ''. */
+export function explorerToken(pasted: string): string {
+  return getLichessToken() ?? pasted.trim();
 }
 
 const settingsOf = (s: ExplorerState): ExplorerSettings => ({
@@ -217,7 +229,7 @@ export const useExplorerStore = create<ExplorerStore>()((set, get) => {
       set({ key, fen, status: 'ready', data: hit, error: undefined });
       return;
     }
-    if (!s.token.trim() && anonymousRejected) {
+    if (!explorerToken(s.token) && anonymousRejected) {
       set({ key, fen, status: 'error', data: undefined, error: tokenRequired() });
       return;
     }
@@ -232,7 +244,7 @@ export const useExplorerStore = create<ExplorerStore>()((set, get) => {
   const run = async (key: string, q: ExplorerQuery): Promise<void> => {
     const ctrl = new AbortController();
     inflight = ctrl;
-    const token = get().token.trim();
+    const token = explorerToken(get().token);
     try {
       const data = await fetchExplorer(q, {
         signal: ctrl.signal,
@@ -286,10 +298,19 @@ export const useExplorerStore = create<ExplorerStore>()((set, get) => {
         unsubscribe = useGameStore.subscribe((g, prev) => {
           if (g.ply !== prev.ply || g.moves !== prev.moves || g.startFen !== prev.startFen) update(false);
         });
+        // Logging in (or out) with lichess changes the token: retry a failed request with it.
+        unsubscribeAuth?.();
+        unsubscribeAuth = useLichessAuth.subscribe((a, prev) => {
+          if (a.token === prev.token && a.status === prev.status) return;
+          anonymousRejected = false;
+          if (get().status === 'error') update(true, true);
+        });
         update(true, true);
       } else {
         unsubscribe?.();
         unsubscribe = undefined;
+        unsubscribeAuth?.();
+        unsubscribeAuth = undefined;
         clearTimers();
         inflight?.abort();
         inflight = undefined;

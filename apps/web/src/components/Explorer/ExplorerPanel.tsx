@@ -12,7 +12,9 @@ import {
   type RatingGroup,
   type Speed,
 } from '../../explorer/client';
-import { useExplorerStore, type ExplorerErrorInfo } from '../../explorer/explorerStore';
+import { explorerToken, useExplorerStore, type ExplorerErrorInfo } from '../../explorer/explorerStore';
+import { useLichessAuth } from '../../lichess/auth';
+import { LoginButton } from '../LichessAccount/LoginButton';
 import { usePlayStore } from '../../play/playStore';
 import { useGameStore } from '../../store/gameStore';
 import styles from './ExplorerPanel.module.css';
@@ -74,13 +76,16 @@ function gameDate(g: ExplorerGame): string {
   return g.month ?? (g.year !== undefined ? String(g.year) : '');
 }
 
-function errorView(e: ExplorerErrorInfo): { text: string; tokenHelp: boolean } {
+function errorView(e: ExplorerErrorInfo, loggedIn: boolean): { text: string; tokenHelp: boolean } {
   switch (e.kind) {
     case 'unauthorized':
+      if (loggedIn) {
+        return { text: 'Explorer not reachable: lichess rejected your login. Log out and in again in Settings.', tokenHelp: false };
+      }
       return e.withToken
         ? { text: 'Explorer not reachable: lichess rejected the token. Check it under Advanced.', tokenHelp: true }
         : {
-            text: 'Explorer not reachable without a token: lichess requires a (free) lichess API token for the opening explorer. Add one under Advanced.',
+            text: 'Explorer not reachable without a lichess account: lichess requires authentication for the opening explorer. Log in with lichess, or paste a token under Advanced.',
             tokenHelp: true,
           };
     case 'rate_limited':
@@ -93,6 +98,8 @@ function errorView(e: ExplorerErrorInfo): { text: string; tokenHelp: boolean } {
 export function ExplorerPanel({ onLoaded }: Props) {
   const st = useExplorerStore();
   const playing = usePlayStore((p) => p.mode === 'playing');
+  const loginName = useLichessAuth((a) => (a.status === 'authenticated' ? a.username : undefined));
+  const loggedIn = loginName !== undefined;
   const ids = useId();
   const [tokenDraft, setTokenDraft] = useState(st.token);
   const [showToken, setShowToken] = useState(false);
@@ -140,7 +147,8 @@ export function ExplorerPanel({ onLoaded }: Props) {
     setLoadingId(g.id);
     setLoadMsg(null);
     try {
-      const pgn = await fetchExplorerGamePgn(db, g.id, st.token ? { token: st.token } : {});
+      const token = explorerToken(st.token);
+      const pgn = await fetchExplorerGamePgn(db, g.id, token ? { token } : {});
       if (seq !== loadSeq.current) return;
       const game = useGameStore.getState();
       if (!game.loadPgn(pgn)) {
@@ -159,7 +167,7 @@ export function ExplorerPanel({ onLoaded }: Props) {
       const text =
         e instanceof ExplorerError
           ? e.kind === 'unauthorized'
-            ? 'Loading masters games requires a lichess API token (Advanced)'
+            ? 'Loading masters games requires a lichess login or token'
             : e.message
           : 'Could not load the game';
       setLoadMsg({ ok: false, text });
@@ -179,7 +187,7 @@ export function ExplorerPanel({ onLoaded }: Props) {
 
   const data = st.status === 'ready' ? st.data : undefined;
   const total = data ? data.white + data.draws + data.black : 0;
-  const err = st.status === 'error' && st.error ? errorView(st.error) : null;
+  const err = st.status === 'error' && st.error ? errorView(st.error, loggedIn) : null;
 
   let statusText = '';
   if (st.status === 'loading') statusText = 'Loading explorer…';
@@ -252,12 +260,16 @@ export function ExplorerPanel({ onLoaded }: Props) {
         <div className={styles.errorBox} role="alert">
           <p className={styles.error}>{err.text}</p>
           {err.tokenHelp && (
-            <p className={styles.help}>
-              <a href={TOKEN_CREATE_URL} target="_blank" rel="noopener noreferrer">
-                Create a lichess token
-              </a>{' '}
-              (no permissions needed), then paste it below.
-            </p>
+            <>
+              <LoginButton />
+              <p className={styles.help}>
+                Or{' '}
+                <a href={TOKEN_CREATE_URL} target="_blank" rel="noopener noreferrer">
+                  create a lichess token
+                </a>{' '}
+                (no permissions needed) and paste it under Advanced.
+              </p>
+            </>
           )}
           {st.error?.kind !== 'unauthorized' && (
             <button type="button" onClick={() => st.refresh()}>
@@ -374,6 +386,14 @@ export function ExplorerPanel({ onLoaded }: Props) {
       )}
       {playing && <p className={styles.status}>Moves and game loading are disabled during a game against the engine.</p>}
 
+      <p className={styles.status} data-testid="explorer-auth">
+        {loggedIn
+          ? `Using your lichess login (${loginName})`
+          : st.token
+            ? 'Using the pasted lichess token'
+            : 'Not logged in with lichess'}
+      </p>
+
       <details
         className={styles.details}
         open={advancedOpen}
@@ -387,7 +407,7 @@ export function ExplorerPanel({ onLoaded }: Props) {
             st.setToken(tokenDraft);
           }}
         >
-          <label htmlFor={`${ids}-token`}>lichess token (required by lichess since Nov 2025)</label>
+          <label htmlFor={`${ids}-token`}>or paste a token</label>
           <div className={styles.row}>
             <input
               id={`${ids}-token`}
@@ -417,11 +437,14 @@ export function ExplorerPanel({ onLoaded }: Props) {
             )}
           </div>
           <p className={styles.help}>
+            lichess requires authentication for the explorer since Nov 2025. Logging in with lichess (Settings) is
+            easiest; alternatively{' '}
             <a href={TOKEN_CREATE_URL} target="_blank" rel="noopener noreferrer">
-              Create a token on lichess
+              create a token on lichess
             </a>{' '}
             without any permissions. It is stored in this browser only and sent only to the lichess explorer.
             {st.token ? ' A token is saved.' : ''}
+            {st.token && loggedIn ? ' Your lichess login is used instead while you are logged in.' : ''}
           </p>
         </form>
       </details>
