@@ -6,7 +6,6 @@ import { expect, test, type Page, type Route } from '@playwright/test';
  * The live variant hits the real lichess explorer and needs EXPLORER_LIVE=1 and a token in
  * LICHESS_TOKEN (lichess requires authentication for the explorer since Nov 2025).
  */
-test.skip(!process.env.EXPLORER_TAB, 'Explorer tab not wired into App.tsx yet (set EXPLORER_TAB=1)');
 
 const CORS = {
   'access-control-allow-origin': '*',

@@ -1,8 +1,8 @@
 import '@chesslab/ui-theme/base.css';
-import { lazy, Suspense, useMemo, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, type KeyboardEvent } from 'react';
 import { AnalysisPanel } from './components/Analysis/AnalysisPanel';
 import { PreviewBanner } from './components/Analysis/PreviewBanner';
-import { analysisShapes } from './components/Analysis/shapes';
+import { analysisShapes, reviewShapes } from './components/Analysis/shapes';
 import { Board } from './components/Board/Board';
 import { Controls } from './components/Controls/Controls';
 import { EngineToggle } from './components/EngineToggle/EngineToggle';
@@ -12,6 +12,8 @@ import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
 import { PlayIndicator } from './components/Play/PlayIndicator';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
+import { installAutoReview } from './review/autoReview';
+import { useReviewStore } from './review/reviewStore';
 import { selectPrimary, useAnalysisStore } from './store/analysisStore';
 import { usePreviewStore } from './store/previewStore';
 import { useUiStore, type TabId } from './store/uiStore';
@@ -31,6 +33,9 @@ const PlayPanel = lazy(() =>
 const ReviewPanel = lazy(() =>
   import('./components/Review/ReviewPanel').then((m) => ({ default: m.ReviewPanel })),
 );
+const ExplorerPanel = lazy(() =>
+  import('./components/Explorer/ExplorerPanel').then((m) => ({ default: m.ExplorerPanel })),
+);
 const SettingsPanel = lazy(() =>
   import('./components/Settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })),
 );
@@ -40,6 +45,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'play', label: 'Play' },
   { id: 'import', label: 'Import' },
   { id: 'review', label: 'Review' },
+  { id: 'explorer', label: 'Explorer' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -84,7 +90,10 @@ export function statusText(s: GameState): string {
   }
 }
 
-/** Board wired to the preview store and the engine's arrows. */
+/**
+ * Board wired to the preview store and the arrows: the live engine's best move, or, while the
+ * Review tab shows a review, the played and the best move of the displayed ply.
+ */
 function ConnectedBoard() {
   const previewFen = usePreviewStore((s) => s.fen);
   const hover = usePreviewStore((s) => s.hover);
@@ -94,17 +103,38 @@ function ConnectedBoard() {
   const analysisFen = useAnalysisStore((s) => s.fen);
   // The best-move arrow comes from the primary (first enabled) engine.
   const best = useAnalysisStore((s) => selectPrimary(s).lines[0]?.pv[0]);
+  const reviewing = useUiStore((s) => s.activeTab === 'review');
+  const hasReview = useReviewStore((s) => s.summary !== undefined);
+  const ply = useGameStore((s) => s.ply);
+  // Only the details of the move that led to the displayed position (not of a stale game).
+  const reviewed = useReviewStore((s) => {
+    const d = s.moveDetails[ply];
+    return d && d.fenAfter === gameFen ? d : undefined;
+  });
   const shapes = useMemo(
     () =>
-      analysisShapes({
-        enabled,
-        terminal: terminal !== null,
-        previewing: previewFen !== null,
-        inSync: analysisFen === gameFen,
-        best,
-        hover,
-      }),
-    [enabled, terminal, previewFen, analysisFen, gameFen, best, hover],
+      reviewing && hasReview
+        ? reviewShapes({ previewing: previewFen !== null, move: reviewed })
+        : analysisShapes({
+            enabled,
+            terminal: terminal !== null,
+            previewing: previewFen !== null,
+            inSync: analysisFen === gameFen,
+            best,
+            hover,
+          }),
+    [
+      reviewing,
+      hasReview,
+      reviewed,
+      enabled,
+      terminal,
+      previewFen,
+      analysisFen,
+      gameFen,
+      best,
+      hover,
+    ],
   );
   const movableColor = usePlayMovableColor();
   return <Board shapes={shapes} previewFen={previewFen} movableColor={movableColor} />;
@@ -115,6 +145,8 @@ export function App() {
   const tab = useUiStore((s) => s.activeTab);
   const setTab = useUiStore((s) => s.setActiveTab);
   const alert = gameStatus(state) === 'checkmate' || isCheck(state);
+  // Loading a game starts a fast review (settings.autoReview) and opens the Review tab.
+  useEffect(() => installAutoReview(), []);
   return (
     <div className={styles.app}>
       <header className={styles.header}>
@@ -171,10 +203,18 @@ export function App() {
             aria-labelledby={`tab-${tab}`}
           >
             {tab === 'moves' && <MoveList />}
-            {tab === 'import' && <ImportPanel onLoaded={() => setTab('moves')} />}
+            {tab === 'import' && (
+              <ImportPanel
+                onLoaded={() => {
+                  // The auto review may already have switched to the Review tab.
+                  if (useUiStore.getState().activeTab === 'import') setTab('moves');
+                }}
+              />
+            )}
             <Suspense fallback={<p className={styles.loading}>Loading…</p>}>
               {tab === 'play' && <PlayPanel />}
               {tab === 'review' && <ReviewPanel />}
+              {tab === 'explorer' && <ExplorerPanel />}
               {tab === 'settings' && <SettingsPanel />}
             </Suspense>
           </div>

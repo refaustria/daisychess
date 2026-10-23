@@ -26,6 +26,14 @@ describe('settingsStore', () => {
     expect(s.coordinates).toBe(true);
     expect(s.highlightStyle).toBe('classic');
     expect(s.sound).toBe(true);
+    expect(s.autoReview).toBe(true);
+  });
+
+  it('parses and persists autoReview', () => {
+    expect(parseSettings(JSON.stringify({ autoReview: false })).autoReview).toBe(false);
+    expect(parseSettings(JSON.stringify({ autoReview: 'no' })).autoReview).toBe(true);
+    useSettingsStore.getState().set({ autoReview: false });
+    expect(stored()).toMatchObject({ autoReview: false });
   });
 
   it('persists changes under chesslab.settings', () => {

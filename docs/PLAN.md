@@ -84,10 +84,10 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M11 — Automatic analysis with suggestions
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M11-1 | Auto-review after loading a game (setting, default on, Fast preset) + per-move commentary: played vs. better move with the best line, eval swing, arrows at the current ply; summary of good/bad moves | senior | in-progress |
+| M11-1 | Auto-review after loading a game (setting, default on, Fast preset) + per-move commentary: played vs. better move with the best line, eval swing, arrows at the current ply; summary of good/bad moves | senior | done |
 
 ## M12 — Opening and position explorer
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M12-1 | Opening name + ECO from a vendored lichess/chess-openings table, shown live while playing/navigating | worker | in-progress |
-| M12-2 | Position explorer (lichess masters + lichess DB): games count, W/D/L, popular moves, recent/top games with players, date, winner; load a game from the list | senior | in-progress |
+| M12-1 | Opening name + ECO from a vendored lichess/chess-openings table, shown live while playing/navigating | worker | done |
+| M12-2 | Position explorer (lichess masters + lichess DB): games count, W/D/L, popular moves, recent/top games with players, date, winner; load a game from the list | senior | done |
