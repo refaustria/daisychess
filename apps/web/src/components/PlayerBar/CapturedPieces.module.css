@@ -1,0 +1,65 @@
+span.root {
+  max-width: 55%;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.group {
+  display: inline-flex;
+  flex: none;
+}
+
+/* Icons of one type overlap a little, more so when many pieces were captured. */
+.group > .icon + .icon {
+  margin-left: -0.5rem;
+}
+
+.dense > .icon + .icon {
+  margin-left: -0.75rem;
+}
+
+/* .icon beats the chessground rule `.cg-wrap piece` (absolute, 12.5%) by specificity. */
+.root .icon {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+  background-size: cover;
+  will-change: auto;
+  /* Dark halo keeps white pieces visible on the light bar. */
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.6));
+}
+
+/* Dark theme: black pieces get a light halo instead. */
+:global([data-theme='dark']) .root .icon:global(.black) {
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.7));
+}
+
+:global([data-theme='dark']) .root .icon:global(.white) {
+  filter: none;
+}
+
+.lead {
+  flex: none;
+  margin-left: 0.15rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* OS dark preference without an explicit theme (mirrors ui-theme base.css). */
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .root .icon:global(.black) {
+    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.7));
+  }
+
+  :global(:root:not([data-theme])) .root .icon:global(.white) {
+    filter: none;
+  }
+}

@@ -3,7 +3,10 @@ import { formatClock } from '../../clock/format';
 import { useLichessAuth } from '../../lichess/auth';
 import { useLiveStore } from '../../live/liveStore';
 import { usePlayStore } from '../../play/playStore';
-import { useGameStore, type Orientation } from '../../store/gameStore';
+import { useRoomStore } from '../../room/roomStore';
+import { roomClockTicks, roomPlayers } from '../../room/view';
+import { currentFen, useGameStore, type Orientation } from '../../store/gameStore';
+import { CapturedPieces } from './CapturedPieces';
 import { useTicker } from '../Live/LiveClock';
 import {
   liveClockTicks,
@@ -37,6 +40,8 @@ export interface PlayerBarProps {
  */
 export function PlayerBar({ side, player, position }: PlayerBarProps) {
   const { clock } = player;
+  const startFen = useGameStore((s) => s.startFen);
+  const fen = useGameStore(currentFen);
   const toMove = clock !== undefined && clock.state !== 'idle' && clock.state !== 'flagged';
   return (
     <div
@@ -51,6 +56,7 @@ export function PlayerBar({ side, player, position }: PlayerBarProps) {
         <strong className={styles.name}>{player.name}</strong>
         {player.subtitle && <span className={styles.subtitle}>{player.subtitle}</span>}
       </span>
+      <CapturedPieces side={side} startFen={startFen} fen={fen} />
       {clock && (
         <Clock
           ms={clock.ms}
@@ -67,8 +73,8 @@ export function PlayerBar({ side, player, position }: PlayerBarProps) {
 }
 
 /**
- * The players of the board from the stores. Re-renders about every 100 ms only while a live
- * clock runs; the engine game's clock is ticked by the play store itself.
+ * The players of the board from the stores. Re-renders about every 100 ms only while a live or
+ * room clock runs; the engine game's clock is ticked by the play store itself.
  */
 export function useBoardPlayers(): BoardPlayers & {
   source: BoardPlayersSource;
@@ -81,13 +87,19 @@ export function useBoardPlayers(): BoardPlayers & {
   const startFen = useGameStore((s) => s.startFen);
   const moves = useGameStore((s) => s.moves);
   const orientation = useGameStore((s) => s.orientation);
+  // A room (waiting, playing or just finished) is shown until the user leaves it or starts
+  // another game.
+  const shownRoom = useRoomStore((s) => (s.phase === 'room' ? s.room : undefined));
+  const otherGame = live.status === 'playing' || play.mode === 'playing';
+  const room = shownRoom && (shownRoom.status !== 'finished' || !otherGame) ? shownRoom : undefined;
   const liveGame = live.status === 'playing' ? live.game : undefined;
-  const now = useTicker(liveClockTicks(liveGame));
+  const now = useTicker(liveClockTicks(liveGame) || roomClockTicks(room));
   const players = selectBoardPlayers({
     live: { status: live.status, game: live.game, username },
     play,
     game: { headers, startFen, moves },
     now,
+    ...(room ? { friend: roomPlayers(room, now) } : {}),
   });
   return { ...players, orientation };
 }

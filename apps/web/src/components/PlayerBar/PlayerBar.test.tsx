@@ -69,6 +69,22 @@ describe('PlayerBar', () => {
     expect(screen.getByRole('group', { name: 'Black: Ben' })).toBeTruthy();
   });
 
+  it('captured pieces of the current position in the capturing side\'s bar', () => {
+    act(() => useGameStore.getState().loadFen('4kn2/8/8/8/8/8/4P3/4K3 w - - 0 1'));
+    // A fake move whose position lost black's knight (only `fen` is read).
+    act(() =>
+      useGameStore.setState({
+        moves: [{ fen: '4k3/8/8/8/8/8/4P3/4K3 b - - 0 1' } as never],
+        ply: 1,
+      }),
+    );
+    render(<Bars />);
+    expect(screen.getByTestId('captured-white').getAttribute('aria-label')).toBe(
+      'captured: 1 knight, +1',
+    );
+    expect(screen.queryByTestId('captured-black')).toBeNull();
+  });
+
   it('live game: lichess names and a ticking clock of the side to move', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     const t0 = Date.now();
