@@ -48,7 +48,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M5-1 | Engine registry (browser + server), enable/disable, multi-engine comparison tabs | senior | todo |
-| M5-2 | Theming UI: board colors, piece sets, coordinates, sounds, persisted in localStorage | worker | in-progress |
+| M5-2 | Theming UI: board colors, piece sets, coordinates, sounds, persisted in localStorage | worker | done |
 
 ## M6 — Polish & deploy
 | ID | Task | Tier | Status |

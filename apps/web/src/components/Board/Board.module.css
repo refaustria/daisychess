@@ -39,3 +39,23 @@
 .board :global(cg-board square.selected) {
   background-color: var(--board-selected);
 }
+
+/* Pieces stay hidden until the selected piece-set CSS has loaded (avoids a flash of unstyled pieces). */
+.board:not([data-pieces-ready]) :global(piece) {
+  visibility: hidden;
+}
+
+/* Highlight styles override the tokens locally; they work in light and dark themes. */
+.hlSubtle {
+  --board-last-move: rgba(155, 199, 0, 0.18);
+  --board-check: rgba(220, 0, 0, 0.45);
+  --board-move-dest: rgba(20, 85, 30, 0.28);
+  --board-selected: rgba(20, 85, 30, 0.25);
+}
+
+.hlNone {
+  --board-last-move: transparent;
+  --board-check: transparent;
+  --board-move-dest: transparent;
+  --board-selected: transparent;
+}

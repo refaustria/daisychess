@@ -8,11 +8,19 @@ import { Controls } from './components/Controls/Controls';
 import { EngineToggle } from './components/EngineToggle/EngineToggle';
 import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
+import { SettingsPanel } from './components/Settings/SettingsPanel';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
 import { useAnalysisStore } from './store/analysisStore';
 import { usePreviewStore } from './store/previewStore';
-import { currentFen, gameStatus, isCheck, turn, useGameStore, type GameState } from './store/gameStore';
+import {
+  currentFen,
+  gameStatus,
+  isCheck,
+  turn,
+  useGameStore,
+  type GameState,
+} from './store/gameStore';
 import styles from './App.module.css';
 
 export function statusText(s: GameState): string {
@@ -56,7 +64,7 @@ function ConnectedBoard() {
 
 export function App() {
   const state = useGameStore();
-  const [tab, setTab] = useState<'moves' | 'import'>('moves');
+  const [tab, setTab] = useState<'moves' | 'import' | 'settings'>('moves');
   const alert = gameStatus(state) === 'checkmate' || isCheck(state);
   return (
     <div className={styles.app}>
@@ -99,9 +107,19 @@ export function App() {
             >
               Import
             </button>
+            <button
+              role="tab"
+              aria-selected={tab === 'settings'}
+              className={tab === 'settings' ? styles.tabActive : styles.tab}
+              onClick={() => setTab('settings')}
+            >
+              Settings
+            </button>
           </div>
           <div className={styles.content}>
-            {tab === 'moves' ? <MoveList /> : <ImportPanel onLoaded={() => setTab('moves')} />}
+            {tab === 'moves' && <MoveList />}
+            {tab === 'import' && <ImportPanel onLoaded={() => setTab('moves')} />}
+            {tab === 'settings' && <SettingsPanel />}
           </div>
         </section>
       </main>
