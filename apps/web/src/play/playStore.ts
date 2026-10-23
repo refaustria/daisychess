@@ -106,15 +106,25 @@ export const CLOCK_TICK_MS = 100;
 export const PLAY_STORAGE_KEY = 'chesslab.play';
 
 /**
- * Returns a reason why a local engine game must not start (a live lichess game runs), or null.
- * Registered by the live store (`live/liveStore.ts`), which keeps this module free of an import
- * cycle; the shared rule for the UI is `live/lock.ts`.
+ * Returns a reason why a local engine game must not start (a live lichess game or a game against
+ * a friend runs), or null. Registered by the live store (`live/liveStore.ts`) and the room store
+ * (`room/roomStore.ts`), which keeps this module free of an import cycle; the shared rule for the
+ * UI is `live/lock.ts`.
  */
 export type PlayStartGuard = () => string | null;
-let startGuard: PlayStartGuard = () => null;
+const startGuards = new Map<string, PlayStartGuard>();
 
-export function setPlayStartGuard(guard: PlayStartGuard): void {
-  startGuard = guard;
+/** Registers (or replaces) the guard named `name`. */
+export function setPlayStartGuard(guard: PlayStartGuard, name = 'live'): void {
+  startGuards.set(name, guard);
+}
+
+function startGuard(): string | null {
+  for (const g of startGuards.values()) {
+    const r = g();
+    if (r) return r;
+  }
+  return null;
 }
 
 const monotonicNow = (): number =>

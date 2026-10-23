@@ -175,6 +175,12 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 ### Play vs engine
 - Play tab: pick colour, strength (Elo presets) and thinking time; promotion dialog, takeback, resign, rematch, "Review this game". Live analysis and Review are paused during a game; loading a position or PGN aborts it.
 
+### Play a friend via link
+- Friend tab: pick a nickname, time control (presets, custom or no clock) and colour, then "Create link" and send the link (`https://c.referee.at/#/room/<id>`) to your friend. No account and no server token needed.
+- Your friend opens the link, picks a nickname and joins; the game starts. Anyone opening the link after both seats are taken watches.
+- The server runs the rules and the clocks (shown in the player bars; the first move of each side is untimed). Draw offers, resign, abort before both have moved, and "Claim victory" when the opponent stays disconnected for 60 s. A reload or a lost connection re-attaches to your seat (the seat secret stays in this browser's localStorage).
+- Engines, review and explorer are locked while you play (fair play); the game is reviewed automatically afterwards. "Play again" creates a new link with colours swapped.
+
 ### Online import
 - Import tab: fetch recent games of a user from the lichess and chess.com public APIs.
 

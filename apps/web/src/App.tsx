@@ -15,6 +15,8 @@ import { PlayIndicator } from './components/Play/PlayIndicator';
 import { PlayerBar, useBoardPlayers } from './components/PlayerBar/PlayerBar';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
 import { installAutoReview } from './review/autoReview';
+import { installRoomRoute } from './room/roomStore';
+import { useRoomStatus } from './room/useRoomStatus';
 import { useReviewStore } from './review/reviewStore';
 import { selectPrimary, useAnalysisStore } from './store/analysisStore';
 import { usePreviewStore } from './store/previewStore';
@@ -35,6 +37,9 @@ const PlayPanel = lazy(() =>
 const LivePanel = lazy(() =>
   import('./components/Live/LivePanel').then((m) => ({ default: m.LivePanel })),
 );
+const FriendPanel = lazy(() =>
+  import('./components/Room/FriendPanel').then((m) => ({ default: m.FriendPanel })),
+);
 const ReviewPanel = lazy(() =>
   import('./components/Review/ReviewPanel').then((m) => ({ default: m.ReviewPanel })),
 );
@@ -49,6 +54,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'moves', label: 'Moves' },
   { id: 'play', label: 'Play' },
   { id: 'live', label: 'Live' },
+  { id: 'friend', label: 'Friend' },
   { id: 'import', label: 'Import' },
   { id: 'review', label: 'Review' },
   { id: 'explorer', label: 'Explorer' },
@@ -168,9 +174,12 @@ export function App() {
   const state = useGameStore();
   const tab = useUiStore((s) => s.activeTab);
   const setTab = useUiStore((s) => s.setActiveTab);
-  const alert = gameStatus(state) === 'checkmate' || isCheck(state);
+  const roomStatus = useRoomStatus();
+  const alert = roomStatus === null && (gameStatus(state) === 'checkmate' || isCheck(state));
   // Loading a game starts a fast review (settings.autoReview) and opens the Review tab.
   useEffect(() => installAutoReview(), []);
+  // `#/room/<id>` links open the Friend tab (on load and on hash changes).
+  useEffect(() => installRoomRoute(), []);
   return (
     <div className={styles.app}>
       <header className={styles.header}>
@@ -201,7 +210,7 @@ export function App() {
             role="status"
             aria-live="polite"
           >
-            {statusText(state)}
+            {roomStatus ?? statusText(state)}
           </p>
           <Controls />
           <AnalysisPanel />
@@ -241,6 +250,7 @@ export function App() {
             <Suspense fallback={<p className={styles.loading}>Loading…</p>}>
               {tab === 'play' && <PlayPanel />}
               {tab === 'live' && <LivePanel />}
+              {tab === 'friend' && <FriendPanel />}
               {tab === 'review' && <ReviewPanel />}
               {tab === 'explorer' && <ExplorerPanel />}
               {tab === 'settings' && <SettingsPanel />}

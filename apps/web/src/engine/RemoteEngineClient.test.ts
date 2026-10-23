@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION, type EngineInfo } from '@chesslab/engine-core';
 import { RemoteEngineClient, RemoteEngineError, randomSessionId, type RemoteEngineClientOptions } from './RemoteEngineClient';
 import { FakeWebSocket, TEST_WELCOME } from './remoteTesting';
+import { describeRemoteError, UNAUTHORIZED_MESSAGE } from '../store/analysisStore';
 import { flush } from './testing';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -88,6 +89,25 @@ describe('RemoteEngineClient handshake', () => {
     expect(err).toBeInstanceOf(RemoteEngineError);
     expect((err as RemoteEngineError).code).toBe('unauthorized');
     expect(client.status).toBe('error');
+  });
+
+  it('maps a restricted welcome (capabilities.analysis false, ADR-013) to unauthorized', async () => {
+    const { client } = setup({}, (s) => {
+      s.welcome = { ...TEST_WELCOME, engines: [], capabilities: { analysis: false, rooms: true } };
+    });
+    const err = await client.load().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RemoteEngineError);
+    expect((err as RemoteEngineError).code).toBe('unauthorized');
+    expect(describeRemoteError(err)).toBe(UNAUTHORIZED_MESSAGE);
+    expect(client.status).toBe('error');
+  });
+
+  it('accepts a welcome with capabilities.analysis true', async () => {
+    const { client } = setup({}, (s) => {
+      s.welcome = { ...TEST_WELCOME, capabilities: { analysis: true, rooms: true } };
+    });
+    await client.load();
+    expect(client.status).toBe('ready');
   });
 
   it('is idempotent', async () => {

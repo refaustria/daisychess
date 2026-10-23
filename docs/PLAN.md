@@ -115,4 +115,4 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M16-1 | Protocol (ADR-013) + server: rooms over the existing WebSocket, server-side move validation and clocks, reconnect token, draw/resign/abort/claim, limits; works without the engine access token | architect | done |
-| M16-2 | Web: "Friend" play mode — create link with nickname/time control/colour, join via link with nickname, board + clocks, fair-play engine lock, result + auto review | senior | in progress |
+| M16-2 | Web: "Friend" play mode — create link with nickname/time control/colour, join via link with nickname, board + clocks, fair-play engine lock, result + auto review | senior | done |

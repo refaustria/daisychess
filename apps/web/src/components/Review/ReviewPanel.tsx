@@ -236,7 +236,9 @@ export function ReviewPanel() {
           <span className={styles.muted}>
             {lock === 'live'
               ? 'Review is disabled during a live game (lichess fair play)'
-              : 'Finish or stop the game first'}
+              : lock === 'room'
+                ? 'Review is disabled during a game against a friend (fair play)'
+                : 'Finish or stop the game first'}
           </span>
         ) : (
           !hasMoves && <span className={styles.muted}>Play or import a game first.</span>

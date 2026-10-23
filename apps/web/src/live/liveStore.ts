@@ -158,10 +158,17 @@ function restoreAnalysis(): void {
 
 const myName = (): string | undefined => useLichessAuth.getState().username;
 
+/** Another game that blocks starting a lichess game (a game against a friend; `room/roomStore.ts`). */
+let liveStartGuard: () => string | null = () => null;
+
+export function setLiveStartGuard(guard: () => string | null): void {
+  liveStartGuard = guard;
+}
+
 function canPlay(): string | null {
   if (!hasScope(BOARD_SCOPE)) return 'Log in with lichess (with the board:play permission) to play live games';
   if (usePlayStore.getState().mode === 'playing') return PLAY_RUNNING_TEXT;
-  return null;
+  return liveStartGuard();
 }
 
 function upsertOngoing(list: OngoingGame[], g: GameInfo): OngoingGame[] {

@@ -92,8 +92,11 @@ function NumberField(props: {
   );
 }
 
-/** "Time control" select (presets by category, Custom, No clock) with the custom inputs. */
-function TimeControlField({
+/**
+ * "Time control" select (presets by category, Custom, No clock) with the custom inputs. Also
+ * used by the Friend tab.
+ */
+export function TimeControlField({
   value,
   onChange,
 }: {
@@ -243,17 +246,18 @@ export function PlayPanel() {
             ? ' With a clock the engine thinks at most the chosen time, less when its time runs low.'
             : ''}
         </p>
-        {lock === 'live' && (
+        {(lock === 'live' || lock === 'room') && (
           <p className={styles.error} id={`${id}-locked`}>
-            A live game is running. {lockText(lock)}
+            {lock === 'live' ? 'A live game is running.' : 'A game against a friend is running.'}{' '}
+            {lockText(lock)}
           </p>
         )}
         {play.message && <p className={styles.error}>{play.message}</p>}
         <button
           type="submit"
           className={styles.primary}
-          disabled={lock === 'live'}
-          aria-describedby={lock === 'live' ? `${id}-locked` : undefined}
+          disabled={lock === 'live' || lock === 'room'}
+          aria-describedby={lock === 'live' || lock === 'room' ? `${id}-locked` : undefined}
         >
           Start
         </button>

@@ -18,6 +18,7 @@ import {
   type WelcomeMessage,
 } from '@chesslab/engine-core';
 import type { AnalysisEngine, EngineCapabilities } from './AnalysisController';
+import { defaultServerUrl } from './serverUrl';
 import type { AnalysisHandle } from './UciSession';
 
 /** The subset of the browser `WebSocket` the client uses (injectable for tests). */
@@ -51,7 +52,8 @@ export interface RemoteEngineClientOptions {
   clientInfo?: { name: string; version?: string };
   /**
    * Server access token, sent in `hello.token` (ADR-010). Empty/undefined sends none; a server
-   * with `ACCESS_TOKEN` then answers `unauthorized`.
+   * with `ACCESS_TOKEN` then gives a restricted `welcome` (`capabilities.analysis: false`,
+   * ADR-013), which {@link RemoteEngineClient.load} rejects with code `unauthorized`.
    */
   token?: string;
 }
@@ -181,11 +183,6 @@ export function randomSessionId(): string {
   return id;
 }
 
-function defaultUrl(): string {
-  const loc = globalThis.location;
-  return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`;
-}
-
 /** Client-settable options (ADR-006: the only UCI options carried on `analyze`). */
 const OPTION_KEYS = { threads: 'threads', hash: 'hash', multipv: 'multipv' } as const;
 type OptionKey = (typeof OPTION_KEYS)[keyof typeof OPTION_KEYS];
@@ -235,7 +232,7 @@ export class RemoteEngineClient implements AnalysisEngine {
 
   constructor(options: RemoteEngineClientOptions = {}) {
     this.options = options;
-    this.url = options.url ?? defaultUrl();
+    this.url = options.url ?? defaultServerUrl();
     this.handshakeTimeoutMs = options.handshakeTimeoutMs ?? 10_000;
     this.responseTimeoutMs = options.responseTimeoutMs ?? 10_000;
   }
@@ -358,6 +355,17 @@ export class RemoteEngineClient implements AnalysisEngine {
         return;
       }
       if (msg.type === 'welcome') {
+        // Restricted welcome (ADR-013): the token was missing or wrong; rooms work, analysis
+        // does not. Mapped to the same error as the former `unauthorized` handshake failure.
+        if (msg.capabilities?.analysis === false) {
+          handshake.reject(
+            new RemoteEngineError(
+              'Engine server: access token required or wrong',
+              'unauthorized',
+            ),
+          );
+          return;
+        }
         try {
           this.engine = this.selectEngine(msg);
         } catch (err) {

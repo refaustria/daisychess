@@ -7,6 +7,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalysisEngine } from '../engine/AnalysisController';
 import type { ProbeClient } from '../engine/registry';
+import { RemoteEngineClient } from '../engine/RemoteEngineClient';
+import { FakeWebSocket, TEST_WELCOME } from '../engine/remoteTesting';
 import {
   classifyPosition,
   DEFAULT_SETTINGS,
@@ -22,6 +24,7 @@ import {
   selectPrimary,
   startAnalysisController,
   STORAGE_KEY,
+  UNAUTHORIZED_MESSAGE,
   useAnalysisStore,
   type AnalysisLine,
   type EngineInstanceState,
@@ -725,6 +728,26 @@ describe('server probe', () => {
     useAnalysisStore.getState().setSettings({ remoteUrl: 'ws://third:1/ws' });
     await p;
     expect(useAnalysisStore.getState().serverProbe).toEqual({ status: 'idle' });
+  });
+
+  it('a restricted welcome (no token, ADR-013) reads as the access token error', async () => {
+    stop();
+    stop = startAnalysisController({
+      createEngine: () => new ScriptedEngine(),
+      createProbeClient: () =>
+        new RemoteEngineClient({
+          createSocket: (url) => {
+            const s = new FakeWebSocket(url);
+            s.welcome = { ...TEST_WELCOME, engines: [], capabilities: { analysis: false, rooms: true } };
+            return s;
+          },
+        }),
+    });
+    await useAnalysisStore.getState().probeServer({ force: true });
+    expect(useAnalysisStore.getState().serverProbe).toMatchObject({
+      status: 'error',
+      error: UNAUTHORIZED_MESSAGE,
+    });
   });
 
   it('enabling a server engine probes the server', async () => {

@@ -1,5 +1,6 @@
 import { isHumanGameRunning } from '../live/lock';
 import { isLiveLocked, useLiveStore } from '../live/liveStore';
+import { isRoomLocked, useRoomStore } from '../room/roomStore';
 import { useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
@@ -30,7 +31,8 @@ export function isGameLoad(
  * `autoReview` setting is on and no human game (engine game, live lichess game) is running, and
  * switches the side panel to the Review tab (except from the Explorer tab, which stays open).
  * Also reviews a live lichess game when it finishes (without switching tabs: the Live panel shows
- * the result) and cancels a running review when a live game or seek starts. A running review (of
+ * the result) and cancels a running review when a live game or seek starts; the same for a game
+ * against a friend (room, ADR-013). A running review (of
  * the previous game) is replaced. Returns the unsubscribe function.
  */
 export function installAutoReview(): () => void {
@@ -60,9 +62,24 @@ export function installAutoReview(): () => void {
       startFast();
     }
   });
+  const unwatchRoom = useRoomStore.subscribe((s, prev) => {
+    // The user's game against a friend started: no review may run (fair play).
+    if (isRoomLocked(s) && !isRoomLocked(prev)) {
+      const review = useReviewStore.getState();
+      if (review.status === 'running') review.cancel();
+    }
+    // It just ended: review it in the background (the Friend panel shows the result).
+    if (!isRoomLocked(s) && isRoomLocked(prev) && s.room?.status === 'finished') {
+      if (!useSettingsStore.getState().autoReview) return;
+      if (useGameStore.getState().moves.length < AUTO_REVIEW_MIN_MOVES) return;
+      if (isHumanGameRunning()) return;
+      startFast();
+    }
+  });
   return () => {
     unwatchGame();
     unwatchLive();
+    unwatchRoom();
   };
 }
 
