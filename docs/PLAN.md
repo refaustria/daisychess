@@ -98,7 +98,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M13-1 | "Log in with lichess" (OAuth PKCE), shared token store used by Explorer and Import ("my games"), logout/revoke | senior | done |
 | M13-2 | Live games via Board API: seek/challenge/AI, event + game streams, clocks, moves, draw/resign/abort, hard engine lock during a live game, auto review afterwards | senior | done |
 | M13-3 | Incoming challenges and ongoing games shown on open; Live tab wiring in App | senior | done |
-| M13-4 | Log in with a pasted personal access token (board:play, challenge:*) as alternative to OAuth; no revoke on logout for pasted tokens | worker | in-progress |
+| M13-4 | Log in with a pasted personal access token (board:play, challenge:*) as alternative to OAuth; no revoke on logout for pasted tokens | worker | done |
 
 ## M14 — Clocks and time controls for local play
 | ID | Task | Tier | Status |

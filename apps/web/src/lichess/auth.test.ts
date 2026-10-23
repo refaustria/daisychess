@@ -301,3 +301,101 @@ describe('lichessFetch', () => {
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
   });
 });
+
+describe('loginWithToken', () => {
+  const TOKEN = 'lip_secretToken123';
+  function tokenApi(opts: { entry?: unknown; testStatus?: number; accountStatus?: number } = {}) {
+    fetchMock.mockImplementation(async (input, init) => {
+      if (input === 'https://lichess.org/api/token/test') {
+        if (opts.testStatus) return json({}, opts.testStatus);
+        const entry = 'entry' in opts ? opts.entry : { userId: 'alice', scopes: 'board:play,challenge:read', expires: 1893456000000 };
+        return json({ [String(init?.body)]: entry });
+      }
+      if (input === 'https://lichess.org/api/account') {
+        return opts.accountStatus ? json({}, opts.accountStatus) : json({ id: 'alice', username: 'Alice' });
+      }
+      return json({}, 404);
+    });
+  }
+
+  it('validates, reads scopes and expiry, stores the token and trims it', async () => {
+    tokenApi();
+    await useLichessAuth.getState().loginWithToken(`  ${TOKEN}\n`);
+    const s = useLichessAuth.getState();
+    expect(s).toMatchObject({ status: 'authenticated', source: 'token', username: 'Alice', scopes: ['board:play', 'challenge:read'] });
+    expect(getLichessToken()).toBe(TOKEN);
+    expect(hasScope('board:play')).toBe(true);
+    expect(hasScope('challenge:write')).toBe(false);
+    expect(JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)!)).toEqual({
+      token: TOKEN,
+      username: 'Alice',
+      scopes: ['board:play', 'challenge:read'],
+      source: 'token',
+      expiresAt: 1893456000000,
+    });
+    // The token only travels in the body of the test request, never in a URL.
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('https://lichess.org/api/token/test');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBe(TOKEN);
+    expect(fetchMock.mock.calls.every(([u]) => !u.includes(TOKEN))).toBe(true);
+    expect(new Headers(fetchMock.mock.calls[1]![1]?.headers).get('Authorization')).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it('rejects empty and multi-line input without a request', async () => {
+    for (const bad of ['', '   ', 'a\nb', 'a b']) {
+      await expect(useLichessAuth.getState().loginWithToken(bad)).rejects.toThrow();
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useLichessAuth.getState().status).toBe('error');
+  });
+
+  it('rejects an invalid or expired token', async () => {
+    tokenApi({ entry: null });
+    await expect(useLichessAuth.getState().loginWithToken(TOKEN)).rejects.toThrow('Token invalid or expired');
+    const s = useLichessAuth.getState();
+    expect(s).toMatchObject({ status: 'error', error: 'Token invalid or expired' });
+    expect(JSON.stringify(s)).not.toContain(TOKEN);
+    expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+  });
+
+  it('allows missing scopes', async () => {
+    tokenApi({ entry: { userId: 'alice', scopes: '', expires: null } });
+    await useLichessAuth.getState().loginWithToken(TOKEN);
+    const s = useLichessAuth.getState();
+    expect(s.status).toBe('authenticated');
+    expect(s.scopes).toEqual([]);
+    expect(JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)!).expiresAt).toBeUndefined();
+  });
+
+  it('fails when the account cannot be read, storing nothing', async () => {
+    tokenApi({ accountStatus: 500 });
+    await expect(useLichessAuth.getState().loginWithToken(TOKEN)).rejects.toThrow(/account/);
+    expect(useLichessAuth.getState().status).toBe('error');
+    expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+  });
+
+  it('reports a network failure without the token', async () => {
+    fetchMock.mockRejectedValue(new TypeError('offline'));
+    await expect(useLichessAuth.getState().loginWithToken(TOKEN)).rejects.toThrow(/Could not reach/);
+    expect(useLichessAuth.getState().error).not.toContain(TOKEN);
+  });
+
+  it('does not revoke a pasted token on logout', async () => {
+    tokenApi();
+    await useLichessAuth.getState().loginWithToken(TOKEN);
+    fetchMock.mockClear();
+    await useLichessAuth.getState().logout();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useLichessAuth.getState().status).toBe('anonymous');
+    expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+  });
+
+  it('treats stored objects without `source` as OAuth logins (revoked on logout)', async () => {
+    login('lio_old');
+    expect(useLichessAuth.getState().source).toBe('oauth');
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    await useLichessAuth.getState().logout();
+    expect(fetchMock.mock.calls[0]![1]?.method).toBe('DELETE');
+  });
+});

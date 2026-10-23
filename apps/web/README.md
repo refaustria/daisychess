@@ -67,7 +67,7 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 - Consumers: the explorer prefers the login token over a pasted one; Import → "My games" (visible when logged in) fetches the user's own games with the token. Token handling: `docs/SECURITY.md` §2.8a.
 
 
-**Personal access token (alternative).** Settings → lichess account → "Use a personal access token instead": create a token on lichess (the link prefills `board:play`, `challenge:read`, `challenge:write`), paste it (hidden by default) and "Save token". `loginWithToken()` checks it with `POST /api/token/test` (token in the request body only), reads scopes and expiry, fetches the username from `/api/account` and stores the same `chesslab.lichess` entry with `source: 'token'` (older entries without `source` count as OAuth). Missing permissions are listed with a hint to create a new token. Logging out of a pasted token only forgets it here; it stays valid on lichess (an OAuth login is revoked).
+**Personal access token (alternative).** Settings → lichess account → "Use a personal access token instead": create a token on lichess (the link prefills `board:play`, `challenge:read`, `challenge:write`), paste it (hidden by default) and "Save lichess token". `loginWithToken()` checks it with `POST /api/token/test` (token in the request body only), reads scopes and expiry, fetches the username from `/api/account` and stores the same `chesslab.lichess` entry with `source: 'token'` (older entries without `source` count as OAuth). Missing permissions are listed with a hint to create a new token. Logging out of a pasted token only forgets it here; it stays valid on lichess (an OAuth login is revoked).
 
 ## Live games on lichess
 

@@ -173,3 +173,84 @@ test('Log in navigates to lichess.org/oauth with PKCE parameters and scopes', as
   const pending = await page.evaluate(() => sessionStorage.getItem('chesslab.lichess.pkce'));
   expect(JSON.parse(pending ?? '{}')).toMatchObject({ state: p.get('state'), redirectUri: `${baseURL}/` });
 });
+
+const PAT = 'lip_e2ePersonalToken';
+
+async function mockTokenTest(page: Page, valid: boolean) {
+  const seen = { deletes: 0, testBodies: [] as string[], accountAuth: '' };
+  await page.route('https://lichess.org/api/token/test', (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
+    const body = req.postData() ?? '';
+    seen.testBodies.push(body);
+    return route.fulfill({
+      status: 200,
+      headers: CORS,
+      contentType: 'application/json',
+      body: JSON.stringify({ [body]: valid ? { userId: 'e2euser', scopes: 'board:play,challenge:read', expires: null } : null }),
+    });
+  });
+  await page.route('https://lichess.org/api/account', (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
+    seen.accountAuth = req.headers().authorization ?? '';
+    return route.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify({ id: 'e2euser', username: 'E2eUser' }) });
+  });
+  await page.route('https://lichess.org/api/token', (route) => {
+    if (route.request().method() === 'DELETE') seen.deletes += 1;
+    return route.fulfill({ status: 204, headers: CORS });
+  });
+  return seen;
+}
+
+test('a pasted personal token logs in, shows scopes, survives reload, logout does not revoke', async ({ page }) => {
+  const seen = await mockTokenTest(page, true);
+  const csp: string[] = [];
+  page.on('console', (m) => {
+    if (/Content Security Policy/i.test(m.text())) csp.push(m.text());
+  });
+  await page.goto('/');
+  await expect(page.locator('cg-board')).toBeVisible();
+  await page.getByTestId('account-chip').click();
+  const account = page.getByTestId('lichess-account');
+  await account.getByText('Use a personal access token instead').click();
+  await account.getByLabel('Personal access token').fill(`  ${PAT} `);
+  await account.getByRole('button', { name: 'Save lichess token' }).click();
+
+  await expect(account).toContainText('Logged in as E2eUser');
+  await expect(account).toContainText('via token');
+  const scopes = account.getByRole('list', { name: 'Granted permissions' });
+  await expect(scopes.locator('li').nth(0)).toContainText('✓');
+  await expect(scopes.locator('li').nth(1)).toContainText('✓');
+  await expect(scopes.locator('li').nth(2)).toContainText('✗');
+  await expect(account).toContainText('Create a new token with the missing permissions: challenge:write');
+  expect(seen.testBodies).toEqual([PAT]);
+  expect(seen.accountAuth).toBe(`Bearer ${PAT}`);
+  expect(await page.content()).not.toContain(PAT);
+  expect(page.url()).not.toContain(PAT);
+
+  await page.reload();
+  await expect(page.getByTestId('account-chip')).toHaveText('E2eUser');
+
+  await page.getByTestId('account-chip').click();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await expect(page.getByTestId('account-chip')).toHaveText('Log in');
+  expect(await page.evaluate(() => localStorage.getItem('chesslab.lichess'))).toBeNull();
+  await page.waitForTimeout(300);
+  expect(seen.deletes).toBe(0);
+  expect(csp).toEqual([]);
+});
+
+test('a wrong personal token shows an error and stays anonymous', async ({ page }) => {
+  await mockTokenTest(page, false);
+  await page.goto('/');
+  await expect(page.locator('cg-board')).toBeVisible();
+  await page.getByTestId('account-chip').click();
+  const account = page.getByTestId('lichess-account');
+  await account.getByText('Use a personal access token instead').click();
+  await account.getByLabel('Personal access token').fill('lip_wrong');
+  await account.getByRole('button', { name: 'Save lichess token' }).click();
+  await expect(account.getByRole('alert')).toHaveText('Token invalid or expired');
+  await expect(page.getByTestId('account-chip')).toHaveText('Log in');
+  expect(await page.evaluate(() => localStorage.getItem('chesslab.lichess'))).toBeNull();
+});
