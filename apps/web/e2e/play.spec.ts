@@ -135,6 +135,8 @@ test('PGN import: checkmate, move list, click to navigate', async ({ page }) => 
   await page.getByRole('tab', { name: 'Import' }).click();
   await page.getByLabel('PGN text').fill(SCHOLAR);
   await page.getByRole('button', { name: 'Load PGN' }).click();
+  // Loading opens the automatic review; the move list is on the Moves tab.
+  await page.getByRole('tab', { name: 'Moves' }).click();
   // Loaded games start at ply 0; jump to the end to see the mate.
   await page.getByRole('button', { name: 'Last move' }).click();
   await expect(page.getByTestId('status')).toHaveText('Checkmate — White wins');
@@ -152,6 +154,7 @@ test('PGN import via file upload', async ({ page }) => {
   writeFileSync(file, `[White "Ann"]\n[Black "Bob"]\n[Result "1-0"]\n\n${SCHOLAR} 1-0\n`);
   await page.getByRole('tab', { name: 'Import' }).click();
   await page.getByLabel('PGN file').setInputFiles(file);
+  await page.getByRole('tab', { name: 'Moves' }).click();
   await expect(page.getByText('Ann – Bob')).toBeVisible();
   await expect(page.getByTestId('movelist').getByRole('button')).toHaveCount(7);
 });

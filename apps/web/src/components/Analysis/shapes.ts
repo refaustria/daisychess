@@ -1,3 +1,4 @@
+import type { MoveClass } from '@chesslab/engine-core';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
 
@@ -32,4 +33,38 @@ export function analysisShapes(i: ShapeInput): DrawShape[] {
   }
   const arrow = i.best ? uciArrow(i.best, 'green') : null;
   return arrow ? [arrow] : [];
+}
+
+/** Arrow brush of a played move by its review class (chessground's `yellow` is orange). */
+export const CLASS_BRUSH: Record<MoveClass, string> = {
+  best: 'green',
+  excellent: 'paleGreen',
+  good: 'paleGreen',
+  forced: 'paleGreen',
+  inaccuracy: 'yellow',
+  mistake: 'red',
+  blunder: 'red',
+};
+
+export interface ReviewShapeInput {
+  previewing: boolean;
+  /** Review data of the move that led to the displayed position, if any. */
+  move?: {
+    playedUci: string;
+    bestUci?: string;
+    classification: MoveClass;
+  };
+}
+
+/**
+ * Review arrows for the displayed ply: the played move coloured by its class and, when it differs,
+ * the engine's best move in green (from the position before the move).
+ */
+export function reviewShapes(i: ReviewShapeInput): DrawShape[] {
+  if (i.previewing || !i.move) return [];
+  const { playedUci, bestUci, classification } = i.move;
+  const same = bestUci === playedUci;
+  const played = uciArrow(playedUci, same ? 'green' : CLASS_BRUSH[classification]);
+  const best = bestUci && !same ? uciArrow(bestUci, 'green') : null;
+  return [played, best].filter((s): s is DrawShape => s !== null);
 }

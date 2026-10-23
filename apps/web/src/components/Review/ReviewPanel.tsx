@@ -1,11 +1,13 @@
-import { MOVE_CLASSES, type ReviewSummary } from '@chesslab/engine-core';
+import { MOVE_CLASSES, type ReviewedMove, type ReviewSummary } from '@chesslab/engine-core';
 import { useMemo, useState } from 'react';
 import { annotatePgn } from '../../review/annotatePgn';
+import { reviewHighlights } from '../../review/details';
 import { CLASS_INFO, bestMoveSan, moveNumberLabel } from '../../review/format';
 import { usePlayStore } from '../../play/playStore';
 import { REVIEW_PRESETS, useReviewStore } from '../../review/reviewStore';
 import { useGameStore } from '../../store/gameStore';
 import { EvalGraph } from './EvalGraph';
+import { MoveCommentary } from './MoveCommentary';
 import styles from './ReviewPanel.module.css';
 
 type PresetKey = keyof typeof REVIEW_PRESETS;
@@ -13,7 +15,6 @@ const PRESET_LABELS: Record<PresetKey, string> = {
   fast: 'Fast (0.3 s/move)',
   deep: 'Deep (depth 18)',
 };
-const MAX_MOMENTS = 10;
 
 function download(text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/x-chess-pgn' }));
@@ -26,40 +27,77 @@ function download(text: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function KeyMoments({ summary }: { summary: ReviewSummary }) {
+/** Player name from the PGN headers (`?` = unknown) or the colour. */
+function playerName(headers: Record<string, string>, color: 'white' | 'black'): string {
+  const key = color === 'white' ? 'White' : 'Black';
+  const v = headers[key]?.trim();
+  return v && v !== '?' ? v : key;
+}
+
+function MoveItem({ move, showBest }: { move: ReviewedMove; showBest: boolean }) {
   const startFen = useGameStore((s) => s.startFen);
   const moves = useGameStore((s) => s.moves);
   const goTo = useGameStore((s) => s.goTo);
-  const items = summary.moves
-    .filter((m) => m.classification === 'blunder' || m.classification === 'mistake')
-    .sort((a, b) => b.winProbLoss - a.winProbLoss)
-    .slice(0, MAX_MOMENTS);
-  if (items.length === 0) return <p className={styles.muted}>No mistakes or blunders found.</p>;
+  const info = CLASS_INFO[move.classification];
+  const best = showBest ? bestMoveSan(startFen, moves, move) : undefined;
+  const loss = Math.round(move.winProbLoss);
   return (
-    <ul className={styles.moments}>
-      {items.map((m) => {
-        const info = CLASS_INFO[m.classification];
-        const best = bestMoveSan(startFen, moves, m);
-        return (
-          <li key={m.ply}>
-            <button type="button" className={styles.moment} onClick={() => goTo(m.ply)}>
-              <span className={styles.momentMain}>
-                <span className={styles.dot} style={{ background: info.color }} aria-hidden />
-                <span>
-                  {moveNumberLabel(startFen, m.ply)} {m.san ?? m.uci}
-                  {info.glyph} (−{Math.round(m.winProbLoss)}%)
-                </span>
-              </span>
-              {best && <span className={styles.best}>best was {best}</span>}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <li>
+      <button type="button" className={styles.moment} onClick={() => goTo(move.ply)}>
+        <span className={styles.momentMain}>
+          <span className={styles.dot} style={{ background: info.color }} aria-hidden />
+          <span>
+            {moveNumberLabel(startFen, move.ply)} {move.san ?? move.uci}
+            {info.glyph}
+            {loss >= 1 && ` (\u2212${loss}%)`}
+          </span>
+        </span>
+        {best && <span className={styles.best}>best was {best}</span>}
+      </button>
+    </li>
   );
 }
 
-function Done({ summary, onAgain }: { summary: ReviewSummary; onAgain: () => void }) {
+/** "Good moves" and "Moves to improve" per side (replaces the former key-moments list). */
+function Highlights({ summary }: { summary: ReviewSummary }) {
+  const headers = useGameStore((s) => s.headers);
+  const h = useMemo(() => reviewHighlights(summary), [summary]);
+  return (
+    <div className={styles.highlights}>
+      {(['white', 'black'] as const).map((color) => {
+        const name = color === 'white' ? 'White' : 'Black';
+        const { good, improve } = h[color];
+        return (
+          <section key={color} className={styles.side} aria-label={`${name} highlights`}>
+            <h3 className={styles.h3}>{playerName(headers, color)}</h3>
+            <h4 className={styles.h4}>Good moves</h4>
+            {good.length > 0 ? (
+              <ul className={styles.moments}>
+                {good.map((m) => (
+                  <MoveItem key={m.ply} move={m} showBest={false} />
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.muted}>None.</p>
+            )}
+            <h4 className={styles.h4}>Moves to improve</h4>
+            {improve.length > 0 ? (
+              <ul className={styles.moments}>
+                {improve.map((m) => (
+                  <MoveItem key={m.ply} move={m} showBest />
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.muted}>No inaccuracies, mistakes or blunders.</p>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function Done({ summary }: { summary: ReviewSummary }) {
   const headers = useGameStore((s) => s.headers);
   const startFen = useGameStore((s) => s.startFen);
   const moves = useGameStore((s) => s.moves);
@@ -81,9 +119,7 @@ function Done({ summary, onAgain }: { summary: ReviewSummary; onAgain: () => voi
   };
   const side = (color: 'white' | 'black') => (
     <div className={styles.accuracy}>
-      <span className={styles.accName}>
-        {headers[color === 'white' ? 'White' : 'Black'] || (color === 'white' ? 'White' : 'Black')}
-      </span>
+      <span className={styles.accName}>{playerName(headers, color)}</span>
       <span className={styles.accValue} data-testid={`accuracy-${color}`}>
         {Math.round(summary[color].accuracy)}%
       </span>
@@ -122,17 +158,14 @@ function Done({ summary, onAgain }: { summary: ReviewSummary; onAgain: () => voi
         </tbody>
       </table>
       <EvalGraph summary={summary} ply={ply} onSeek={goTo} />
-      <h2 className={styles.h}>Key moments</h2>
-      <KeyMoments summary={summary} />
+      <h2 className={styles.h}>Highlights</h2>
+      <Highlights summary={summary} />
       <div className={styles.row}>
         <button type="button" className={styles.btn} onClick={() => download(pgn)}>
           Export annotated PGN
         </button>
         <button type="button" className={styles.btn} onClick={() => void copy()}>
           {copied ? 'Copied' : 'Copy'}
-        </button>
-        <button type="button" className={styles.btn} onClick={onAgain}>
-          Run again
         </button>
       </div>
     </>
@@ -143,79 +176,33 @@ export function ReviewPanel() {
   const status = useReviewStore((s) => s.status);
   const progress = useReviewStore((s) => s.progress);
   const summary = useReviewStore((s) => s.summary);
+  const details = useReviewStore((s) => s.moveDetails);
   const error = useReviewStore((s) => s.error);
+  const autoNotice = useReviewStore((s) => s.autoNotice);
   const start = useReviewStore((s) => s.start);
   const cancel = useReviewStore((s) => s.cancel);
   const reset = useReviewStore((s) => s.reset);
+  const dismiss = useReviewStore((s) => s.dismissAutoNotice);
   const hasMoves = useGameStore((s) => s.moves.length > 0);
   const playing = usePlayStore((p) => p.mode === 'playing');
   const [preset, setPreset] = useState<PresetKey>('deep');
 
-  const run = () => void start({ ...REVIEW_PRESETS[preset] });
-
-  if (status === 'running') {
-    const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
-    return (
-      <div className={styles.wrap} data-testid="review-panel">
-        <p>Reviewing… live analysis is paused.</p>
-        <div
-          className={styles.bar}
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={progress.total}
-          aria-valuenow={progress.done}
-          aria-label="Review progress"
-        >
-          <div className={styles.barFill} style={{ width: `${pct}%` }} />
-        </div>
-        <p className={styles.muted} role="status" aria-live="polite">
-          {progress.done}/{progress.total} ({pct}%)
-        </p>
-        <div className={styles.row}>
-          <button type="button" className={styles.btn} onClick={cancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (status === 'done' && summary) {
-    return (
-      <div className={styles.wrap} data-testid="review-panel">
-        <Done
-          summary={summary}
-          onAgain={() => {
-            reset();
-            void start({ ...useReviewStore.getState().options });
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <div className={styles.wrap} data-testid="review-panel">
-        <p role="alert" className={styles.error}>
-          Review failed: {error ?? 'unknown error'}
-        </p>
-        <div className={styles.row}>
-          <button type="button" className={styles.btnPrimary} onClick={run}>
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  /** A manual start always (re)starts with the chosen preset, replacing a running review. */
+  const run = (key: PresetKey = preset) => {
+    if (status === 'running' || status === 'done') reset();
+    void start({ ...REVIEW_PRESETS[key] });
+  };
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
   return (
-    <div className={styles.wrap} data-testid="review-panel">
-      <p>
-        Analyse every move of the game with the engine to classify mistakes, compute accuracy and
-        find key moments.
-        {status === 'cancelled' && ' The previous review was cancelled.'}
-      </p>
+    <div className={styles.wrap} data-testid="review-panel" data-status={status}>
+      {status === 'idle' || status === 'cancelled' ? (
+        <p>
+          Analyse every move of the game with the engine to classify mistakes, compute accuracy and
+          find key moments.
+          {status === 'cancelled' && ' The previous review was cancelled.'}
+        </p>
+      ) : null}
       <div className={styles.row} role="radiogroup" aria-label="Review depth">
         {(Object.keys(REVIEW_PRESETS) as PresetKey[]).map((k) => (
           <button
@@ -231,17 +218,83 @@ export function ReviewPanel() {
         ))}
       </div>
       <div className={styles.row}>
-        <button type="button" className={styles.btnPrimary} disabled={!hasMoves || playing}
-          onClick={run}
+        <button
+          type="button"
+          className={styles.btnPrimary}
+          disabled={!hasMoves || playing}
+          onClick={() => run()}
         >
           Start
         </button>
+        {status === 'running' && (
+          <button type="button" className={styles.btn} onClick={cancel}>
+            Cancel
+          </button>
+        )}
         {playing ? (
           <span className={styles.muted}>Finish or stop the game first</span>
         ) : (
           !hasMoves && <span className={styles.muted}>Play or import a game first.</span>
         )}
       </div>
+      {autoNotice && (
+        <div className={styles.notice} data-testid="auto-notice">
+          <span>Auto review (fast) — run Deep for more accuracy.</span>
+          <button
+            type="button"
+            className={styles.linkBtn}
+            disabled={playing}
+            onClick={() => {
+              setPreset('deep');
+              run('deep');
+            }}
+          >
+            Run Deep
+          </button>
+          <button
+            type="button"
+            className={styles.close}
+            aria-label="Dismiss auto review notice"
+            onClick={dismiss}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {status === 'running' && (
+        <>
+          <p>Reviewing… live analysis is paused.</p>
+          <div
+            className={styles.bar}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={progress.total}
+            aria-valuenow={progress.done}
+            aria-label="Review progress"
+          >
+            <div className={styles.barFill} style={{ width: `${pct}%` }} />
+          </div>
+          <p className={styles.muted} role="status" aria-live="polite">
+            {progress.done}/{progress.total} ({pct}%)
+          </p>
+        </>
+      )}
+      {status === 'error' && (
+        <>
+          <p role="alert" className={styles.error}>
+            Review failed: {error ?? 'unknown error'}
+          </p>
+          <div className={styles.row}>
+            <button type="button" className={styles.btn} onClick={() => run()}>
+              Retry
+            </button>
+          </div>
+        </>
+      )}
+      {summary && (status === 'running' || status === 'done') && (
+        <MoveCommentary summary={summary} details={details} running={status === 'running'} />
+      )}
+      {status === 'done' && summary && <Done summary={summary} />}
     </div>
   );
 }

@@ -13,6 +13,8 @@ export interface Settings {
   coordinates: boolean;
   highlightStyle: HighlightStyle;
   sound: boolean;
+  /** Start a fast review automatically after a game is loaded (PGN, file, online import). */
+  autoReview: boolean;
   /**
    * Access token of the engine server (ADR-010), sent in `hello.token`. Empty = none. Stored in
    * localStorage like the other settings: it is a shared gate against casual use, not a secret
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   coordinates: true,
   highlightStyle: 'classic',
   sound: true,
+  autoReview: true,
   serverToken: '',
 };
 
@@ -77,6 +80,7 @@ export function parseSettings(raw: string | null): Settings {
     out.highlightStyle = o.highlightStyle as HighlightStyle;
   }
   if (typeof o.sound === 'boolean') out.sound = o.sound;
+  if (typeof o.autoReview === 'boolean') out.autoReview = o.autoReview;
   if (typeof o.serverToken === 'string') out.serverToken = normalizeToken(o.serverToken);
   return out;
 }
@@ -116,6 +120,7 @@ function pick(s: Settings): Settings {
     coordinates: s.coordinates,
     highlightStyle: s.highlightStyle,
     sound: s.sound,
+    autoReview: s.autoReview,
     serverToken: s.serverToken,
   };
   if (s.customBoard) out.customBoard = s.customBoard;

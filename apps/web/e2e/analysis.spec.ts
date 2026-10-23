@@ -93,6 +93,8 @@ test.describe('live analysis', () => {
   }) => {
     // Count `go` commands vs `bestmove` replies at the Worker boundary.
     await page.addInitScript(() => {
+      // Only the live analysis may search here: no automatic review after loading the PGN.
+      localStorage.setItem('chesslab.settings', JSON.stringify({ autoReview: false }));
       const Orig = window.Worker;
       const stats = { go: 0, bestmove: 0, maxOpen: 0 };
       (window as unknown as { __uciStats: typeof stats }).__uciStats = stats;

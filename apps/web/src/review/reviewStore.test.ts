@@ -150,4 +150,31 @@ describe('reviewStore', () => {
     expect(engine.maxActive).toBe(1);
     expect(useAnalysisStore.getState().enabled).toBe(true);
   });
+
+  it('keeps move details with the best line (from the PV) next to the summary', async () => {
+    const g = useGameStore.getState();
+    const beforeNf6 = g.moves[4]!.fen;
+    engine.scripts.set(beforeNf6, { score: { cp: 20 }, pv: ['g7g6', 'h5f3', 'g8f6'] });
+    engine.scripts.set(g.moves[5]!.fen, { score: { mate: 1 }, pv: ['h5f7'] });
+    const seen: number[] = [];
+    const unsub = useReviewStore.subscribe((s) => seen.push(Object.keys(s.moveDetails).length));
+    await useReviewStore.getState().start({ depth: 5 }, { auto: true });
+    unsub();
+    const s = useReviewStore.getState();
+    expect(Object.keys(s.moveDetails)).toHaveLength(7);
+    // Filled incrementally while running.
+    expect(seen).toContain(3);
+    const nf6 = s.moveDetails[6]!;
+    expect(nf6.bestSan).toBe('g6');
+    expect(nf6.bestLineSan).toBe('3... g6 4. Qf3 Nf6');
+    expect(nf6.classification).toBe(s.summary!.moves[5]!.classification);
+    expect(s.trigger).toBe('auto');
+    expect(s.autoNotice).toBe(true);
+    s.dismissAutoNotice();
+    expect(useReviewStore.getState().autoNotice).toBe(false);
+    useReviewStore.getState().reset();
+    expect(useReviewStore.getState().moveDetails).toEqual({});
+    await useReviewStore.getState().start({ depth: 5 });
+    expect(useReviewStore.getState()).toMatchObject({ trigger: 'manual', autoNotice: false });
+  });
 });

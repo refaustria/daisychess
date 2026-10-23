@@ -174,6 +174,15 @@ export function SettingsPanel() {
         Sound
       </label>
 
+      <label className={styles.check}>
+        <input
+          type="checkbox"
+          checked={s.autoReview}
+          onChange={(e) => s.set({ autoReview: e.target.checked })}
+        />
+        Analyse games automatically after loading
+      </label>
+
       <button type="button" className={styles.reset} onClick={() => s.reset()}>
         Reset to defaults
       </button>

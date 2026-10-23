@@ -80,7 +80,10 @@ test('lichess: fetch, pick a game, moves load', async ({ page }) => {
   await expect(rows.first()).toContainText('Bob (1750)');
   await expect(rows.first()).toContainText('1-0 · 2023-11-14 · 3+2');
   await rows.first().click();
-  await expect(page.getByRole('tab', { name: 'Moves' })).toHaveAttribute('aria-selected', 'true');
+  // Picking a game starts the automatic review on the Review tab.
+  await expect(page.getByRole('tab', { name: 'Review' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('review-panel')).toHaveAttribute('data-status', /running|done/);
+  await page.getByRole('tab', { name: 'Moves' }).click();
   await expect(page.getByTestId('movelist').getByRole('button')).toHaveCount(6);
   await expect(page.getByTestId('movelist')).toContainText('Nf3');
   // The username never ends up in our own URL.
@@ -95,6 +98,7 @@ test('chess.com: fetch, pick a game, moves load', async ({ page }) => {
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toContainText('Erin (1500)');
   await rows.first().click();
+  await page.getByRole('tab', { name: 'Moves' }).click();
   await expect(page.getByTestId('movelist').getByRole('button')).toHaveCount(7);
   await expect(page.getByTestId('movelist')).toContainText('Bg5');
 });

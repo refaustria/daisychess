@@ -62,6 +62,22 @@ describe('BatchAnalyzer', () => {
     expect(a.cache.size).toBe(8);
   });
 
+  it('stores the PV (at most 8 plies) per position in the cache and the run results', async () => {
+    const { engine, game, p } = scholarEngine();
+    const long = ['g7g6', 'h5f3', 'g8f6', 'g1e2', 'f8g7', 'e1g1', 'e8g8', 'd2d3', 'd7d6', 'b1c3'];
+    engine.scripts.set(p[5]!, { score: { cp: -10 }, pv: long });
+    const a = new BatchAnalyzer({ engine });
+    const run = a.run(game);
+    await run.promise;
+    expect(a.cache.get(p[0]!)?.pv).toEqual(['e2e4', 'e7e5']);
+    expect(a.cache.get(p[5]!)?.pv).toEqual(long.slice(0, 8));
+    expect(a.cache.get(p[5]!)?.bestMove).toBe('g7g6');
+    // Terminal positions are not searched and have no line.
+    expect(a.cache.get(p[7]!)?.pv).toBeUndefined();
+    expect(run.results).toHaveLength(8);
+    expect(run.results[5]!.pv).toEqual(long.slice(0, 8));
+  });
+
   it('reports a partial summary with progress', async () => {
     const { engine, game } = scholarEngine();
     const partials: number[] = [];

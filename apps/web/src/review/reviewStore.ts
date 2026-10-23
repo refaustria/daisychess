@@ -8,8 +8,10 @@ import {
   isAbortError,
   type BatchGame,
   type BatchOptions,
+  type BatchRun,
   type PositionCache,
 } from './BatchAnalyzer';
+import { buildMoveDetails, type MoveDetails } from './details';
 
 export type ReviewStatus = 'idle' | 'running' | 'done' | 'error' | 'cancelled';
 
@@ -24,12 +26,25 @@ export const REVIEW_PRESETS = {
   deep: { depth: DEFAULT_REVIEW_DEPTH },
 } as const satisfies Record<string, ReviewOptions>;
 
+/** Who started the current/last review. */
+export type ReviewTrigger = 'manual' | 'auto';
+
 export interface ReviewState {
   status: ReviewStatus;
   progress: { done: number; total: number };
   summary?: ReviewSummary;
+  /** Per-move details (best line in SAN, evals, swing) for the plies of `summary`. */
+  moveDetails: MoveDetails;
   error?: string;
   options: ReviewOptions;
+  trigger: ReviewTrigger;
+  /** Show the "Auto review (fast)" hint (auto-started review, not dismissed). */
+  autoNotice: boolean;
+}
+
+export interface StartMeta {
+  /** Started automatically after a game was loaded (see `autoReview.ts`). */
+  auto?: boolean;
 }
 
 export interface ReviewActions {
@@ -38,10 +53,11 @@ export interface ReviewActions {
    * run was cancelled, failed or superseded (see `status`/`error`). While running, a second call
    * returns the running promise.
    */
-  start(options?: ReviewOptions): Promise<ReviewSummary | undefined>;
+  start(options?: ReviewOptions, meta?: StartMeta): Promise<ReviewSummary | undefined>;
   cancel(): void;
   /** Cancels a running review and returns to `idle`. The position cache is kept. */
   reset(): void;
+  dismissAutoNotice(): void;
 }
 
 export type ReviewStore = ReviewState & ReviewActions;
@@ -145,8 +161,11 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
   status: 'idle',
   progress: { done: 0, total: 0 },
   options: { ...REVIEW_PRESETS.deep },
+  moveDetails: {},
+  trigger: 'manual',
+  autoNotice: false,
 
-  start: (opts) => {
+  start: (opts, meta) => {
     if (current) return current.promise;
     const options = opts ? { ...opts } : get().options;
     const batchOptions = normalize(options);
@@ -165,8 +184,11 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       status: 'running',
       progress: { done: 0, total },
       summary: undefined,
+      moveDetails: {},
       error: undefined,
       options,
+      trigger: meta?.auto ? 'auto' : 'manual',
+      autoNotice: meta?.auto === true,
     });
 
     let cancelled = false;
@@ -181,16 +203,28 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
         if (cancelled) throw Object.assign(new Error('Review cancelled'), { name: 'AbortError' });
         const cache = cacheFor(optionsKey(batchOptions));
         const analyzer = new BatchAnalyzer({ engine: e, options: batchOptions, cache });
-        const r = analyzer.run(game, {
+        let r: BatchRun | null = null;
+        const details = (summary: ReviewSummary): MoveDetails =>
+          buildMoveDetails(summary, game, r?.results ?? [], get().moveDetails);
+        r = analyzer.run(game, {
           onProgress: (done, t, partial) => {
             if (isCurrent())
-              set({ progress: { done, total: t }, ...(partial ? { summary: partial } : {}) });
+              set({
+                progress: { done, total: t },
+                ...(partial ? { summary: partial, moveDetails: details(partial) } : {}),
+              });
           },
         });
         run = r;
         try {
           const summary = await r.promise;
-          if (isCurrent()) set({ status: 'done', summary, progress: { done: total, total } });
+          if (isCurrent())
+            set({
+              status: 'done',
+              summary,
+              moveDetails: details(summary),
+              progress: { done: total, total },
+            });
           return summary;
         } finally {
           prune(cache);
@@ -231,6 +265,15 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       c.cancel();
       settling = c.promise;
     }
-    set({ status: 'idle', progress: { done: 0, total: 0 }, summary: undefined, error: undefined });
+    set({
+      status: 'idle',
+      progress: { done: 0, total: 0 },
+      summary: undefined,
+      moveDetails: {},
+      error: undefined,
+      autoNotice: false,
+    });
   },
+
+  dismissAutoNotice: () => set({ autoNotice: false }),
 }));

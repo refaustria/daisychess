@@ -23,11 +23,16 @@ export interface BatchGame {
   moves: BatchMove[];
 }
 
-/** Analysis result of one position (White-POV eval, engine best move in UCI). */
+/** Analysis result of one position (White-POV eval, engine best move and line in UCI). */
 export interface PositionResult {
   eval: Score;
   bestMove?: string;
+  /** Principal variation of the last info, at most {@link MAX_PV_PLIES} moves (UCI). */
+  pv?: string[];
 }
+
+/** Plies of the principal variation kept per position. */
+export const MAX_PV_PLIES = 8;
 
 /** Positions already analysed, keyed by full FEN. Only reuse it with identical search options. */
 export type PositionCache = Map<string, PositionResult>;
@@ -71,6 +76,11 @@ export interface BatchRun {
   /** Stops the current search and rejects `promise` with an AbortError. Idempotent. */
   cancel(): void;
   promise: Promise<ReviewSummary>;
+  /**
+   * Results of the positions analysed so far, in game order (index 0 = start position). Filled
+   * before each `onProgress`; read-only for callers (e.g. to build per-move details with PVs).
+   */
+  readonly results: readonly PositionResult[];
 }
 
 export const DEFAULT_REVIEW_DEPTH = 18;
@@ -157,15 +167,15 @@ export class BatchAnalyzer {
       throw abortError();
     };
 
+    const results: PositionResult[] = [];
     const promise = (async (): Promise<ReviewSummary> => {
       const { positions, moves } = prepare(game);
       const total = positions.length;
-      const results: PositionResult[] = [];
       const partial = (): ReviewSummary | undefined =>
         results.length < 2
           ? undefined
           : reviewGame({
-              positions: results.map((r, i) => ({ fen: positions[i]!.fen, ...r })),
+              positions: results.map((r, i) => reviewPosition(positions[i]!.fen, r)),
               moves: moves.slice(0, results.length - 1),
             });
 
@@ -182,11 +192,7 @@ export class BatchAnalyzer {
       }
       await throwIfCancelled();
       return reviewGame({
-        positions: results.map((r, i) => ({
-          fen: positions[i]!.fen,
-          eval: r.eval,
-          ...(r.bestMove !== undefined ? { bestMove: r.bestMove } : {}),
-        })),
+        positions: results.map((r, i) => reviewPosition(positions[i]!.fen, r)),
         moves,
       });
     })();
@@ -209,7 +215,7 @@ export class BatchAnalyzer {
         throw e;
       },
     );
-    return { cancel, promise: settled };
+    return { cancel, promise: settled, results };
   }
 
   /** Runs one search to completion (or until `aborted` rejects). */
@@ -233,8 +239,21 @@ export class BatchAnalyzer {
     const score =
       this.options.pov === 'stm' ? scoreToWhitePov(last.score, sideToMove(fen)) : last.score;
     const bestMove = best?.move ?? last.pv[0];
-    return { eval: score, ...(bestMove !== undefined ? { bestMove } : {}) };
+    const pv = last.pv.slice(0, MAX_PV_PLIES);
+    return {
+      eval: score,
+      ...(bestMove !== undefined ? { bestMove } : {}),
+      ...(pv.length > 0 ? { pv } : {}),
+    };
   }
+}
+
+/** `reviewGame` input for one position (the PV stays in the web layer). */
+function reviewPosition(
+  fen: string,
+  r: PositionResult,
+): { fen: string; eval: Score; bestMove?: string } {
+  return { fen, eval: r.eval, ...(r.bestMove !== undefined ? { bestMove: r.bestMove } : {}) };
 }
 
 interface PreparedPosition {
