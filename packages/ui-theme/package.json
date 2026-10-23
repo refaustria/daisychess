@@ -1,0 +1,17 @@
+{
+  "name": "@chesslab/ui-theme",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "src"
+  ],
+  "exports": {
+    "./base.css": "./src/base.css"
+  },
+  "scripts": {
+    "build": "echo 'ui-theme: nothing to build'",
+    "typecheck": "echo ok",
+    "test": "echo 'ui-theme: no tests'"
+  }
+}
