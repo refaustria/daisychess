@@ -239,3 +239,48 @@ test('clocks: both render, yours runs on your move, resign; a 15-second game is 
   await expect(page.getByLabel('Minutes')).toHaveValue('0.25');
   expect(errors).toEqual([]);
 });
+
+test('layout: player bars with large clocks beside the board (desktop and mobile), screenshots', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.getByRole('tab', { name: 'Play' }).click();
+  await page.getByRole('radio', { name: 'White' }).check();
+  await page.getByLabel('Thinking time').selectOption({ label: '0.1 s per move' });
+  await page.getByLabel('Time control').selectOption({ label: '3+2 · Blitz' });
+  await page.getByRole('button', { name: 'Start' }).click();
+
+  const top = page.getByTestId('player-bar-top');
+  const bottom = page.getByTestId('player-bar-bottom');
+  await expect(top).toHaveAttribute('aria-label', /^Black: Stockfish · \S+ Elo, 3:00$/);
+  await expect(bottom).toHaveAttribute('aria-label', /^White: You, \d:\d\d$/);
+  await expect(bottom.getByTestId('play-clock-you')).toHaveAttribute('data-state', 'running');
+  await drag(page, 'e2', 'e4');
+  await expect(page.getByLabel('FEN')).toHaveValue(AFTER_REPLY, { timeout: 10_000 });
+  // The panel shows no clocks of its own.
+  await expect(page.getByRole('tabpanel').getByRole('timer')).toHaveCount(0);
+
+  // Desktop: panel left of the board, bars above and below it, no page scroll.
+  const board = (await page.getByTestId('board').boundingBox())!;
+  const panel = (await page.getByRole('tabpanel').boundingBox())!;
+  const topBox = (await top.boundingBox())!;
+  const bottomBox = (await bottom.boundingBox())!;
+  expect(panel.x + panel.width).toBeLessThanOrEqual(board.x);
+  expect(topBox.y + topBox.height).toBeLessThanOrEqual(board.y);
+  expect(bottomBox.y).toBeGreaterThanOrEqual(board.y + board.height - 1);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true);
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: `${SHOTS}/layout-play-desktop.png` });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const small = (await page.getByTestId('board').boundingBox())!;
+  expect(small.width).toBeGreaterThanOrEqual(300);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await expect(page.getByTestId('play-clock-engine')).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/layout-play-mobile.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Stop' }).click();
+});

@@ -12,6 +12,14 @@
   white-space: nowrap;
 }
 
+.clockLarge {
+  min-width: 7rem;
+  padding: 0.1rem 0.6rem;
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
 .clockActive {
   border-color: var(--accent);
   background: var(--surface);

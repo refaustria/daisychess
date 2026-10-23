@@ -44,5 +44,14 @@ describe('App', () => {
     expect(useGameStore.getState().ply).toBe(4);
     expect((screen.getByLabelText('FEN') as HTMLInputElement).value).toContain('rnb1kbnr');
   });
+
+  it('player bars above and below the board follow the orientation', () => {
+    render(<App />);
+    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe('Black: Black');
+    expect(screen.getByTestId('player-bar-bottom').getAttribute('aria-label')).toBe('White: White');
+    fireEvent.click(screen.getByRole('button', { name: 'Flip' }));
+    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe('White: White');
+    expect(screen.getByTestId('player-bar-bottom').getAttribute('aria-label')).toBe('Black: Black');
+  });
 });
 afterEach(cleanup);

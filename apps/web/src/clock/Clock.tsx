@@ -17,6 +17,8 @@ export interface ClockProps {
   initialMs?: number;
   testId?: string;
   className?: string;
+  /** `large`: the prominent clock of the player bars beside the board. */
+  size?: 'normal' | 'large';
 }
 
 const SIDE = { white: 'White', black: 'Black' } as const;
@@ -25,12 +27,21 @@ const SIDE = { white: 'White', black: 'Black' } as const;
  * A player's clock: m:ss, tenths under 10 s, h:mm:ss from an hour. `role="timer"` with
  * `aria-live="off"` (screen readers read it on demand: "White clock 9:58").
  */
-export function Clock({ ms, side, state = 'idle', initialMs, testId, className }: ClockProps) {
+export function Clock({
+  ms,
+  side,
+  state = 'idle',
+  initialMs,
+  testId,
+  className,
+  size = 'normal',
+}: ClockProps) {
   const text = formatClock(ms);
   const flagged = state === 'flagged';
   const active = state === 'active' || state === 'running';
   const cls = [
     styles.clock,
+    size === 'large' ? styles.clockLarge : '',
     active ? styles.clockActive : '',
     state === 'running' ? styles.clockRunning : '',
     isLowTime(ms, initialMs) ? styles.clockLow : '',

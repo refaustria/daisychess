@@ -4,6 +4,8 @@
   --board-size: 100%;
   --eval-w: 30px;
   --eval-gap: 6px;
+  --player-bar-h: 3rem;
+  --bar-gap: 6px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -38,12 +40,23 @@
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'board'
+    'side';
   gap: var(--gap);
   padding: var(--gap);
   align-content: start;
 }
 
 .boardCol {
+  grid-area: board;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bar-gap);
+}
+
+.boardRow {
   min-width: 0;
   display: flex;
   gap: var(--eval-gap);
@@ -57,6 +70,7 @@
 }
 
 .side {
+  grid-area: side;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -119,23 +133,27 @@
   min-height: 0;
 }
 
+/*
+ * Desktop: the side panel (tabs) on the left, the board column on the right. The board is as
+ * large as the viewport height allows after the header and the two player bars, and as the
+ * width allows after the panel (--side-w) and the eval bar; no page scroll.
+ */
 @media (min-width: 900px) {
   .app {
     height: 100vh;
     min-height: 0;
+    --side-w: clamp(380px, 32vw, 520px);
     --board-size: min(
-      calc(100vh - var(--header-h) - 2 * var(--gap)),
-      calc(60vw - var(--eval-w) - var(--eval-gap))
+      calc(100vh - var(--header-h) - 2 * var(--gap) - 2 * var(--player-bar-h) - 2 * var(--bar-gap)),
+      calc(100vw - 3 * var(--gap) - var(--side-w) - var(--eval-w) - var(--eval-gap))
     );
   }
 
   .main {
     flex: 1;
     min-height: 0;
-    grid-template-columns: calc(var(--board-size) + var(--eval-w) + var(--eval-gap)) minmax(
-        0,
-        360px
-      );
+    grid-template-columns: var(--side-w) calc(var(--board-size) + var(--eval-w) + var(--eval-gap));
+    grid-template-areas: 'side board';
     justify-content: center;
     align-items: start;
   }

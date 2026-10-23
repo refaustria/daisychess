@@ -1,5 +1,5 @@
 import '@chesslab/ui-theme/base.css';
-import { lazy, Suspense, useEffect, useMemo, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import { AnalysisPanel } from './components/Analysis/AnalysisPanel';
 import { PreviewBanner } from './components/Analysis/PreviewBanner';
 import { analysisShapes, reviewShapes } from './components/Analysis/shapes';
@@ -12,6 +12,7 @@ import { AccountChip } from './components/LichessAccount/AccountChip';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
 import { PlayIndicator } from './components/Play/PlayIndicator';
+import { PlayerBar, useBoardPlayers } from './components/PlayerBar/PlayerBar';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
 import { installAutoReview } from './review/autoReview';
 import { useReviewStore } from './review/reviewStore';
@@ -145,6 +146,24 @@ function ConnectedBoard() {
   return <Board shapes={shapes} previewFen={previewFen} movableColor={movableColor} />;
 }
 
+/**
+ * The board between the two player bars: the bottom bar is the side the board is oriented for,
+ * flipping swaps them. Only this column re-renders while a live clock ticks (`children` keep
+ * their identity).
+ */
+function BoardColumn({ children }: { children: ReactNode }) {
+  const players = useBoardPlayers();
+  const bottom = players.orientation;
+  const top = bottom === 'white' ? 'black' : 'white';
+  return (
+    <div className={styles.boardCol}>
+      <PlayerBar side={top} player={players[top]} position="top" />
+      <div className={styles.boardRow}>{children}</div>
+      <PlayerBar side={bottom} player={players[bottom]} position="bottom" />
+    </div>
+  );
+}
+
 export function App() {
   const state = useGameStore();
   const tab = useUiStore((s) => s.activeTab);
@@ -162,7 +181,7 @@ export function App() {
         </div>
       </header>
       <main className={styles.main}>
-        <div className={styles.boardCol}>
+        <BoardColumn>
           <ConnectedEvalBar />
           <div className={styles.boardWrap}>
             <p id="board-note" className={styles.srOnly}>
@@ -173,7 +192,7 @@ export function App() {
             <PreviewBanner />
             <PlayIndicator />
           </div>
-        </div>
+        </BoardColumn>
         <section className={styles.side}>
           <EngineToggle />
           <p

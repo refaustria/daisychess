@@ -104,3 +104,14 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M14-1 | Shared `Clock` component (mm:ss, tenths under 10 s, hours for long games, low-time state) used by Live and Play; time-control presets with categories (Bullet/Blitz/Rapid/Classical, lichess rules) and custom; play vs engine with both clocks running, increment, flag = loss on time, engine thinking time derived from its remaining time; premove setting applied to local play | senior | done |
+
+## M15 — Board-centric layout with prominent clocks (requested 2026-10-23)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M15-1 | Player bars with large clocks above and below the board (names/ratings from live, engine play or PGN headers), side panel (moves, play, live, …) moved to the left with more width; mobile stacks board + bars then panel | senior | done |
+
+## M16 — Play a friend via link (own server, nickname, no account)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M16-1 | Protocol (ADR-013) + server: rooms over the existing WebSocket, server-side move validation and clocks, reconnect token, draw/resign/abort/claim, limits; works without the engine access token | architect | in progress |
+| M16-2 | Web: "Friend" play mode — create link with nickname/time control/colour, join via link with nickname, board + clocks, fair-play engine lock, result + auto review | senior | todo |

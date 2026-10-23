@@ -14,7 +14,7 @@ import {
 import { usePlayStore } from '../../play/playStore';
 import { currentFen, useGameStore } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
-import { LiveClock, useTicker } from './LiveClock';
+import { useTicker } from './LiveClock';
 import styles from './LivePanel.module.css';
 
 const COLORS: { id: ColorChoice; label: string }[] = [
@@ -338,7 +338,6 @@ function Playing({ game }: { game: LiveGame }) {
   const [confirmResign, setConfirmResign] = useState(false);
   const claimAt = game.opponentGone?.claimAt;
   const now = useTicker(claimAt !== undefined, Date.now, 500);
-  const opp: 'white' | 'black' = game.color === 'white' ? 'black' : 'white';
   const myTurn = isRunning(game) && toMove(game, game.moves.length) === game.color;
   const canAbort = game.moves.length < 2;
   const canClaim = claimAt !== undefined && now >= claimAt;
@@ -354,10 +353,12 @@ function Playing({ game }: { game: LiveGame }) {
 
   return (
     <div className={styles.panel} data-testid="live-game">
-      <div className={styles.player}>
-        <span data-testid="live-opponent">{playerLabel(game.opponent)}</span>
-        <LiveClock game={game} side={opp} />
-      </div>
+      <p className={styles.player}>
+        <span>
+          vs <span data-testid="live-opponent">{playerLabel(game.opponent)}</span>{' '}
+          <span className={styles.muted}>(you play {game.color})</span>
+        </span>
+      </p>
       <p className={myTurn ? `${styles.status} ${styles.statusYou}` : styles.status} role="status" aria-live="polite" data-testid="live-status">
         {status}
       </p>
@@ -369,10 +370,6 @@ function Playing({ game }: { game: LiveGame }) {
           </button>
         </p>
       )}
-      <div className={styles.player}>
-        <span>You ({game.color})</span>
-        <LiveClock game={game} side={game.color} />
-      </div>
       <p className={styles.meta}>
         {game.rated ? 'Rated' : 'Casual'} · {game.speed}
         {game.clock ? ` · ${clockLabel({ limit: game.clock.initial / 1000, increment: game.clock.increment / 1000 })}` : ''}

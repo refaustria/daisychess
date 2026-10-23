@@ -7,6 +7,19 @@ import { configureLive, resetLive, useLiveStore } from '../../live/liveStore';
 import { fakeBoardApi, type FakeBoardApi } from '../../live/testing';
 import { useUiStore } from '../../store/uiStore';
 import { LivePanel } from './LivePanel';
+import { PlayerBar, useBoardPlayers } from '../PlayerBar/PlayerBar';
+
+/** The board's player bars (as in App), for the clocks that moved out of the panel. */
+function Bars() {
+  const p = useBoardPlayers();
+  const top = p.orientation === 'white' ? 'black' : 'white';
+  return (
+    <>
+      <PlayerBar side={top} player={p[top]} position="top" />
+      <PlayerBar side={p.orientation} player={p[p.orientation]} position="bottom" />
+    </>
+  );
+}
 
 let api: FakeBoardApi;
 const { clearPremoves: realClearPremoves } = useLiveStore.getState();
@@ -85,11 +98,19 @@ describe('LivePanel', () => {
     expect(api.seeks[0]!.cancelled).toBe(true);
   });
 
-  it('playing: opponent, clocks (tenths under 10 s), status, abort only before move 2, resign confirm', async () => {
+  it('playing: opponent, clocks in the board bars (tenths under 10 s), status, abort only before move 2, resign confirm', async () => {
     login();
     useLiveStore.setState({ status: 'playing', game: game() });
-    render(<LivePanel />);
+    render(
+      <>
+        <LivePanel />
+        <Bars />
+      </>,
+    );
     expect(screen.getByTestId('live-opponent').textContent).toBe('FM Opp (1600)');
+    // The panel itself shows no clocks any more (they are in the bars beside the board).
+    expect(screen.getByTestId('live-game').querySelector('[role="timer"]')).toBeNull();
+    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe('Black: Opp · FM 1600, 0:08.4');
     const mine = screen.getByTestId('clock-white');
     const theirs = screen.getByTestId('clock-black');
     expect(mine.getAttribute('aria-live')).toBe('off');

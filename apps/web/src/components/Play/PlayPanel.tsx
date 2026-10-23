@@ -1,6 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
-import { Clock } from '../../clock/Clock';
-import type { GameClock } from '../../clock/gameClock';
+import { useId, useState } from 'react';
 import {
   CUSTOM_INCREMENT,
   CUSTOM_MINUTES,
@@ -21,7 +19,7 @@ import {
   type PlaySetup,
 } from '../../play/playStore';
 import { findStrength, MOVE_TIMES, STRENGTH_PRESETS } from '../../play/strength';
-import { currentFen, useGameStore, type Orientation } from '../../store/gameStore';
+import { useGameStore, type Orientation } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
 import styles from './PlayPanel.module.css';
 
@@ -163,40 +161,6 @@ function TimeControlField({
   );
 }
 
-/** Engine clock on top, the user's below (the board shows the user at the bottom). */
-function PlayerClock(props: {
-  clock: GameClock;
-  side: Orientation;
-  who: string;
-  /** This side is to move in a running game (highlighted even before its clock runs). */
-  toMove: boolean;
-}) {
-  const { clock, side, who } = props;
-  const key = side === 'white' ? 'w' : 'b';
-  const state =
-    clock.flagged === key
-      ? 'flagged'
-      : clock.runningSide === key
-        ? 'running'
-        : props.toMove
-          ? 'active'
-          : 'idle';
-  return (
-    <div className={styles.player}>
-      <span>
-        {who} <span className={styles.muted}>({side})</span>
-      </span>
-      <Clock
-        ms={clock[key]}
-        side={side}
-        state={state}
-        initialMs={clock.initialMs}
-        testId={`play-clock-${who === 'You' ? 'you' : 'engine'}`}
-      />
-    </div>
-  );
-}
-
 const summaryOf = (playerColor: Orientation, setup: PlaySetup): string =>
   [
     colorName(playerColor),
@@ -210,37 +174,11 @@ export function PlayPanel() {
   const play = usePlayStore();
   const plies = useGameStore((g) => takeBackPlies(g, play.playerColor));
   const atTip = useGameStore((g) => g.ply === g.moves.length);
-  const tipTurn = useGameStore((g) =>
-    currentFen({ startFen: g.startFen, moves: g.moves, ply: g.moves.length }).split(' ')[1] === 'b'
-      ? 'black'
-      : 'white',
-  );
   const setTab = useUiStore((s) => s.setActiveTab);
   const id = useId();
   const lock = useHumanGameLockReason();
   const { setup } = play;
   const summary = summaryOf(play.playerColor, setup);
-  const engineColor: Orientation = play.playerColor === 'white' ? 'black' : 'white';
-  const clocks = (body: ReactNode) =>
-    play.clock ? (
-      <>
-        <PlayerClock
-          clock={play.clock}
-          side={engineColor}
-          who="Engine"
-          toMove={play.mode === 'playing' && tipTurn === engineColor}
-        />
-        {body}
-        <PlayerClock
-          clock={play.clock}
-          side={play.playerColor}
-          who="You"
-          toMove={play.mode === 'playing' && tipTurn === play.playerColor}
-        />
-      </>
-    ) : (
-      body
-    );
 
   if (play.mode === 'idle') {
     return (
@@ -332,16 +270,14 @@ export function PlayPanel() {
     return (
       <div className={styles.panel}>
         <p className={styles.meta}>{summary}</p>
-        {clocks(
-          <p
-            className={play.thinking ? styles.status : `${styles.status} ${styles.statusYou}`}
-            data-testid="play-status"
-            role="status"
-            aria-live="polite"
-          >
-            {status}
-          </p>,
-        )}
+        <p
+          className={play.thinking ? styles.status : `${styles.status} ${styles.statusYou}`}
+          data-testid="play-status"
+          role="status"
+          aria-live="polite"
+        >
+          {status}
+        </p>
         <div className={styles.row}>
           <button type="button" onClick={play.takeBack} disabled={play.thinking || plies === 0}>
             Take back
@@ -360,19 +296,17 @@ export function PlayPanel() {
   return (
     <div className={styles.panel}>
       <p className={styles.meta}>{summary}</p>
-      {clocks(
-        <div className={styles.result} role="status" aria-live="polite">
-          <span className={styles.score} data-testid="play-result">
-            {play.result ?? '*'}
-          </span>
-          <span>
-            <strong data-testid="play-verdict">
-              {verdict(play.result, play.playerColor, play.reason)}
-            </strong>
-            {play.reason && play.reason !== 'timeout' && <> — {REASON_TEXT[play.reason]}</>}
-          </span>
-        </div>,
-      )}
+      <div className={styles.result} role="status" aria-live="polite">
+        <span className={styles.score} data-testid="play-result">
+          {play.result ?? '*'}
+        </span>
+        <span>
+          <strong data-testid="play-verdict">
+            {verdict(play.result, play.playerColor, play.reason)}
+          </strong>
+          {play.reason && play.reason !== 'timeout' && <> — {REASON_TEXT[play.reason]}</>}
+        </span>
+      </div>
       {play.message && (
         <p className={styles.error} role="alert">
           {play.message}

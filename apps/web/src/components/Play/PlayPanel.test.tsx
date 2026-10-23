@@ -16,6 +16,19 @@ import { useGameStore } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
 import { PlayIndicator } from './PlayIndicator';
 import { PlayPanel } from './PlayPanel';
+import { PlayerBar, useBoardPlayers } from '../PlayerBar/PlayerBar';
+
+/** The board's player bars (as in App), for the clocks that moved out of the panel. */
+function Bars() {
+  const p = useBoardPlayers();
+  const top = p.orientation === 'white' ? 'black' : 'white';
+  return (
+    <>
+      <PlayerBar side={top} player={p[top]} position="top" />
+      <PlayerBar side={p.orientation} player={p[p.orientation]} position="bottom" />
+    </>
+  );
+}
 
 let engine: FakePlayEngine;
 const takeBack = () => screen.getByRole('button', { name: 'Take back' }) as HTMLButtonElement;
@@ -152,7 +165,7 @@ describe('PlayPanel', () => {
     expect(screen.queryByLabelText('Minutes')).toBeNull();
   });
 
-  it('playing with a clock: engine clock on top, yours below; lost on time', () => {
+  it('playing with a clock: engine clock in the top bar, yours below; lost on time', () => {
     usePlayStore.setState({
       setup: {
         color: 'white',
@@ -161,7 +174,12 @@ describe('PlayPanel', () => {
         timeControl: { initialMs: 60_000, incrementMs: 0 },
       },
     });
-    render(<PlayPanel />);
+    render(
+      <>
+        <PlayPanel />
+        <Bars />
+      </>,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     const clocks = screen.getAllByRole('timer');
     expect(clocks.map((c) => c.getAttribute('data-testid'))).toEqual([
@@ -173,6 +191,12 @@ describe('PlayPanel', () => {
     expect(clocks[1]!.getAttribute('data-state')).toBe('running');
     expect(clocks[0]!.getAttribute('data-state')).toBe('idle');
     expect(screen.getByText(/1\+0 · Bullet/)).toBeTruthy();
+    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe(
+      'Black: Stockfish · 1500 Elo, 1:00',
+    );
+    expect(screen.getByTestId('player-bar-bottom').getAttribute('aria-label')).toBe(
+      'White: You, 1:00',
+    );
 
     act(() => usePlayStore.getState().tick(performance.now() + 120_000));
     expect(screen.getByTestId('play-verdict').textContent).toBe('You lost on time');
