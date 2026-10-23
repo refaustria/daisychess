@@ -125,19 +125,7 @@ export function remainingMs(g: LiveGame, side: Orientation, now: number): number
   return Math.max(0, base - Math.max(0, now - g.lastStateAt));
 }
 
-/** Formats clock time: m:ss, with tenths below 10 s. */
-export function formatClock(ms: number): string {
-  const t = Math.max(0, ms);
-  if (t < 10_000) {
-    const tenths = Math.floor(t / 100);
-    return `0:0${Math.floor(tenths / 10)}.${tenths % 10}`;
-  }
-  const secs = Math.floor(t / 1000);
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = String(secs % 60).padStart(2, '0');
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
-}
+export { formatClock } from '../clock/format';
 
 /** Replays UCI moves from `fen` into game store records; stops at the first illegal move. */
 export function replay(fen: string, ucis: readonly string[]): { records: MoveRecord[]; ok: boolean } {

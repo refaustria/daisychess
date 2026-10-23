@@ -217,30 +217,6 @@
   white-space: nowrap;
 }
 
-.clock {
-  min-width: 5.5rem;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 1.4rem;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.clockActive {
-  border-color: var(--accent);
-  background: var(--surface);
-  color: var(--text);
-}
-
-.clockLow {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
 .status {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);

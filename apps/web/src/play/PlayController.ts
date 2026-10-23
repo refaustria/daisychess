@@ -28,6 +28,11 @@ export interface PlayConfig {
   strength: StrengthPreset;
   /** Thinking time per move in ms. */
   moveTime: number;
+  /**
+   * With a clock: the thinking time for the search that starts now (read when the search starts,
+   * replaces `moveTime`). The extra reply delay is skipped then, it would cost the engine's clock.
+   */
+  searchTime?: () => number;
 }
 
 export interface PlayControllerOptions {
@@ -38,6 +43,10 @@ export interface PlayControllerOptions {
   /** The engine is disposed this long after the game stopped (unless a new game starts). */
   idleDisposeMs?: number;
   onThinking(thinking: boolean): void;
+  /** A search starts now (after the engine is loaded and configured). */
+  onSearchStart?(): void;
+  /** The engine has its move (it is played now, or once the view is back at the tip). */
+  onMoveReady?(): void;
   onGameOver(outcome: Outcome): void;
   onError(message: string): void;
 }
@@ -170,7 +179,9 @@ export class PlayController {
         await this.applyOptions(engine, strengthOptions(config.strength));
         if (gen !== this.gen) return;
         this.searching = true;
-        const handle = engine.analyze(fen, { movetime: Math.max(1, Math.round(config.moveTime)) });
+        this.opts.onSearchStart?.();
+        const movetime = config.searchTime ? config.searchTime() : config.moveTime;
+        const handle = engine.analyze(fen, { movetime: Math.max(1, Math.round(movetime)) });
         let pv0: string | undefined;
         try {
           for await (const info of handle) {
@@ -184,12 +195,13 @@ export class PlayController {
         const best = (await handle.bestMove)?.move ?? pv0;
         if (gen !== this.gen) return;
         if (!best || !UCI_MOVE.test(best)) throw new Error('The engine returned no move');
-        const delay = (this.opts.extraDelayMs ?? defaultDelay)();
+        const delay = config.searchTime ? 0 : (this.opts.extraDelayMs ?? defaultDelay)();
         if (delay > 0) {
           await sleep(delay);
           if (gen !== this.gen) return;
         }
         this.held = { fen, uci: best };
+        this.opts.onMoveReady?.();
         this.tryPlayHeld();
       } catch (err) {
         if (gen === this.gen) this.fail(err);

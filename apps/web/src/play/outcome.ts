@@ -9,6 +9,7 @@ export type EndReason =
   | 'fifty_moves'
   | 'threefold_repetition'
   | 'resign'
+  | 'timeout'
   | 'engine_error'
   | 'aborted';
 
@@ -52,6 +53,7 @@ export const REASON_TEXT: Record<EndReason, string> = {
   fifty_moves: 'Fifty-move rule',
   threefold_repetition: 'Threefold repetition',
   resign: 'Resignation',
+  timeout: 'Time out',
   engine_error: 'Engine error',
   aborted: 'Position changed',
 };

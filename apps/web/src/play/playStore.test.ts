@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAnalysisStore } from '../store/analysisStore';
 import { START_FEN, useGameStore } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { FakePlayEngine } from './fakePlayEngine';
-import { configurePlay, resetPlay, takeBackPlies, usePlayStore } from './playStore';
+import { configurePlay, PLAY_STORAGE_KEY, readPlaySetup, resetPlay, takeBackPlies, usePlayStore } from './playStore';
 
 const g = () => useGameStore.getState();
 const p = () => usePlayStore.getState();
@@ -175,6 +175,156 @@ describe('playStore', () => {
 
   it('sanitizes the setup', () => {
     p().start({ strength: 'bogus', moveTime: 42 });
-    expect(p().setup).toEqual({ color: 'white', strength: '1500', moveTime: 500 });
+    expect(p().setup).toEqual({ color: 'white', strength: '1500', moveTime: 500, timeControl: null });
+  });
+});
+
+describe('playStore clock', () => {
+  let nowMs = 0;
+  const tc = (initialMs: number, incrementMs = 0) => ({ timeControl: { initialMs, incrementMs } });
+
+  beforeEach(async () => {
+    nowMs = 1000;
+    await configurePlay({ createEngine: () => engine, extraDelayMs: () => 0, random: () => random, now: () => nowMs });
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('runs only the side to move; Fischer increment; engine time follows the clock', async () => {
+    engine.manual = true;
+    p().start({ color: 'white', moveTime: 3000, ...tc(60_000, 1000) });
+    expect(p().clock).toMatchObject({ w: 60_000, b: 60_000, runningSide: 'w' });
+    nowMs += 5000;
+    g().makeMove('e2', 'e4');
+    // -5 s +1 s; the engine's clock waits for its search to start.
+    expect(p().clock).toMatchObject({ w: 56_000, b: 60_000, runningSide: null });
+    await flush();
+    expect(p().clock?.runningSide).toBe('b');
+    // min(3000, max(50, 60000/30 + 0.8 × 1000)) = 2800
+    expect(engine.searches[0]!.opts).toEqual({ movetime: 2800 });
+    nowMs += 2500;
+    engine.release();
+    await flush();
+    expect(g().moves).toHaveLength(2);
+    expect(p().clock).toMatchObject({ w: 56_000, b: 58_500, runningSide: 'w' });
+    p().resign();
+    expect(p().clock?.runningSide).toBeNull();
+    nowMs += 10_000;
+    p().tick();
+    expect(p().clock).toMatchObject({ w: 56_000, b: 58_500 }); // paused when finished
+  });
+
+  it('no clock: unchanged behaviour', async () => {
+    p().start({ color: 'black', moveTime: 100, timeControl: null });
+    expect(p().clock).toBeNull();
+    await flush();
+    expect(engine.searches[0]!.opts).toEqual({ movetime: 100 });
+  });
+
+  it('the user flags: game over on time, the engine wins; the ticker stops', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    p().start({ color: 'white', ...tc(15_000) });
+    expect(vi.getTimerCount()).toBe(1);
+    nowMs += 14_000;
+    vi.advanceTimersByTime(100);
+    expect(p().mode).toBe('playing');
+    expect(p().clock?.w).toBe(1000);
+    nowMs += 1000;
+    vi.advanceTimersByTime(100);
+    expect(p().mode).toBe('finished');
+    expect(p().reason).toBe('timeout');
+    expect(p().result).toBe('0-1');
+    expect(p().clock).toMatchObject({ w: 0, flagged: 'w', runningSide: null });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(useAnalysisStore.getState().enabled).toBe(true);
+  });
+
+  it('a late tick (throttled background tab) still flags with the exact elapsed time', () => {
+    p().start({ color: 'white', ...tc(15_000) });
+    nowMs += 60_000;
+    p().tick();
+    expect(p()).toMatchObject({ mode: 'finished', reason: 'timeout', result: '0-1' });
+  });
+
+  it('a move after the time ran out (before the tick noticed) loses on time', () => {
+    p().start({ color: 'white', ...tc(15_000) });
+    nowMs += 15_500;
+    g().makeMove('e2', 'e4');
+    expect(p()).toMatchObject({ mode: 'finished', reason: 'timeout', result: '0-1' });
+  });
+
+  it('the engine’s clock starts with its search (loading the engine is not charged)', async () => {
+    engine.manual = true;
+    p().start({ color: 'black', ...tc(60_000) });
+    expect(p().clock).toMatchObject({ w: 60_000, runningSide: null });
+    nowMs += 5000; // engine loading
+    await flush();
+    expect(p().clock).toMatchObject({ w: 60_000, runningSide: 'w' });
+    nowMs += 1000;
+    engine.release();
+    await flush();
+    expect(p().clock).toMatchObject({ w: 59_000, b: 60_000, runningSide: 'b' });
+  });
+
+  it('the engine flags while thinking: the user wins, the search is dropped', async () => {
+    engine.manual = true;
+    p().start({ color: 'black', ...tc(15_000) });
+    await flush();
+    expect(p().clock?.runningSide).toBe('w');
+    expect(engine.searches[0]!.opts).toEqual({ movetime: 500 }); // min(500, 15000/30)
+    nowMs += 15_000;
+    p().tick();
+    expect(p()).toMatchObject({ mode: 'finished', reason: 'timeout', result: '0-1' });
+    engine.release();
+    await flush();
+    expect(g().moves).toHaveLength(0);
+  });
+
+  it('takeback: no increment, the user’s clock runs again', async () => {
+    p().start({ color: 'white', ...tc(60_000, 2000) });
+    nowMs += 1000;
+    g().makeMove('e2', 'e4');
+    await flush();
+    expect(p().clock).toMatchObject({ w: 61_000, b: 62_000, runningSide: 'w' });
+    nowMs += 3000;
+    p().takeBack();
+    expect(p().clock).toMatchObject({ w: 58_000, b: 62_000, runningSide: 'w' });
+  });
+
+  it('the engine’s clock stops once its move is ready (held while the user browses back)', async () => {
+    engine.manual = true;
+    p().start({ color: 'white', ...tc(60_000) });
+    g().makeMove('e2', 'e4');
+    await flush();
+    g().goTo(0);
+    nowMs += 1000;
+    engine.release();
+    await flush();
+    expect(g().moves).toHaveLength(1); // held
+    expect(p().clock).toMatchObject({ b: 59_000, runningSide: null });
+    nowMs += 20_000;
+    g().goTo(1);
+    expect(g().moves).toHaveLength(2);
+    expect(p().clock).toMatchObject({ w: 60_000, b: 59_000, runningSide: 'w' });
+  });
+
+  it('persists the last setup incl. the time control', () => {
+    p().start({ color: 'black', strength: '1800', moveTime: 1000, ...tc(180_000, 2000) });
+    expect(JSON.parse(localStorage.getItem(PLAY_STORAGE_KEY) ?? '{}')).toEqual({
+      color: 'black',
+      strength: '1800',
+      moveTime: 1000,
+      timeControl: { initialMs: 180_000, incrementMs: 2000 },
+    });
+    expect(readPlaySetup().timeControl).toEqual({ initialMs: 180_000, incrementMs: 2000 });
+    p().setSetup({ timeControl: null });
+    expect(readPlaySetup().timeControl).toBeNull();
+    localStorage.setItem(PLAY_STORAGE_KEY, '{not json');
+    expect(readPlaySetup()).toEqual({ color: 'white', strength: '1500', moveTime: 500, timeControl: null });
+    localStorage.setItem(PLAY_STORAGE_KEY, JSON.stringify({ color: 'x', timeControl: { initialMs: 1, incrementMs: 0 } }));
+    expect(readPlaySetup()).toMatchObject({ color: 'white', timeControl: { initialMs: 15_000, incrementMs: 0 } });
   });
 });

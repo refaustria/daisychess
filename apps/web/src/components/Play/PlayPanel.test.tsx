@@ -10,6 +10,7 @@ vi.mock('../../review/reviewStore', () => ({
 }));
 
 import { FakePlayEngine } from '../../play/fakePlayEngine';
+import { useLiveStore } from '../../live/liveStore';
 import { configurePlay, resetPlay, usePlayStore } from '../../play/playStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
@@ -22,7 +23,9 @@ const takeBack = () => screen.getByRole('button', { name: 'Take back' }) as HTML
 beforeEach(async () => {
   engine = new FakePlayEngine();
   await configurePlay({ createEngine: () => engine, extraDelayMs: () => 0, random: () => 0.1 });
-  usePlayStore.setState({ setup: { color: 'white', strength: '1500', moveTime: 500 } });
+  usePlayStore.setState({
+    setup: { color: 'white', strength: '1500', moveTime: 500, timeControl: null },
+  });
   useGameStore.getState().reset();
   reviewStart.mockClear();
   reviewReset.mockClear();
@@ -108,5 +111,98 @@ describe('PlayPanel', () => {
     await waitFor(() => expect(reviewStart).toHaveBeenCalledWith({ depth: 14 }));
     expect(reviewReset).toHaveBeenCalled();
     expect(useUiStore.getState().activeTab).toBe('review');
+  });
+
+  it('time control: grouped presets, Custom inputs (clamped), No clock', () => {
+    render(<PlayPanel />);
+    const select = screen.getByLabelText('Time control') as HTMLSelectElement;
+    expect(select.value).toBe('none');
+    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.label);
+    expect(groups).toEqual(['Bullet', 'Blitz', 'Rapid', 'Classical']);
+    expect(screen.getByRole('option', { name: '3+2 · Blitz' })).toBeTruthy();
+    fireEvent.change(select, { target: { value: '3+2' } });
+    expect(usePlayStore.getState().setup.timeControl).toEqual({
+      initialMs: 180_000,
+      incrementMs: 2000,
+    });
+    expect(screen.queryByLabelText('Minutes')).toBeNull();
+
+    fireEvent.change(select, { target: { value: 'custom' } });
+    expect(select.value).toBe('custom');
+    const minutes = screen.getByLabelText('Minutes') as HTMLInputElement;
+    expect(minutes.value).toBe('3');
+    fireEvent.change(minutes, { target: { value: '0.25' } });
+    fireEvent.change(screen.getByLabelText('Increment (s)'), { target: { value: '0' } });
+    expect(usePlayStore.getState().setup.timeControl).toEqual({
+      initialMs: 15_000,
+      incrementMs: 0,
+    });
+    expect(screen.getByText('0.25+0 · UltraBullet')).toBeTruthy();
+    // Out of range: committed clamped on blur.
+    fireEvent.change(minutes, { target: { value: '500' } });
+    fireEvent.blur(minutes);
+    expect(usePlayStore.getState().setup.timeControl?.initialMs).toBe(180 * 60_000);
+    expect(minutes.value).toBe('180');
+    // A custom value that equals a preset stays "Custom" while editing.
+    fireEvent.change(minutes, { target: { value: '5' } });
+    expect(select.value).toBe('custom');
+
+    fireEvent.change(select, { target: { value: 'none' } });
+    expect(usePlayStore.getState().setup.timeControl).toBeNull();
+    expect(screen.queryByLabelText('Minutes')).toBeNull();
+  });
+
+  it('playing with a clock: engine clock on top, yours below; lost on time', () => {
+    usePlayStore.setState({
+      setup: {
+        color: 'white',
+        strength: '1500',
+        moveTime: 500,
+        timeControl: { initialMs: 60_000, incrementMs: 0 },
+      },
+    });
+    render(<PlayPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    const clocks = screen.getAllByRole('timer');
+    expect(clocks.map((c) => c.getAttribute('data-testid'))).toEqual([
+      'play-clock-engine',
+      'play-clock-you',
+    ]);
+    expect(clocks[0]!.getAttribute('aria-label')).toBe('Black clock 1:00');
+    expect(clocks[1]!.getAttribute('aria-label')).toBe('White clock 1:00');
+    expect(clocks[1]!.getAttribute('data-state')).toBe('running');
+    expect(clocks[0]!.getAttribute('data-state')).toBe('idle');
+    expect(screen.getByText(/1\+0 · Bullet/)).toBeTruthy();
+
+    act(() => usePlayStore.getState().tick(performance.now() + 120_000));
+    expect(screen.getByTestId('play-verdict').textContent).toBe('You lost on time');
+    expect(screen.getByTestId('play-result').textContent).toBe('0-1');
+    expect(screen.getByTestId('play-clock-you').textContent).toBe('0:00.0');
+    expect(screen.getByTestId('play-clock-you').getAttribute('data-state')).toBe('flagged');
+  });
+
+  it('“Engine lost on time” when the engine flags', () => {
+    usePlayStore.setState({
+      mode: 'finished',
+      playerColor: 'black',
+      result: '0-1',
+      reason: 'timeout',
+    });
+    render(<PlayPanel />);
+    expect(screen.getByTestId('play-verdict').textContent).toBe('Engine lost on time');
+    expect(screen.queryByText(/Time out/)).toBeNull();
+  });
+
+  it('Start is disabled with the reason while a live game runs', () => {
+    useLiveStore.setState({ status: 'playing' });
+    try {
+      render(<PlayPanel />);
+      const start = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+      expect(start.disabled).toBe(true);
+      expect(screen.getByText(/A live game is running/)).toBeTruthy();
+      expect(start.getAttribute('aria-describedby')).toBeTruthy();
+    } finally {
+      useLiveStore.setState({ status: 'idle' });
+    }
   });
 });

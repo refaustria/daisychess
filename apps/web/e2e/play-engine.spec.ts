@@ -155,3 +155,87 @@ test('play as Black: the engine opens, board is flipped', async ({ page }) => {
   await expect(page.getByTestId('play-status')).toHaveText('Your move', { timeout: 10_000 });
   await expect(page.getByLabel('FEN')).toHaveValue(/ b /);
 });
+
+test('premove (single) against the engine: played right after the engine replies', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.getByRole('tab', { name: 'Play' }).click();
+  await page.getByRole('radio', { name: 'White' }).check();
+  await page.getByLabel('Thinking time').selectOption({ label: '3 s per move' });
+  await page.getByLabel('Time control').selectOption('none');
+  await page.getByRole('button', { name: 'Start' }).click();
+  const status = page.getByTestId('play-status');
+  await expect(status).toHaveText('Your move');
+  await drag(page, 'e2', 'e4');
+  await expect(status).toHaveText('Engine thinking…');
+  // Drag while the engine thinks: a premove (default setting `single`).
+  await drag(page, 'g1', 'f3');
+  await expect(page.getByTestId('board')).toHaveAttribute('data-premoves', 'g1f3');
+  // The engine's reply, then the premove at once: Black to move in move 2, knight on f3.
+  await expect(page.getByLabel('FEN')).toHaveValue(/\/5N2\/PPPP1PPP\/RNBQKB1R b /, {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('board')).not.toHaveAttribute('data-premoves', /./);
+  expect(await halfMoves(page)).toBe(3);
+  await page.getByRole('button', { name: 'Stop' }).click();
+});
+
+test('clocks: both render, yours runs on your move, resign; a 15-second game is lost on time', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.getByRole('tab', { name: 'Play' }).click();
+  await page.getByRole('radio', { name: 'White' }).check();
+  await page.getByLabel('Thinking time').selectOption({ label: '0.1 s per move' });
+  const tc = page.getByLabel('Time control');
+  await tc.selectOption({ label: '1+0 · Bullet' });
+  await page.getByRole('button', { name: 'Start' }).click();
+
+  const mine = page.getByTestId('play-clock-you');
+  const engine = page.getByTestId('play-clock-engine');
+  await expect(mine).toBeVisible();
+  await expect(engine).toHaveText('1:00');
+  await expect(engine).toHaveAttribute('aria-label', 'Black clock 1:00');
+  // Your clock runs while it is your move.
+  await expect(mine).toHaveAttribute('data-state', 'running');
+  await expect(mine).toHaveText(/^0:5\d$/, { timeout: 5_000 });
+  await drag(page, 'e2', 'e4');
+  await expect(page.getByLabel('FEN')).toHaveValue(AFTER_REPLY, { timeout: 10_000 });
+  await expect(mine).toHaveAttribute('data-state', 'running');
+  await expect(engine).toHaveAttribute('data-state', 'idle');
+  await expect(engine).toHaveText(/^(1:00|0:59)$/); // 0.1 s of thinking
+  await checkA11y(page, 'play with clocks');
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: `${SHOTS}/play-clock.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Resign' }).click();
+  await expect(page.getByTestId('play-result')).toHaveText('0-1');
+  const stopped = await mine.textContent();
+  await page.waitForTimeout(1_100);
+  await expect(mine).toHaveText(stopped ?? ''); // paused when finished
+
+  // Custom 0.25+0 (15 s): do not move, lose on time.
+  await page.getByRole('button', { name: 'New setup' }).click();
+  await tc.selectOption('custom');
+  await page.getByLabel('Minutes').fill('0.25');
+  await page.getByLabel('Increment (s)').fill('0');
+  await expect(page.getByText('0.25+0 · UltraBullet')).toBeVisible();
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(mine).toHaveText(/^0:1[0-5]$/);
+  await expect(mine).toHaveClass(/clockLow/, { timeout: 15_000 }); // below 1.5 s
+  await expect(page.getByTestId('play-verdict')).toHaveText('You lost on time', {
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId('play-result')).toHaveText('0-1');
+  await expect(mine).toHaveText('0:00.0');
+  await expect(mine).toHaveAttribute('data-state', 'flagged');
+
+  // The setup (incl. the custom clock) is remembered.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Play' }).click();
+  await expect(page.getByLabel('Time control')).toHaveValue('custom');
+  await expect(page.getByLabel('Minutes')).toHaveValue('0.25');
+  expect(errors).toEqual([]);
+});

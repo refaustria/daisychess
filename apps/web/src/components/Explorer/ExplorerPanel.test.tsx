@@ -6,6 +6,7 @@ import type { ExplorerFetch } from '../../explorer/client';
 import { resetExplorerRuntime, setExplorerFetch, useExplorerStore } from '../../explorer/explorerStore';
 import { CASTLING, EMPTY, htmlResponse, jsonResponse, LICHESS_E4, MASTERS_PGN, MASTERS_START } from '../../explorer/fixtures';
 import { AUTH_STORAGE_KEY, resetLichessAuth } from '../../lichess/auth';
+import { useLiveStore } from '../../live/liveStore';
 import { usePlayStore } from '../../play/playStore';
 import { currentFen, useGameStore } from '../../store/gameStore';
 import { ExplorerPanel } from './ExplorerPanel';
@@ -24,6 +25,7 @@ beforeEach(() => {
   useExplorerStore.setState({ active: false, status: 'idle', key: undefined, data: undefined, error: undefined, db: 'masters', token: 'lip_t' });
   useGameStore.getState().reset();
   usePlayStore.setState({ mode: 'idle' });
+  useLiveStore.setState({ status: 'idle' });
   fetchMock = vi.fn<ExplorerFetch>(async () => jsonResponse(MASTERS_START));
   setExplorerFetch(fetchMock);
   vi.mocked(client.fetchExplorerGamePgn).mockReset();
@@ -87,11 +89,33 @@ describe('ExplorerPanel', () => {
     expect(useGameStore.getState().moves[0]?.san).toBe('O-O');
   });
 
-  it('move clicks and loading are disabled while playing vs the engine', async () => {
+  it('fair play: no requests and the lock line while a human game runs; resumes afterwards', async () => {
     usePlayStore.setState({ mode: 'playing' });
-    await renderReady();
-    expect((screen.getByRole('button', { name: 'Play e4' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getAllByRole('button', { name: /^Load / })[0] as HTMLButtonElement).disabled).toBe(true);
+    render(<ExplorerPanel />);
+    expect(screen.getByTestId('explorer-locked').textContent).toBe('Paused while playing against the engine');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400)); // longer than the debounce
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useExplorerStore.getState().active).toBe(false);
+    expect(screen.queryByRole('table')).toBeNull();
+
+    act(() => usePlayStore.setState({ mode: 'finished' }));
+    await screen.findByText('3,000 games');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('explorer-locked')).toBeNull();
+
+    // A live game locks it again: the data disappears, nothing new is requested.
+    act(() => useLiveStore.setState({ status: 'playing' }));
+    expect(screen.getByTestId('explorer-locked').textContent).toBe('Disabled during a live game (lichess fair play)');
+    expect(screen.queryByRole('table')).toBeNull();
+    act(() => useGameStore.getState().makeMove('e2', 'e4'));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    act(() => useLiveStore.setState({ status: 'idle' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it('Load fetches the PGN, loads it and jumps to the explored position', async () => {

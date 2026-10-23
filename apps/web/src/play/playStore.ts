@@ -1,10 +1,20 @@
 import { create } from 'zustand';
+import {
+  afterMove,
+  createClock,
+  engineMoveTime,
+  runSide,
+  tick,
+  type ClockSide,
+  type GameClock,
+} from '../clock/gameClock';
+import { sanitizeSetting, type ClockSetting } from '../clock/timeControls';
 import { PremoveQueue } from '../live/premoves';
 import { useAnalysisStore } from '../store/analysisStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { currentFen, useGameStore, type GameState, type Orientation } from '../store/gameStore';
 import { atTip, type EndReason, type GameResult, type Outcome } from './outcome';
-import { PlayController, type CreatePlayEngine } from './PlayController';
+import { PlayController, type CreatePlayEngine, type PlayConfig } from './PlayController';
 import { DEFAULT_MOVE_TIME, DEFAULT_STRENGTH, findStrength, MOVE_TIMES } from './strength';
 
 export type PlayMode = 'idle' | 'playing' | 'finished';
@@ -14,8 +24,10 @@ export interface PlaySetup {
   color: ColorChoice;
   /** Id of a {@link STRENGTH_PRESETS} entry. */
   strength: string;
-  /** Engine thinking time per move (ms). */
+  /** Engine thinking time per move (ms); with a clock the upper bound (see `engineMoveTime`). */
   moveTime: number;
+  /** Clock of both sides; null (or missing) = no clock. */
+  timeControl?: ClockSetting | null;
 }
 
 export interface PlayState {
@@ -32,11 +44,20 @@ export interface PlayState {
   thinking: boolean;
   /** The user's premoves (UCI), played one per turn (settings `premoves`). */
   premoves: string[];
+  /** The game's clock (null without a time control); stopped when the game is finished. */
+  clock: GameClock | null;
 }
 
 export interface PlayActions {
   /** Resets the board, orients it for the player and starts a game against the engine. */
   start(setup?: Partial<PlaySetup>): void;
+  /** Changes the setup (sanitized, persisted in localStorage `chesslab.play`). */
+  setSetup(setup: Partial<PlaySetup>): void;
+  /**
+   * Charges the running clock up to `now` (monotonic ms, default `performance.now()`) and ends
+   * the game when a side runs out of time. Called every {@link CLOCK_TICK_MS} while a clock runs.
+   */
+  tick(now?: number): void;
   resign(): void;
   /** Takes back the user's last move (and the engine's reply); see {@link takeBackPlies}. */
   takeBack(): void;
@@ -76,7 +97,13 @@ interface PlayHooks {
   extraDelayMs?: () => number;
   idleDisposeMs?: number;
   random: () => number;
+  /** Monotonic clock source (ms). */
+  now: () => number;
 }
+
+/** Interval of the clock ticker (display and flag detection; the time itself is exact). */
+export const CLOCK_TICK_MS = 100;
+export const PLAY_STORAGE_KEY = 'chesslab.play';
 
 /**
  * Returns a reason why a local engine game must not start (a live lichess game runs), or null.
@@ -90,7 +117,16 @@ export function setPlayStartGuard(guard: PlayStartGuard): void {
   startGuard = guard;
 }
 
-let hooks: PlayHooks = { createEngine: createWasmPlayEngine, random: Math.random };
+const monotonicNow = (): number =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+
+let hooks: PlayHooks = {
+  createEngine: createWasmPlayEngine,
+  random: Math.random,
+  now: monotonicNow,
+};
 let controller: PlayController | null = null;
 let pagehideBound = false;
 /** True while the live analysis is switched off by the play store. */
@@ -98,12 +134,86 @@ let analysisSuspended = false;
 let unwatchAnalysis: (() => void) | null = null;
 let unwatchGame: (() => void) | null = null;
 let premoveQueue: PremoveQueue | null = null;
+let ticker: ReturnType<typeof setInterval> | null = null;
+
+const toSide = (c: Orientation): ClockSide => (c === 'white' ? 'w' : 'b');
+const tipTurn = (g: Pick<GameState, 'startFen' | 'moves' | 'ply'>): ClockSide =>
+  currentFen(atTip(g)).split(' ')[1] === 'b' ? 'b' : 'w';
+
+/** Runs the ticker while a clock runs (one interval at most). */
+function syncTicker(): void {
+  const c = usePlayStore.getState().clock;
+  const want = usePlayStore.getState().mode === 'playing' && c !== null && c.runningSide !== null;
+  if (want && ticker === null)
+    ticker = setInterval(() => usePlayStore.getState().tick(), CLOCK_TICK_MS);
+  else if (!want && ticker !== null) {
+    clearInterval(ticker);
+    ticker = null;
+  }
+}
+
+/** Applies a clock transition; a flag ends the game (the other side wins). */
+function setClock(next: GameClock | null): void {
+  if (next === usePlayStore.getState().clock) return;
+  usePlayStore.setState({ clock: next });
+  if (next?.flagged && usePlayStore.getState().mode === 'playing') {
+    finish({ result: next.flagged === 'w' ? '0-1' : '1-0', reason: 'timeout' });
+    return;
+  }
+  syncTicker();
+}
+
+const engineSideOf = (s: Pick<PlayState, 'playerColor'>): ClockSide =>
+  s.playerColor === 'white' ? 'b' : 'w';
+
+/**
+ * The engine's clock runs only while it searches: it starts when the search starts (loading the
+ * WASM engine for the first move is not charged) and stops when the move is ready.
+ */
+function engineSearchStarts(): void {
+  const s = usePlayStore.getState();
+  if (s.mode !== 'playing' || !s.clock || s.clock.flagged) return;
+  if (s.clock.runningSide === null) setClock(runSide(s.clock, engineSideOf(s), hooks.now()));
+}
+
+/** Clock after the tip changed: the engine's side waits for its search to start. */
+function holdEngine(c: GameClock): GameClock {
+  const s = usePlayStore.getState();
+  return c.runningSide === engineSideOf(s) ? { ...c, runningSide: null } : c;
+}
+
+/** The engine has its move: its clock stops (it is not charged while the user browses back). */
+function engineMoveReady(): void {
+  const s = usePlayStore.getState();
+  if (s.mode !== 'playing' || !s.clock) return;
+  if (s.clock.runningSide !== toSide(s.playerColor)) setClock(runSide(s.clock, null, hooks.now()));
+}
+
+/** Controller config for the current setup; with a clock the search time follows it. */
+function playConfig(playerColor: Orientation, setup: PlaySetup): PlayConfig {
+  const config: PlayConfig = {
+    playerColor,
+    strength: findStrength(setup.strength),
+    moveTime: setup.moveTime,
+  };
+  if (setup.timeControl) {
+    const engineSide: ClockSide = playerColor === 'white' ? 'b' : 'w';
+    config.searchTime = () => {
+      const c = usePlayStore.getState().clock;
+      if (!c) return setup.moveTime;
+      const t = tick(c, hooks.now());
+      return engineMoveTime(setup.moveTime, t[engineSide], t.incrementMs);
+    };
+  }
+  return config;
+}
 
 function startPremoves(): void {
   premoveQueue?.dispose();
   premoveQueue = new PremoveQueue({
     game: useGameStore,
-    color: () => (usePlayStore.getState().mode === 'playing' ? usePlayStore.getState().playerColor : null),
+    color: () =>
+      usePlayStore.getState().mode === 'playing' ? usePlayStore.getState().playerColor : null,
     mode: () => useSettingsStore.getState().premoves,
     onChange: (list) => usePlayStore.setState({ premoves: [...list] }),
   });
@@ -146,6 +256,8 @@ function getController(): PlayController {
       extraDelayMs: hooks.extraDelayMs,
       idleDisposeMs: hooks.idleDisposeMs,
       onThinking: (thinking) => usePlayStore.setState({ thinking }),
+      onMoveReady: engineMoveReady,
+      onSearchStart: engineSearchStarts,
       onGameOver: (outcome) => finish(outcome),
       onError: (message) => finish({ reason: 'engine_error' }, message),
     });
@@ -157,11 +269,7 @@ function getController(): PlayController {
     window.addEventListener('pageshow', (e) => {
       const s = usePlayStore.getState();
       if (e.persisted && s.mode === 'playing') {
-        controller?.start({
-          playerColor: s.playerColor,
-          strength: findStrength(s.setup.strength),
-          moveTime: s.setup.moveTime,
-        });
+        controller?.start(playConfig(s.playerColor, s.setup));
       }
     });
   }
@@ -177,8 +285,26 @@ function watchGame(): void {
   unwatchGame?.();
   unwatchGame = useGameStore.subscribe((s, prev) => {
     if (usePlayStore.getState().mode !== 'playing') return;
-    if (s.headers !== prev.headers || s.startFen !== prev.startFen) finish({ reason: 'aborted' });
+    if (s.headers !== prev.headers || s.startFen !== prev.startFen) {
+      finish({ reason: 'aborted' });
+      return;
+    }
+    if (s.moves !== prev.moves) onMovesChanged(s, prev);
   });
+}
+
+/**
+ * Clock transitions on a change of the game's tip: one move appended = the mover pressed the
+ * clock (increment, opponent's clock starts); anything else (takeback, a move on an earlier
+ * ply) just runs the clock of the side to move, without increment.
+ */
+function onMovesChanged(s: GameState, prev: GameState): void {
+  const c = usePlayStore.getState().clock;
+  if (!c) return;
+  const now = hooks.now();
+  const n = prev.moves.length;
+  const appended = s.moves.length === n + 1 && (n === 0 || s.moves[n - 1] === prev.moves[n - 1]);
+  setClock(holdEngine(appended ? afterMove(c, tipTurn(prev), now) : runSide(c, tipTurn(s), now)));
 }
 
 function finish(outcome: Outcome, message?: string): void {
@@ -186,13 +312,16 @@ function finish(outcome: Outcome, message?: string): void {
   unwatchGame = null;
   stopPremoves();
   controller?.stop();
+  const c = usePlayStore.getState().clock;
   usePlayStore.setState({
+    clock: c && c.runningSide !== null ? runSide(c, null, hooks.now()) : c,
     mode: 'finished',
     result: outcome.result,
     reason: outcome.reason,
     message,
     thinking: false,
   });
+  syncTicker();
   restoreAnalysis();
 }
 
@@ -217,21 +346,53 @@ export async function resetPlay(): Promise<void> {
     reason: undefined,
     message: undefined,
     thinking: false,
+    clock: null,
   });
+  syncTicker();
 }
 
 const sanitizeSetup = (s: PlaySetup): PlaySetup => ({
   color: s.color === 'black' || s.color === 'random' ? s.color : 'white',
   strength: findStrength(s.strength).id,
   moveTime: MOVE_TIMES.some((t) => t.ms === s.moveTime) ? s.moveTime : DEFAULT_MOVE_TIME,
+  timeControl: sanitizeSetting(s.timeControl),
 });
+
+const DEFAULT_SETUP: PlaySetup = {
+  color: 'white',
+  strength: DEFAULT_STRENGTH,
+  moveTime: DEFAULT_MOVE_TIME,
+  timeControl: null,
+};
+
+/** The last setup from localStorage `chesslab.play` (defaults when missing or invalid). */
+export function readPlaySetup(): PlaySetup {
+  try {
+    const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(PLAY_STORAGE_KEY);
+    if (!raw) return DEFAULT_SETUP;
+    const v: unknown = JSON.parse(raw);
+    if (!v || typeof v !== 'object') return DEFAULT_SETUP;
+    return sanitizeSetup({ ...DEFAULT_SETUP, ...(v as Partial<PlaySetup>) });
+  } catch {
+    return DEFAULT_SETUP;
+  }
+}
+
+function writePlaySetup(setup: PlaySetup): void {
+  try {
+    localStorage.setItem(PLAY_STORAGE_KEY, JSON.stringify(setup));
+  } catch {
+    // Storage full or blocked: the setup just is not remembered.
+  }
+}
 
 export const usePlayStore = create<PlayStore>()((set, get) => ({
   mode: 'idle',
   playerColor: 'white',
-  setup: { color: 'white', strength: DEFAULT_STRENGTH, moveTime: DEFAULT_MOVE_TIME },
+  setup: readPlaySetup(),
   thinking: false,
   premoves: [],
+  clock: null,
 
   start: (partial) => {
     const blocked = startGuard();
@@ -240,6 +401,7 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
       return;
     }
     const setup = sanitizeSetup({ ...get().setup, ...partial });
+    writePlaySetup(setup);
     const playerColor: Orientation =
       setup.color === 'random' ? (hooks.random() < 0.5 ? 'white' : 'black') : setup.color;
     const ctl = getController();
@@ -258,8 +420,27 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
       reason: undefined,
       message: undefined,
       thinking: false,
+      clock: setup.timeControl ? createClock(setup.timeControl, hooks.now()) : null,
     });
-    ctl.start({ playerColor, strength: findStrength(setup.strength), moveTime: setup.moveTime });
+    // The user's clock starts now when they have White; the engine's when its search starts.
+    const c = get().clock;
+    if (c && tipTurn(useGameStore.getState()) === toSide(playerColor)) {
+      set({ clock: runSide(c, toSide(playerColor), hooks.now()) });
+    }
+    syncTicker();
+    ctl.start(playConfig(playerColor, setup));
+  },
+
+  setSetup: (partial) => {
+    const setup = sanitizeSetup({ ...get().setup, ...partial });
+    set({ setup });
+    writePlaySetup(setup);
+  },
+
+  tick: (now) => {
+    const c = get().clock;
+    if (!c || get().mode !== 'playing') return;
+    setClock(tick(c, now ?? hooks.now()));
   },
 
   resign: () => {
@@ -292,7 +473,9 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
       reason: undefined,
       message: undefined,
       thinking: false,
+      clock: null,
     });
+    syncTicker();
     restoreAnalysis();
   },
 

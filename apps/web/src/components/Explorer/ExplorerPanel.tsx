@@ -15,7 +15,7 @@ import {
 import { explorerToken, useExplorerStore, type ExplorerErrorInfo } from '../../explorer/explorerStore';
 import { useLichessAuth } from '../../lichess/auth';
 import { LoginButton } from '../LichessAccount/LoginButton';
-import { usePlayStore } from '../../play/playStore';
+import { lockText, useHumanGameLockReason } from '../../live/lock';
 import { useGameStore } from '../../store/gameStore';
 import styles from './ExplorerPanel.module.css';
 
@@ -97,7 +97,9 @@ function errorView(e: ExplorerErrorInfo, loggedIn: boolean): { text: string; tok
 
 export function ExplorerPanel({ onLoaded }: Props) {
   const st = useExplorerStore();
-  const playing = usePlayStore((p) => p.mode === 'playing');
+  // Fair play: no explorer data while a human game runs (live lichess game or vs the engine).
+  const lock = useHumanGameLockReason();
+  const locked = lock !== null;
   const loginName = useLichessAuth((a) => (a.status === 'authenticated' ? a.username : undefined));
   const loggedIn = loginName !== undefined;
   const ids = useId();
@@ -109,13 +111,14 @@ export function ExplorerPanel({ onLoaded }: Props) {
   const loadSeq = useRef(0);
 
   useEffect(() => {
+    if (locked) return;
     const seq = loadSeq;
     useExplorerStore.getState().setActive(true);
     return () => {
       seq.current++; // drop pending game loads
       useExplorerStore.getState().setActive(false);
     };
-  }, []);
+  }, [locked]);
 
   const needsToken = st.status === 'error' && st.error?.kind === 'unauthorized';
   useEffect(() => {
@@ -124,7 +127,7 @@ export function ExplorerPanel({ onLoaded }: Props) {
 
   const playMove = (m: ExplorerMove) => {
     const fen = st.fen;
-    if (!fen || playing) return;
+    if (!fen || locked) return;
     // The explorer encodes castling king-to-rook (e1h1); resolve via SAN to board squares.
     let from: string;
     let to: string;
@@ -253,8 +256,13 @@ export function ExplorerPanel({ onLoaded }: Props) {
       )}
 
       <p className={styles.status} role="status" aria-live="polite">
-        {statusText}
+        {locked ? '' : statusText}
       </p>
+      {locked && (
+        <p className={styles.status} data-testid="explorer-locked">
+          {lockText(lock)}
+        </p>
+      )}
 
       {err && (
         <div className={styles.errorBox} role="alert">
@@ -307,7 +315,7 @@ export function ExplorerPanel({ onLoaded }: Props) {
                         type="button"
                         className={styles.move}
                         onClick={() => playMove(m)}
-                        disabled={playing}
+                        disabled={locked}
                         aria-label={`Play ${m.san}`}
                       >
                         {m.san}
@@ -365,7 +373,7 @@ export function ExplorerPanel({ onLoaded }: Props) {
                           type="button"
                           className={styles.load}
                           onClick={() => void loadGame(g)}
-                          disabled={playing || loadingId !== ''}
+                          disabled={locked || loadingId !== ''}
                           aria-label={`Load ${g.white.name} – ${g.black.name}`}
                         >
                           {loadingId === g.id ? 'Loading…' : 'Load'}
@@ -384,7 +392,6 @@ export function ExplorerPanel({ onLoaded }: Props) {
           {loadMsg.text}
         </p>
       )}
-      {playing && <p className={styles.status}>Moves and game loading are disabled during a game against the engine.</p>}
 
       <p className={styles.status} data-testid="explorer-auth">
         {loggedIn

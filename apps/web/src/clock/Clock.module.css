@@ -1,0 +1,52 @@
+.clock {
+  min-width: 5.5rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.clockActive {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Subtle pulse of the running clock (a ring, so the text contrast never changes). */
+.clockRunning {
+  animation: clock-pulse 2s ease-in-out infinite;
+}
+
+.clockLow {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.clockFlagged {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--surface);
+  font-weight: 700;
+}
+
+@keyframes clock-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clockRunning {
+    animation: none;
+  }
+}

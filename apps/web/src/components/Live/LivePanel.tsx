@@ -356,7 +356,7 @@ function Playing({ game }: { game: LiveGame }) {
     <div className={styles.panel} data-testid="live-game">
       <div className={styles.player}>
         <span data-testid="live-opponent">{playerLabel(game.opponent)}</span>
-        <LiveClock game={game} side={opp} label="Opponent's" />
+        <LiveClock game={game} side={opp} />
       </div>
       <p className={myTurn ? `${styles.status} ${styles.statusYou}` : styles.status} role="status" aria-live="polite" data-testid="live-status">
         {status}
@@ -371,7 +371,7 @@ function Playing({ game }: { game: LiveGame }) {
       )}
       <div className={styles.player}>
         <span>You ({game.color})</span>
-        <LiveClock game={game} side={game.color} label="Your" />
+        <LiveClock game={game} side={game.color} />
       </div>
       <p className={styles.meta}>
         {game.rated ? 'Rated' : 'Casual'} · {game.speed}
