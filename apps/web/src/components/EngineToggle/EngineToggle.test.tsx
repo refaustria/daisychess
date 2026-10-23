@@ -18,7 +18,11 @@ describe('engineStatusText', () => {
       }),
     ).toBe('Stockfish 19 · 4 threads · depth 18');
     expect(
-      engineStatusText({ ...base, engineName: 'SF', capabilities: { threads: false, build: 'x', threadCount: 1 } }),
+      engineStatusText({
+        ...base,
+        engineName: 'SF',
+        capabilities: { threads: false, build: 'x', threadCount: 1 },
+      }),
     ).toBe('SF · 1 thread');
   });
 });

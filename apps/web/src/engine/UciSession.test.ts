@@ -90,7 +90,9 @@ describe('UciSession.setOptions', () => {
     const { engine, session, mark } = await ready();
     engine.autoReady = false;
     let resolved = false;
-    const p = session.setOptions({ MultiPV: 3, Threads: 2, Ponder: false }).then(() => (resolved = true));
+    const p = session
+      .setOptions({ MultiPV: 3, Threads: 2, Ponder: false })
+      .then(() => (resolved = true));
     await flush();
     expect(engine.since(mark)).toEqual([
       'setoption name MultiPV value 3',
@@ -165,7 +167,9 @@ describe('UciSession.analyze', () => {
     engine.emit('info string NNUE evaluation enabled');
     engine.emit('info depth 1 seldepth 1 multipv 1 score cp 18 nodes 20 nps 10000 time 2 pv e2e4');
     engine.emit('info depth 2 currmove e2e4 currmovenumber 1');
-    engine.emit('info depth 2 seldepth 2 multipv 1 score cp 25 nodes 60 nps 12000 time 5 pv e2e4 e7e5');
+    engine.emit(
+      'info depth 2 seldepth 2 multipv 1 score cp 25 nodes 60 nps 12000 time 5 pv e2e4 e7e5',
+    );
     engine.emit('bestmove e2e4 ponder e7e5');
     await a.done;
     expect(a.error).toBeUndefined();
@@ -186,7 +190,12 @@ describe('UciSession.analyze', () => {
     engine.emit('info depth 3 score mate -1 pv g7g5');
     engine.emit('bestmove d8h4');
     await a.done;
-    expect(a.infos.map((i) => i.score)).toEqual([{ cp: -40 }, { cp: 15 }, { mate: -2 }, { mate: 1 }]);
+    expect(a.infos.map((i) => i.score)).toEqual([
+      { cp: -40 },
+      { cp: 15 },
+      { mate: -2 },
+      { mate: 1 },
+    ]);
   });
 
   it('keeps White-to-move scores unchanged', async () => {

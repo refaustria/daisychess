@@ -93,3 +93,9 @@
     max-height: none;
   }
 }
+
+.badge {
+  margin-left: 0.15rem;
+  font-size: 0.75em;
+  font-weight: 700;
+}

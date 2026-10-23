@@ -10,19 +10,33 @@ const label = () => screen.getByTestId('eval-label');
 
 describe('evalDisplay', () => {
   it('maps scores to share and label', () => {
-    expect(evalDisplay({ cp: 0 }, null)).toEqual({ share: 50, label: '0.00', aria: 'Evaluation 0.00' });
+    expect(evalDisplay({ cp: 0 }, null)).toEqual({
+      share: 50,
+      label: '0.00',
+      aria: 'Evaluation 0.00',
+    });
     const plus = evalDisplay({ cp: 170 }, null);
     expect(plus.label).toBe('+1.70');
     expect(plus.share).toBeGreaterThan(60);
     expect(evalDisplay({ cp: -170 }, null).share).toBeCloseTo(100 - plus.share, 5);
     expect(evalDisplay({ mate: 4 }, null)).toMatchObject({ share: 98, label: 'M4' });
     expect(evalDisplay({ mate: -3 }, null)).toMatchObject({ share: 2, label: '-M3' });
-    expect(evalDisplay(null, null)).toEqual({ share: 50, label: null, aria: 'Evaluation unavailable' });
+    expect(evalDisplay(null, null)).toEqual({
+      share: 50,
+      label: null,
+      aria: 'Evaluation unavailable',
+    });
   });
 
   it('shows results for terminal positions', () => {
-    expect(evalDisplay(null, 'checkmate', '6k1/8/8/8/8/8/8/R5K1 b - - 0 1')).toMatchObject({ share: 100, label: '1-0' });
-    expect(evalDisplay(null, 'checkmate', '6k1/8/8/8/8/8/8/r5K1 w - - 0 1')).toMatchObject({ share: 0, label: '0-1' });
+    expect(evalDisplay(null, 'checkmate', '6k1/8/8/8/8/8/8/R5K1 b - - 0 1')).toMatchObject({
+      share: 100,
+      label: '1-0',
+    });
+    expect(evalDisplay(null, 'checkmate', '6k1/8/8/8/8/8/8/r5K1 w - - 0 1')).toMatchObject({
+      share: 0,
+      label: '0-1',
+    });
     expect(evalDisplay(null, 'stalemate')).toMatchObject({ share: 50, label: '½-½' });
   });
 });

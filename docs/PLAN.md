@@ -42,7 +42,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 |---|---|---|---|
 | M4-1 | Batch analysis runner (both backends) | senior | done |
 | M4-2 | Move classification + accuracy in `engine-core` (tested) | worker | done |
-| M4-3 | Review UI: eval graph, key moments, annotated PGN export | worker | in-progress |
+| M4-3 | Review UI: eval graph, key moments, annotated PGN export | worker | done |
 
 ## M5 — Engines & themes
 | ID | Task | Tier | Status |
@@ -55,4 +55,4 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 |---|---|---|---|
 | M6-1 | Docker image + compose for server mode | worker | done |
 | M6-2 | Performance pass, accessibility, docs | worker | todo |
-| M6-3 | Security review of server + hosting | architect | todo |
+| M6-3 | Security review of server + hosting | architect | in-progress |

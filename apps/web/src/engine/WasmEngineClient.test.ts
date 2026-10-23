@@ -51,7 +51,8 @@ describe('selectBuild', () => {
     });
   });
   it('uses the threaded lite build with min(cores - 1, 4) threads', () => {
-    const threads = (n: number) => selectBuild({ crossOriginIsolated: true, hardwareConcurrency: n });
+    const threads = (n: number) =>
+      selectBuild({ crossOriginIsolated: true, hardwareConcurrency: n });
     expect(threads(16)).toEqual({ build: 'lite', threads: 4 });
     expect(threads(5)).toEqual({ build: 'lite', threads: 4 });
     expect(threads(4)).toEqual({ build: 'lite', threads: 3 });
@@ -71,7 +72,9 @@ describe('WasmEngineClient', () => {
     });
     await client.load();
     expect(workers).toHaveLength(1);
-    expect(workers[0]?.url).toBe(`https://example.test/engine/${__STOCKFISH_ENGINE__.builds['lite-single']}`);
+    expect(workers[0]?.url).toBe(
+      `https://example.test/engine/${__STOCKFISH_ENGINE__.builds['lite-single']}`,
+    );
     expect(workers[0]?.received).toEqual(['uci', 'isready']);
     expect(client.engineName).toBe('Stockfish 19 Lite');
   });
@@ -81,7 +84,12 @@ describe('WasmEngineClient', () => {
     expect(client.capabilities()).toMatchObject({ threads: true, threadCount: 4 });
     await client.load();
     expect(workers[0]?.url).toMatch(/stockfish-\d+-lite\.js$/);
-    expect(workers[0]?.received).toEqual(['uci', 'isready', 'setoption name Threads value 4', 'isready']);
+    expect(workers[0]?.received).toEqual([
+      'uci',
+      'isready',
+      'setoption name Threads value 4',
+      'isready',
+    ]);
   });
 
   it('honours a forced lite-single build on an isolated page', async () => {
@@ -103,7 +111,9 @@ describe('WasmEngineClient', () => {
     const p = client.load();
     // Script/WASM load failure before the engine answers (the error event has an empty message).
     workers[0]!.onerror?.({ message: '', preventDefault() {} } as ErrorEvent);
-    await expect(p).rejects.toThrow(/Stockfish worker error: failed to load https:\/\/example\.test/);
+    await expect(p).rejects.toThrow(
+      /Stockfish worker error: failed to load https:\/\/example\.test/,
+    );
     expect(workers[0]?.terminated).toBe(true);
     await client.load();
     expect(workers).toHaveLength(2);
@@ -146,7 +156,10 @@ describe('WasmEngineClient', () => {
     await client.load();
     const it = client.analyze(START)[Symbol.asyncIterator]();
     await flush();
-    workers[0]!.onerror?.({ message: 'RuntimeError: unreachable', preventDefault() {} } as ErrorEvent);
+    workers[0]!.onerror?.({
+      message: 'RuntimeError: unreachable',
+      preventDefault() {},
+    } as ErrorEvent);
     await expect(it.next()).rejects.toThrow('Stockfish worker error: RuntimeError: unreachable');
   });
 

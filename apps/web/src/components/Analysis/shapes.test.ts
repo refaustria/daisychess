@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { analysisShapes, type ShapeInput } from './shapes';
 
-const base: ShapeInput = { enabled: true, terminal: false, previewing: false, inSync: true, best: 'e2e4', hover: null };
+const base: ShapeInput = {
+  enabled: true,
+  terminal: false,
+  previewing: false,
+  inSync: true,
+  best: 'e2e4',
+  hover: null,
+};
 
 describe('analysisShapes', () => {
   it('draws the best move in green', () => {
@@ -12,7 +19,12 @@ describe('analysisShapes', () => {
     expect(s.map((x) => x.brush)).toEqual(['blue', 'paleBlue', 'paleBlue']);
   });
   it('draws nothing when disabled, terminal, previewing or out of sync', () => {
-    for (const o of [{ enabled: false }, { terminal: true }, { previewing: true }, { inSync: false }]) {
+    for (const o of [
+      { enabled: false },
+      { terminal: true },
+      { previewing: true },
+      { inSync: false },
+    ]) {
       expect(analysisShapes({ ...base, ...o })).toEqual([]);
     }
     expect(analysisShapes({ ...base, best: undefined })).toEqual([]);

@@ -8,6 +8,7 @@ import { Controls } from './components/Controls/Controls';
 import { EngineToggle } from './components/EngineToggle/EngineToggle';
 import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
+import { ReviewPanel } from './components/Review/ReviewPanel';
 import { SettingsPanel } from './components/Settings/SettingsPanel';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
@@ -64,7 +65,7 @@ function ConnectedBoard() {
 
 export function App() {
   const state = useGameStore();
-  const [tab, setTab] = useState<'moves' | 'import' | 'settings'>('moves');
+  const [tab, setTab] = useState<'moves' | 'import' | 'review' | 'settings'>('moves');
   const alert = gameStatus(state) === 'checkmate' || isCheck(state);
   return (
     <div className={styles.app}>
@@ -109,6 +110,14 @@ export function App() {
             </button>
             <button
               role="tab"
+              aria-selected={tab === 'review'}
+              className={tab === 'review' ? styles.tabActive : styles.tab}
+              onClick={() => setTab('review')}
+            >
+              Review
+            </button>
+            <button
+              role="tab"
               aria-selected={tab === 'settings'}
               className={tab === 'settings' ? styles.tabActive : styles.tab}
               onClick={() => setTab('settings')}
@@ -119,6 +128,7 @@ export function App() {
           <div className={styles.content}>
             {tab === 'moves' && <MoveList />}
             {tab === 'import' && <ImportPanel onLoaded={() => setTab('moves')} />}
+            {tab === 'review' && <ReviewPanel />}
             {tab === 'settings' && <SettingsPanel />}
           </div>
         </section>

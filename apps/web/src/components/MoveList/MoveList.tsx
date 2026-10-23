@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { CLASS_INFO } from '../../review/format';
+import { useReviewStore } from '../../review/reviewStore';
 import { gameStatus, useGameStore, type MoveRecord } from '../../store/gameStore';
 import styles from './MoveList.module.css';
 
@@ -37,6 +39,7 @@ export function MoveList() {
   const headers = useGameStore((s) => s.headers);
   const goTo = useGameStore((s) => s.goTo);
   const state = useGameStore();
+  const reviewed = useReviewStore((s) => (s.status === 'done' ? s.summary : undefined));
   const currentRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -47,17 +50,20 @@ export function MoveList() {
   const over = ply === moves.length && gameStatus(state) !== 'playing';
   const status = gameStatus(state);
   const sideToMoveWhite = (state.moves[ply - 1]?.fen ?? startFen).split(' ')[1] === 'w';
-  const computed =
-    status === 'checkmate' ? (sideToMoveWhite ? '0-1' : '1-0') : '1/2-1/2';
+  const computed = status === 'checkmate' ? (sideToMoveWhite ? '0-1' : '1-0') : '1/2-1/2';
   const result = headers.Result && headers.Result !== '*' ? headers.Result : computed;
 
-  const cell = (
-    m: { san: string; ply: number } | undefined,
-    num: number,
-    isBlack: boolean,
-  ) => {
+  const cell = (m: { san: string; ply: number } | undefined, num: number, isBlack: boolean) => {
     if (!m) return <span className={styles.empty}>…</span>;
     const current = m.ply === ply;
+    const played = state.moves[m.ply - 1];
+    const found = reviewed?.moves.find((x) => x.ply === m.ply);
+    // Ignore a stale review of a different game.
+    const r =
+      found && played && found.uci === `${played.from}${played.to}${played.promotion ?? ''}`
+        ? found
+        : undefined;
+    const info = r ? CLASS_INFO[r.classification] : undefined;
     return (
       <button
         type="button"
@@ -68,6 +74,16 @@ export function MoveList() {
         onClick={() => goTo(m.ply)}
       >
         {m.san}
+        {r && info && info.glyph && (
+          <span
+            className={styles.badge}
+            style={{ color: info.color }}
+            data-class={r.classification}
+            title={`${info.label} (−${Math.round(r.winProbLoss)}% win probability)`}
+          >
+            {info.glyph}
+          </span>
+        )}
       </button>
     );
   };

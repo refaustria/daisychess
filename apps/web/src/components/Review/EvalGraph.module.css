@@ -1,0 +1,54 @@
+.graph {
+  display: block;
+  width: 100%;
+  height: 5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.bg {
+  fill: var(--surface);
+}
+
+.white {
+  fill: var(--text);
+  opacity: 0.25;
+}
+
+.black {
+  fill: var(--text-muted);
+  opacity: 0.35;
+}
+
+.mid {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.line {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.point {
+  fill: var(--text);
+  opacity: 0;
+}
+
+.marker {
+  stroke: var(--surface);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cursor {
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}

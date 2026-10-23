@@ -44,3 +44,21 @@ describe('MoveList', () => {
     expect(screen.getAllByText('0-1').length).toBeGreaterThan(1);
   });
 });
+
+describe('MoveList review badges', () => {
+  it('shows class glyphs with tooltip once a review is done', async () => {
+    const { useReviewStore } = await import('../../review/reviewStore');
+    const { scholarSummary } = await import('../../review/testFixtures');
+    act(() => {
+      useGameStore.getState().loadPgn('1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7#');
+    });
+    const { container } = render(<MoveList />);
+    expect(container.querySelector('[data-class]')).toBeNull();
+    act(() => useReviewStore.setState({ status: 'done', summary: scholarSummary() }));
+    const blunder = container.querySelector('[data-class="blunder"]')!;
+    expect(blunder.textContent).toBe('??');
+    expect(blunder.getAttribute('title')).toMatch(/^Blunder/);
+    expect(container.querySelector('[data-class="inaccuracy"]')!.textContent).toBe('?!');
+    act(() => useReviewStore.setState({ status: 'idle', summary: undefined }));
+  });
+});

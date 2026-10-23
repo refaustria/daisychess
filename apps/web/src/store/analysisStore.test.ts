@@ -37,7 +37,13 @@ describe('mergeLine', () => {
       [2, 6],
       [3, 5],
     ]);
-    expect(lines[1]).toEqual({ multipv: 2, depth: 6, score: { cp: 7 }, pv: ['e2e4', 'e7e5'], nps: 1000 });
+    expect(lines[1]).toEqual({
+      multipv: 2,
+      depth: 6,
+      score: { cp: 7 },
+      pv: ['e2e4', 'e7e5'],
+      nps: 1000,
+    });
     expect(before[1]!.depth).toBe(5);
   });
 
@@ -52,7 +58,10 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings({})).toEqual(DEFAULT_SETTINGS);
     expect(sanitizeSettings({ depth: 99, multipv: 9 })).toEqual({ depth: 40, multipv: 5 });
     expect(sanitizeSettings({ depth: -3, multipv: 0 })).toEqual({ depth: 0, multipv: 1 });
-    expect(sanitizeSettings({ multipv: 3 }, { depth: 12, multipv: 1 })).toEqual({ depth: 12, multipv: 3 });
+    expect(sanitizeSettings({ multipv: 3 }, { depth: 12, multipv: 1 })).toEqual({
+      depth: 12,
+      multipv: 3,
+    });
     expect(sanitizeSettings({ threads: 2 })).toEqual({ ...DEFAULT_SETTINGS, threads: 2 });
     expect(sanitizeSettings({ threads: undefined }, { depth: 1, multipv: 1, threads: 4 })).toEqual({
       depth: 1,
@@ -135,7 +144,12 @@ describe('analysis store + controller', () => {
       removeItem: (k: string) => void storage.delete(k),
     });
     useGameStore.getState().reset();
-    useAnalysisStore.setState({ enabled: false, settings: { ...DEFAULT_SETTINGS }, status: 'idle', lines: [] });
+    useAnalysisStore.setState({
+      enabled: false,
+      settings: { ...DEFAULT_SETTINGS },
+      status: 'idle',
+      lines: [],
+    });
     engine = new ScriptedEngine();
     stop = startAnalysisController({ createEngine: () => engine, debounceMs: 80 });
   });
@@ -149,7 +163,10 @@ describe('analysis store + controller', () => {
     const a = useAnalysisStore.getState();
     expect(a.fen).toBe(START_FEN);
     a.setEnabled(true);
-    expect(JSON.parse(storage.get(STORAGE_KEY)!)).toEqual({ enabled: true, settings: DEFAULT_SETTINGS });
+    expect(JSON.parse(storage.get(STORAGE_KEY)!)).toEqual({
+      enabled: true,
+      settings: DEFAULT_SETTINGS,
+    });
     await vi.advanceTimersByTimeAsync(0);
     expect(useAnalysisStore.getState()).toMatchObject({
       status: 'analysing',
@@ -178,7 +195,11 @@ describe('analysis store + controller', () => {
     await vi.advanceTimersByTimeAsync(0);
     useGameStore.getState().loadFen('R5k1/5ppp/8/8/8/8/5PPP/6K1 b - - 1 1');
     await vi.advanceTimersByTimeAsync(100);
-    expect(useAnalysisStore.getState()).toMatchObject({ terminal: 'checkmate', lines: [], status: 'ready' });
+    expect(useAnalysisStore.getState()).toMatchObject({
+      terminal: 'checkmate',
+      lines: [],
+      status: 'ready',
+    });
     expect(engine.searches).toHaveLength(1);
   });
 

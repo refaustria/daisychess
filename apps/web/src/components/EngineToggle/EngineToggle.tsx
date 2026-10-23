@@ -2,7 +2,10 @@ import { useAnalysisStore, type AnalysisState } from '../../store/analysisStore'
 import styles from './EngineToggle.module.css';
 
 export function engineStatusText(
-  s: Pick<AnalysisState, 'enabled' | 'status' | 'error' | 'engineName' | 'capabilities' | 'lines' | 'terminal'>,
+  s: Pick<
+    AnalysisState,
+    'enabled' | 'status' | 'error' | 'engineName' | 'capabilities' | 'lines' | 'terminal'
+  >,
 ): string {
   if (s.status === 'error') return `Error: ${s.error ?? 'engine failed'}`;
   if (!s.enabled) return 'Off';

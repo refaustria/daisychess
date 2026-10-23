@@ -88,7 +88,9 @@ test.describe('live analysis', () => {
     expect(errors).toEqual([]);
   });
 
-  test('rapid keyboard navigation follows the position without runaway searches', async ({ page }) => {
+  test('rapid keyboard navigation follows the position without runaway searches', async ({
+    page,
+  }) => {
     // Count `go` commands vs `bestmove` replies at the Worker boundary.
     await page.addInitScript(() => {
       const Orig = window.Worker;
@@ -115,7 +117,9 @@ test.describe('live analysis', () => {
     await page.getByRole('tab', { name: 'Import' }).click();
     await page
       .getByLabel('PGN text')
-      .fill('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7');
+      .fill(
+        '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7',
+      );
     await page.getByRole('button', { name: 'Load PGN' }).click();
     await page.getByRole('switch', { name: 'Engine' }).check();
     const label = page.getByTestId('eval-label');
@@ -129,7 +133,9 @@ test.describe('live analysis', () => {
     await expect(page.getByTestId('eval-bar')).toHaveAttribute('data-fen', fen);
     await expect(label).toHaveText(LABEL, { timeout: 20_000 });
     const stats = await page.evaluate(
-      () => (window as unknown as { __uciStats: { go: number; bestmove: number; maxOpen: number } }).__uciStats,
+      () =>
+        (window as unknown as { __uciStats: { go: number; bestmove: number; maxOpen: number } })
+          .__uciStats,
     );
     expect(stats.maxOpen).toBeLessThanOrEqual(2);
     // Debounced: far fewer searches than navigation steps.
@@ -151,9 +157,12 @@ test('analysis panel: MultiPV lines in SAN, hover arrows, click preview', async 
   await expect(lines).toHaveCount(3, { timeout: 20_000 });
   for (let i = 0; i < 3; i++) {
     await expect(lines.nth(i).getByTestId('analysis-eval')).toHaveText(LABEL, { timeout: 20_000 });
-    await expect(lines.nth(i).getByTestId('analysis-pv')).toHaveText(/^1\. [KQRBN]?[a-h]?[1-8]?x?[a-h][1-8]/, {
-      timeout: 20_000,
-    });
+    await expect(lines.nth(i).getByTestId('analysis-pv')).toHaveText(
+      /^1\. [KQRBN]?[a-h]?[1-8]?x?[a-h][1-8]/,
+      {
+        timeout: 20_000,
+      },
+    );
   }
 
   // Best-move arrow (green) while idle.
@@ -161,7 +170,9 @@ test('analysis panel: MultiPV lines in SAN, hover arrows, click preview', async 
   await expect.poll(() => shapes.count(), { timeout: 20_000 }).toBeGreaterThanOrEqual(1);
   const before = await page.locator('.cg-shapes').innerHTML();
   await lines.nth(1).hover();
-  await expect.poll(async () => page.locator('.cg-shapes').innerHTML(), { timeout: 5_000 }).not.toBe(before);
+  await expect
+    .poll(async () => page.locator('.cg-shapes').innerHTML(), { timeout: 5_000 })
+    .not.toBe(before);
   expect(await shapes.count()).toBeGreaterThanOrEqual(1);
 
   const fenInput = page.getByLabel('FEN');

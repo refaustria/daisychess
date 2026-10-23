@@ -41,8 +41,9 @@ async function runEngine(
         capabilities(): RunResult['capabilities'];
         dispose(): Promise<void>;
       };
-      const hook = (window as unknown as { __chesslab: { createWasmEngine(o: object): Promise<Client> } })
-        .__chesslab;
+      const hook = (
+        window as unknown as { __chesslab: { createWasmEngine(o: object): Promise<Client> } }
+      ).__chesslab;
       const engine = await hook.createWasmEngine(options);
       const t0 = performance.now();
       await engine.load();
@@ -66,7 +67,9 @@ async function runEngine(
 test.describe('WASM engine', () => {
   test.setTimeout(90_000);
 
-  test('multi-threaded engine analyzes the start position and finds mate in 1', async ({ page }) => {
+  test('multi-threaded engine analyzes the start position and finds mate in 1', async ({
+    page,
+  }) => {
     const failed: string[] = [];
     page.on('requestfailed', (r) => failed.push(r.url()));
     await page.goto('/');
@@ -131,7 +134,9 @@ test.describe('WASM engine', () => {
     for (const file of readdirSync(join(engineRoot, dir!))) {
       const res = await request.get(`/assets/engine/${dir}/${file}`);
       expect(res.status(), file).toBe(200);
-      expect(res.headers()['content-type']).toMatch(file.endsWith('.wasm') ? /application\/wasm/ : /javascript/);
+      expect(res.headers()['content-type']).toMatch(
+        file.endsWith('.wasm') ? /application\/wasm/ : /javascript/,
+      );
       expect(res.headers()['cross-origin-embedder-policy']).toBe('require-corp');
     }
   });

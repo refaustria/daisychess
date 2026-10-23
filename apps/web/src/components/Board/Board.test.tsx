@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const set = vi.fn();
 const destroy = vi.fn();
-vi.mock('chessground', () => ({ Chessground: vi.fn(() => ({ set, destroy, redrawAll: vi.fn() })) }));
+vi.mock('chessground', () => ({
+  Chessground: vi.fn(() => ({ set, destroy, redrawAll: vi.fn() })),
+}));
 vi.mock('chessground/assets/chessground.base.css', () => ({}));
 vi.mock('chessground/assets/chessground.cburnett.css', () => ({}));
 

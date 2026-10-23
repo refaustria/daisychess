@@ -23,11 +23,19 @@ interface Display {
   aria: string;
 }
 
-export function evalDisplay(score: Score | null | undefined, terminal: TerminalKind | null | undefined, fen?: string): Display {
+export function evalDisplay(
+  score: Score | null | undefined,
+  terminal: TerminalKind | null | undefined,
+  fen?: string,
+): Display {
   if (terminal === 'checkmate') {
     // The side to move is mated.
     const whiteWins = fen?.split(' ')[1] === 'b';
-    return { share: whiteWins ? 100 : 0, label: whiteWins ? '1-0' : '0-1', aria: `Checkmate, ${whiteWins ? 'White' : 'Black'} wins` };
+    return {
+      share: whiteWins ? 100 : 0,
+      label: whiteWins ? '1-0' : '0-1',
+      aria: `Checkmate, ${whiteWins ? 'White' : 'Black'} wins`,
+    };
   }
   if (terminal === 'stalemate') return { share: 50, label: '½-½', aria: 'Stalemate, draw' };
   if (!score) return { share: 50, label: null, aria: 'Evaluation unavailable' };

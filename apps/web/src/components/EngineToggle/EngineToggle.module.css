@@ -49,7 +49,9 @@
   height: 14px;
   border-radius: 50%;
   background: var(--text-muted);
-  transition: transform 150ms, background 150ms;
+  transition:
+    transform 150ms,
+    background 150ms;
 }
 
 .switch input:checked + .track {

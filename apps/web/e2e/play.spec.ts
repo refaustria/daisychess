@@ -129,7 +129,6 @@ test('flip, undo and keyboard navigation', async ({ page }) => {
   await expect(fen(page)).toHaveValue(/^rnbqkbnr\/pppppppp\/8\/8\/4P3\/8\/PPPP1PPP\/RNBQKBNR b/);
 });
 
-
 const SCHOLAR = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7#';
 
 test('PGN import: checkmate, move list, click to navigate', async ({ page }) => {
@@ -198,9 +197,7 @@ test('mobile layout: no horizontal overflow, board visible', async ({ page }) =>
   await expect(board).toBeVisible();
   const box = (await board.boundingBox())!;
   expect(box.width).toBeGreaterThanOrEqual(300);
-  const ok = await page.evaluate(
-    () => document.documentElement.scrollWidth <= window.innerWidth,
-  );
+  const ok = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(ok).toBe(true);
   await page.screenshot({ path: `${SHOTS}/mobile.png`, fullPage: true });
 });

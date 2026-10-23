@@ -157,7 +157,9 @@ export function AnalysisPanel() {
             </label>
             <label
               className={styles.setting}
-              title={threadsOk ? undefined : 'Multi-threading is not available in this browser build'}
+              title={
+                threadsOk ? undefined : 'Multi-threading is not available in this browser build'
+              }
             >
               Threads
               <select
@@ -174,9 +176,13 @@ export function AnalysisPanel() {
             </label>
           </div>
           {terminal ? (
-            <p className={styles.empty}>{terminal === 'checkmate' ? 'Checkmate' : 'Stalemate'}: nothing to analyse.</p>
+            <p className={styles.empty}>
+              {terminal === 'checkmate' ? 'Checkmate' : 'Stalemate'}: nothing to analyse.
+            </p>
           ) : lines.length === 0 ? (
-            <p className={styles.empty}>{status === 'error' ? 'Engine unavailable.' : 'Thinking…'}</p>
+            <p className={styles.empty}>
+              {status === 'error' ? 'Engine unavailable.' : 'Thinking…'}
+            </p>
           ) : (
             <ol className={styles.lines} data-testid="analysis-lines">
               {lines.map((l) => (

@@ -125,11 +125,13 @@ const NEWLINE = /[\r\n]/;
 function goCommand(opts: AnalyzeOptions): string {
   const parts = ['go'];
   const positiveInt = (name: string, v: number): number => {
-    if (!Number.isInteger(v) || v <= 0) throw new Error(`${name} must be a positive integer, got ${v}`);
+    if (!Number.isInteger(v) || v <= 0)
+      throw new Error(`${name} must be a positive integer, got ${v}`);
     return v;
   };
   if (opts.depth !== undefined) parts.push('depth', String(positiveInt('depth', opts.depth)));
-  if (opts.movetime !== undefined) parts.push('movetime', String(positiveInt('movetime', opts.movetime)));
+  if (opts.movetime !== undefined)
+    parts.push('movetime', String(positiveInt('movetime', opts.movetime)));
   if (parts.length === 1) parts.push('infinite');
   return parts.join(' ');
 }
@@ -200,7 +202,9 @@ export class UciSession {
     const entries = Object.entries(options).map(([k, v]) => [k, String(v)] as const);
     for (const [k, v] of entries) {
       if (NEWLINE.test(k) || NEWLINE.test(v) || k.trim() === '') {
-        return Promise.reject(new Error(`Invalid UCI option ${JSON.stringify(k)}=${JSON.stringify(v)}`));
+        return Promise.reject(
+          new Error(`Invalid UCI option ${JSON.stringify(k)}=${JSON.stringify(v)}`),
+        );
       }
     }
     return this.enqueue(async () => {
@@ -225,7 +229,8 @@ export class UciSession {
     const search = new Search(fen, opts, (s) => this.cancel(s));
     let go: string;
     try {
-      if (NEWLINE.test(fen) || fen.trim() === '') throw new Error(`Invalid FEN ${JSON.stringify(fen)}`);
+      if (NEWLINE.test(fen) || fen.trim() === '')
+        throw new Error(`Invalid FEN ${JSON.stringify(fen)}`);
       if (opts.multipv !== undefined && (!Number.isInteger(opts.multipv) || opts.multipv < 1)) {
         throw new Error(`multipv must be a positive integer, got ${opts.multipv}`);
       }
@@ -254,7 +259,9 @@ export class UciSession {
       this.transport.send(go);
       search.state = 'running';
       this.running = search;
-    }).catch((err: unknown) => search.finish(null, err instanceof Error ? err : new Error(String(err))));
+    }).catch((err: unknown) =>
+      search.finish(null, err instanceof Error ? err : new Error(String(err))),
+    );
     return search;
   }
 

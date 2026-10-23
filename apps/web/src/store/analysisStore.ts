@@ -58,7 +58,9 @@ export const DEFAULT_SETTINGS: AnalysisSettings = { depth: 22, multipv: 1 };
 export const STORAGE_KEY = 'chesslab.analysis';
 
 const clampInt = (v: unknown, min: number, max: number, fallback: number): number =>
-  typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : fallback;
+  typeof v === 'number' && Number.isFinite(v)
+    ? Math.min(max, Math.max(min, Math.round(v)))
+    : fallback;
 
 /** Merges a partial update into `base`, clamping depth to 0..40 (0 = infinite) and MultiPV to 1..5. */
 export function sanitizeSettings(
@@ -79,7 +81,11 @@ export function sanitizeSettings(
  * Replaces the line with the same `multipv` (or inserts it), keeping the array sorted.
  * Infos beyond `maxMultipv` are ignored. Returns a new array.
  */
-export function mergeLine(lines: AnalysisLine[], info: EngineInfo, maxMultipv: number): AnalysisLine[] {
+export function mergeLine(
+  lines: AnalysisLine[],
+  info: EngineInfo,
+  maxMultipv: number,
+): AnalysisLine[] {
   if (info.multipv < 1 || info.multipv > maxMultipv) return lines;
   const line: AnalysisLine = {
     multipv: info.multipv,
@@ -143,7 +149,11 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => ({
 
   setEnabled: (enabled) => {
     // Disabling also clears a pending error; re-enabling retries with a fresh engine.
-    set(enabled || get().status !== 'error' ? { enabled } : { enabled, status: 'idle', error: undefined });
+    set(
+      enabled || get().status !== 'error'
+        ? { enabled }
+        : { enabled, status: 'idle', error: undefined },
+    );
     persist(get());
     controller?.setEnabled(enabled);
   },

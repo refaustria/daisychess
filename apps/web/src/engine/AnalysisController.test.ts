@@ -224,7 +224,10 @@ describe('AnalysisController', () => {
     expect(factory).toHaveBeenCalledTimes(1);
     expect(engine().loadCalls).toBe(1);
     expect(cb.engines).toEqual([
-      { engineName: 'Stockfish 19 Fake', capabilities: { threads: true, build: 'fake', threadCount: 4 } },
+      {
+        engineName: 'Stockfish 19 Fake',
+        capabilities: { threads: true, build: 'fake', threadCount: 4 },
+      },
     ]);
     expect(cb.statuses.at(-1)).toBe('analysing');
     expect(engine().last().fen).toBe(FEN_A);

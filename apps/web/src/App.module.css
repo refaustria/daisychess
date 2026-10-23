@@ -124,7 +124,10 @@
   .main {
     flex: 1;
     min-height: 0;
-    grid-template-columns: calc(var(--board-size) + var(--eval-w) + var(--eval-gap)) minmax(0, 360px);
+    grid-template-columns: calc(var(--board-size) + var(--eval-w) + var(--eval-gap)) minmax(
+        0,
+        360px
+      );
     justify-content: center;
     align-items: start;
   }

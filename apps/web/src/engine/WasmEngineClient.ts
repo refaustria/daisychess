@@ -53,7 +53,8 @@ export function selectBuild(env: { crossOriginIsolated: boolean; hardwareConcurr
 }
 
 function defaultEngineBaseUrl(): string {
-  return new URL(`${import.meta.env.BASE_URL}${__STOCKFISH_ENGINE__.dir}`, globalThis.location.href).href;
+  return new URL(`${import.meta.env.BASE_URL}${__STOCKFISH_ENGINE__.dir}`, globalThis.location.href)
+    .href;
 }
 
 /**
@@ -74,7 +75,8 @@ export class WasmEngineClient implements Engine {
     this.options = options;
     const auto = selectBuild({
       crossOriginIsolated: options.crossOriginIsolated ?? globalThis.crossOriginIsolated === true,
-      hardwareConcurrency: options.hardwareConcurrency ?? globalThis.navigator?.hardwareConcurrency ?? 1,
+      hardwareConcurrency:
+        options.hardwareConcurrency ?? globalThis.navigator?.hardwareConcurrency ?? 1,
     });
     this.selected =
       options.build === 'lite-single'
@@ -139,13 +141,16 @@ export class WasmEngineClient implements Engine {
       const detail = ev.message ? `${ev.message}${where}` : `failed to load ${scriptUrl}`;
       session.fail(new Error(`Stockfish worker error: ${detail}`));
     };
-    worker.onmessageerror = () => session.fail(new Error('Stockfish worker sent an unreadable message'));
+    worker.onmessageerror = () =>
+      session.fail(new Error('Stockfish worker sent an unreadable message'));
 
     // Enqueue both synchronously so an analyze() issued right after load() runs after `Threads`
     // is set (setOptions would otherwise stop that search).
     await Promise.all([
       session.handshake(),
-      this.selected.build === 'lite' ? session.setOptions({ Threads: this.selected.threads }) : undefined,
+      this.selected.build === 'lite'
+        ? session.setOptions({ Threads: this.selected.threads })
+        : undefined,
     ]);
   }
 
@@ -160,7 +165,9 @@ export class WasmEngineClient implements Engine {
   analyze(fen: string, opts: AnalyzeOptions = {}): AnalysisHandle {
     const session = this.session;
     if (!session || !this.loading) {
-      const err = new Error(this.disposed ? 'Engine has been disposed' : 'Engine not loaded; call load() first');
+      const err = new Error(
+        this.disposed ? 'Engine has been disposed' : 'Engine not loaded; call load() first',
+      );
       return {
         bestMove: Promise.resolve(null),
         [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(err) }),
@@ -191,7 +198,10 @@ export class WasmEngineClient implements Engine {
   }
 
   private async requireSession(): Promise<UciSession> {
-    if (!this.loading) throw new Error(this.disposed ? 'Engine has been disposed' : 'Engine not loaded; call load() first');
+    if (!this.loading)
+      throw new Error(
+        this.disposed ? 'Engine has been disposed' : 'Engine not loaded; call load() first',
+      );
     await this.loading;
     if (!this.session) throw new Error('Engine has been disposed');
     return this.session;

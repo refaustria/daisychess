@@ -37,7 +37,9 @@ describe('AnalysisPanel', () => {
     const rows = screen.getAllByTestId('analysis-line');
     expect(rows).toHaveLength(2);
     expect(within(rows[0] as HTMLElement).getByTestId('analysis-eval').textContent).toBe('+0.35');
-    expect(within(rows[0] as HTMLElement).getByTestId('analysis-pv').textContent).toBe('1. e4 e5 2. Nf3');
+    expect(within(rows[0] as HTMLElement).getByTestId('analysis-pv').textContent).toBe(
+      '1. e4 e5 2. Nf3',
+    );
     expect(within(rows[1] as HTMLElement).getByTestId('analysis-eval').textContent).toBe('-0.80');
   });
 
@@ -58,7 +60,9 @@ describe('AnalysisPanel', () => {
   });
 
   it('disables threads without engine support', () => {
-    useAnalysisStore.setState({ capabilities: { threads: false, build: 'single', threadCount: 1 } });
+    useAnalysisStore.setState({
+      capabilities: { threads: false, build: 'single', threadCount: 1 },
+    });
     render(<AnalysisPanel />);
     expect((screen.getByLabelText('Threads') as HTMLSelectElement).disabled).toBe(true);
   });
