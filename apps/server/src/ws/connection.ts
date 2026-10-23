@@ -19,6 +19,7 @@ import {
 } from '@chesslab/engine-core';
 import type { EnginePool, Lease, PoolLogger } from '../engines/EnginePool.js';
 import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
+import type { IpSessionLedger } from './clientIp.js';
 
 export interface RateLimit {
   max: number;
@@ -46,6 +47,14 @@ export interface ConnectionOptions {
   maxBufferedBytes?: number;
 }
 
+/** Who a connection is accounted to for the per-IP session cap. */
+export interface ConnectionPeer {
+  /** Resolved client address (see `resolveClientIp`). */
+  ip: string;
+  /** Shared by all connections of one server. */
+  ledger: IpSessionLedger;
+}
+
 type TerminalMessage = BestMoveMessage | ErrorMessage;
 
 interface Search {
@@ -70,6 +79,8 @@ interface Session {
   pending: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
   retired: boolean;
+  /** Holds one of the client address's slots in the per-IP ledger (from acquire to drop). */
+  ipSlot: boolean;
 }
 
 let nextConnectionId = 1;
@@ -111,6 +122,7 @@ export class Connection {
   constructor(
     private readonly ws: WebSocket,
     private readonly opts: ConnectionOptions,
+    private readonly peer: ConnectionPeer,
   ) {
     this.stopTimeoutMs = opts.stopTimeoutMs ?? 5_000;
     this.analyzeRate = opts.analyzeRateLimit ?? { max: 20, windowMs: 1_000 };
@@ -297,6 +309,7 @@ export class Connection {
       pending: 0,
       idleTimer: null,
       retired: false,
+      ipSlot: false,
     };
     this.sessions.set(id, session);
     return session;
@@ -365,12 +378,19 @@ export class Connection {
 
   /** Gives the engine back to the pool (which resets or kills it in the background). */
   private dropLease(session: Session): void {
+    this.releaseIpSlot(session);
     const lease = session.lease;
     if (!lease) return;
     session.lease = null;
     session.offExit?.();
     session.offExit = null;
     void this.opts.pool.release(lease);
+  }
+
+  private releaseIpSlot(session: Session): void {
+    if (!session.ipSlot) return;
+    session.ipSlot = false;
+    this.peer.ledger.release(this.peer.ip);
   }
 
   private onEngineExit(session: Session, lease: Lease, exit: ExitInfo): void {
@@ -415,12 +435,32 @@ export class Connection {
     }
     if (session.lease && session.lease.engineId !== msg.engine) this.dropLease(session);
     if (!session.lease) {
+      // Per-IP cap: reserved synchronously before the (async) acquire, so concurrent sessions
+      // of other connections from the same address cannot overshoot it.
+      if (!session.ipSlot) {
+        if (!this.peer.ledger.tryReserve(this.peer.ip)) {
+          this.log.info(
+            { conn: this.id, session: session.id, ip: this.peer.ip },
+            'per-address session cap reached',
+          );
+          this.sendError(
+            'no_capacity',
+            `too many sessions from your address (at most ${this.peer.ledger.maxPerIp})`,
+            session.id,
+            searchId,
+          );
+          return;
+        }
+        session.ipSlot = true;
+      }
       const res = await this.opts.pool.acquire(msg.engine);
       if (!res.ok) {
+        this.releaseIpSlot(session);
         this.sendError(res.code, res.message, session.id, searchId);
         return;
       }
       if (this.closed || session.retired) {
+        this.releaseIpSlot(session);
         void this.opts.pool.release(res.lease);
         if (!this.closed) this.sendTerminalNow(session.id, searchId);
         return;
@@ -458,7 +498,8 @@ export class Connection {
       if (msg.movetime !== undefined) params.movetime = msg.movetime;
       const result = proc.go(params, (info) => this.onInfo(session, search, info));
       result.then(
-        (r) =>
+        (r) => {
+          this.opts.pool.reportHealthy(lease);
           this.finishSearch(
             session,
             search,
@@ -468,7 +509,8 @@ export class Connection {
               r.bestMove,
               search.stopReason ?? 'completed',
             ),
-          ),
+          );
+        },
         () =>
           this.finishSearch(
             session,

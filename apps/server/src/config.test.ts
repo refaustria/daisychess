@@ -64,4 +64,31 @@ describe('loadConfig', () => {
     ).toEqual(['https://c.referee.at', 'http://localhost:8080']);
     expect(() => loadConfig({ ALLOWED_ORIGINS: 'c.referee.at' })).toThrow(/ALLOWED_ORIGINS/);
   });
+
+  it('per-IP cap (default 2, never above MAX_SESSIONS), crash backoff, trusted proxies', () => {
+    const d = loadConfig({});
+    expect(d).toMatchObject({
+      maxSessionsPerIp: 2,
+      engineCrashResetMs: 60_000,
+      engineMaxConsecutiveCrashes: 10,
+      trustedProxies: [],
+    });
+    expect(loadConfig({ MAX_SESSIONS: '1' }).maxSessionsPerIp).toBe(1);
+    expect(loadConfig({ MAX_SESSIONS: '8', MAX_SESSIONS_PER_IP: '3' }).maxSessionsPerIp).toBe(3);
+    expect(() => loadConfig({ MAX_SESSIONS: '4', MAX_SESSIONS_PER_IP: '5' })).toThrow(
+      /MAX_SESSIONS_PER_IP/,
+    );
+    expect(() => loadConfig({ MAX_SESSIONS_PER_IP: '0' })).toThrow(/MAX_SESSIONS_PER_IP/);
+    const c = loadConfig({
+      ENGINE_CRASH_RESET_MS: '30000',
+      ENGINE_MAX_CONSECUTIVE_CRASHES: '5',
+      TRUSTED_PROXIES: '*',
+    });
+    expect(c).toMatchObject({
+      engineCrashResetMs: 30_000,
+      engineMaxConsecutiveCrashes: 5,
+      trustedProxies: '*',
+    });
+    expect(() => loadConfig({ TRUSTED_PROXIES: 'nginx' })).toThrow(/TRUSTED_PROXIES/);
+  });
 });

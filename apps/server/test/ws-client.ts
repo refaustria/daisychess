@@ -1,4 +1,4 @@
-import WebSocket from 'ws';
+import WebSocket, { type ClientOptions } from 'ws';
 import {
   PROTOCOL_VERSION,
   parseServerMessage,
@@ -31,8 +31,8 @@ export class TestClient {
     );
   }
 
-  static async connect(url: string): Promise<TestClient> {
-    const ws = new WebSocket(url);
+  static async connect(url: string, opts?: ClientOptions): Promise<TestClient> {
+    const ws = new WebSocket(url, opts);
     await new Promise<void>((resolve, reject) => {
       ws.once('open', () => resolve());
       ws.once('error', reject);
@@ -42,8 +42,9 @@ export class TestClient {
 
   static async connectAndHello(
     url: string,
+    opts?: ClientOptions,
   ): Promise<{ client: TestClient; welcome: WelcomeMessage }> {
-    const client = await TestClient.connect(url);
+    const client = await TestClient.connect(url, opts);
     client.send({ type: 'hello', protocolVersion: PROTOCOL_VERSION, client: { name: 'test' } });
     const welcome = await client.waitFor((m): m is WelcomeMessage => m.type === 'welcome');
     return { client, welcome };

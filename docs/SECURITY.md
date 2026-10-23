@@ -48,7 +48,9 @@ In place: `maxPayload` 16 KiB and `perMessageDeflate: false` (no decompression b
 
 Added: nginx `limit_req` 5 handshakes/s per IP (burst 20) on `/ws` next to `limit_conn 10` (live test: 40 parallel handshakes → mix of 403/429, none reached Node beyond the burst).
 
-Open (see §4): one IP may hold 10 connections × 2 sessions = 20 session requests against a global cap of 4, i.e. a single client can monopolise the service; a client can force a 512 MB hash re-allocation per `analyze` by alternating `hash` values (bounded by the analyze rate; equivalent to burning its own CPU share, not an amplifier); crashed engines are respawned without backoff.
+Added (follow-up, same day): **per-IP session cap** — one IP could hold 10 connections × 2 sessions = 20 session requests against a global cap of 4, i.e. monopolise the service. Now `MAX_SESSIONS_PER_IP` (default 2, ≤ `MAX_SESSIONS`) counts engine sessions per client address over all of its connections (`ws/clientIp.ts`, `IpSessionLedger`); the slot is reserved synchronously before the pool acquire (no race between two sockets of one address) and returned when the lease is dropped (release, idle release, engine switch, crash, disconnect). Over the cap → `no_capacity` "too many sessions from your address" (no new error code). The address is `X-Real-IP` only when the TCP peer is loopback (nginx) or in `TRUSTED_PROXIES`, otherwise the peer itself, so the header cannot be spoofed by direct clients; IPv4-mapped IPv6 is unwrapped. Two addresses suffice to fill the global cap of 4 — the cap stops a single client, not a distributed one. **Respawn backoff** — crashed engines were respawned on the next request without delay. Now the pool counts consecutive crashes per engine (unexpected exits and failed starts; not exits caused by shutdown or by killing an unhealthy instance) and, after the n-th, spawns no new instance of that engine for `min(500 ms · 2^(n−1), 30 s)` ± 20 %; requests that would need a new process get `no_capacity` at once (idle instances are still served). The counter resets when an instance stays up `ENGINE_CRASH_RESET_MS` (60 s) or completes a search; after `ENGINE_MAX_CONSECUTIVE_CRASHES` (10) the engine is `degraded` (`/health/detail`: `crashes`, `backoffUntil`, `degraded`; `error` log line) and retried every 30 s. Tests: `clientIp.test.ts`, `ws.test.ts` "per-IP session cap", `EnginePool.test.ts` "respawn backoff".
+
+Open (see §4): a client can force a 512 MB hash re-allocation per `analyze` by alternating `hash` values (bounded by the analyze rate; equivalent to burning its own CPU share, not an amplifier). A client that alternates crashing and completed searches keeps the crash counter low (each completed search resets it), so it pays ≥ 0.5 s backoff plus a full engine start per crash instead of an exponentially growing delay — acceptable while §2.1 makes engine-terminating input unreachable; the backoff mainly protects against a bad binary.
 
 ### 2.5 Information leakage — Low, fixed
 
@@ -73,7 +75,7 @@ COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for t
 | Layer | Control |
 |---|---|
 | Protocol | Zod schemas with hard bounds; Stockfish-equivalent FEN validation; no free-form UCI options; 16 KiB frames; outgoing validation |
-| Server | Origin policy (403); `hello` handshake + timeout; per-connection rate limits; per-connection/global session caps; wall-clock cap; backpressure; `shell: false` spawns; allow-listed options; crash isolation per lease; graceful shutdown kills the cgroup |
+| Server | Origin policy (403); `hello` handshake + timeout; per-connection rate limits; per-connection/per-IP/global session caps; wall-clock cap; backpressure; `shell: false` spawns; allow-listed options; crash isolation per lease; exponential respawn backoff with `degraded` state; graceful shutdown kills the cgroup |
 | nginx | TLS (certbot), `limit_conn 10`, `limit_req 5r/s burst 20`, 429s, `/health` only, COOP/COEP/CORP, nosniff, Referrer-Policy, `frame-ancestors 'none'`, `server_tokens off` |
 | systemd | unprivileged user, no capabilities, seccomp `@system-service`, no egress, read-only FS, private /tmp and /dev, `ProtectProc`, `MemoryMax`, `TasksMax`, `KillMode=control-group` |
 | Docker | non-root, read-only, `cap_drop ALL`, `no-new-privileges`, tini, pinned Stockfish release + digest |
@@ -83,10 +85,10 @@ COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for t
 
 ## 4. Residual risks and recommendations
 
+The two P1 items (per-IP session cap, engine respawn backoff) are done, see §2.4 and ADR-008 addendum.
+
 | Prio | Item | Effort | Notes |
 |---|---|---|---|
-| P1 | **Per-IP session cap** in the server (count leased sessions per `X-Real-IP`, e.g. ≤ 2) | 0.5 d | Today one IP can take all 4 global sessions; `limit_conn` only caps sockets. Needs a test with a fake IP header. |
-| P1 | **Engine respawn backoff** (per engine: exponential delay after an unexpected exit, `no_capacity` meanwhile) | 0.5 d | Defence in depth against the next engine-crashing input or a bad binary; today a crash loop is bounded only by rate limits. |
 | P2 | **Full Content-Security-Policy** for the SPA (`default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'`) | 0.5 d | Must be tested with the WASM worker and chessground inline styles; start in `Content-Security-Policy-Report-Only`. |
 | P2 | **Pin Docker base images by digest** (`node:22-bookworm-slim@sha256:…`, `nginx:alpine@sha256:…`, `debian:bookworm-slim@sha256:…`) and add a renovate/dependabot job | 0.25 d | Tags are mutable; digests make the image reproducible. |
 | P2 | **Hash change throttling**: ignore `hash` changes within N s per session (keep the last value) | 0.25 d | Removes the 512 MB re-allocation per `analyze`; bounded today by the analyze rate. |
@@ -100,8 +102,10 @@ COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for t
 
 ```bash
 pnpm --filter @chesslab/engine-core test     # isValidFen rules
-pnpm --filter @chesslab/server test          # origin.test.ts, ws.test.ts "Origin check", app.test.ts health split
+pnpm --filter @chesslab/server test          # origin.test.ts, clientIp.test.ts, ws.test.ts "Origin check"/"per-IP session cap", EnginePool "respawn backoff"
 node deploy/ws-smoke.mjs                     # end-to-end through nginx
+node deploy/ws-limits-check.mjs              # third session from one address → no_capacity
+curl -s http://127.0.0.1:8580/health/detail  # per engine: crashes, backoffUntil, degraded
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Origin: https://evil.example' -H 'Connection: Upgrade' \
   -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
   https://c.referee.at/ws                    # 403

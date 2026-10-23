@@ -3,6 +3,8 @@ import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { fakeSpawner, registry } from '../test/helpers.js';
 
+const EMPTY = { busy: 0, idle: 0, crashes: 0, backoffUntil: null, degraded: false };
+
 describe('GET /health', () => {
   it('returns only status and version; /health/detail adds pool stats, sessions and connections', async () => {
     const app = await buildApp({
@@ -23,11 +25,12 @@ describe('GET /health', () => {
       status: 'ok',
       version: '0.0.0',
       engines: [
-        { id: 'fake', name: 'Fake', enabled: true, busy: 0, idle: 0 },
-        { id: 'off', name: 'off', enabled: false, busy: 0, idle: 0 },
+        { ...EMPTY, id: 'fake', name: 'Fake', enabled: true },
+        { ...EMPTY, id: 'off', name: 'off', enabled: false },
       ],
       sessions: 0,
       connections: 0,
+      clientAddresses: 0,
     });
     await app.close();
   });

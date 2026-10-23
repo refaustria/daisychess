@@ -24,6 +24,20 @@ export interface EnginePoolOptions {
   /** Creates (but does not start) a process for an engine. Default: `new UciProcess(binary)`. */
   spawn?: SpawnEngine;
   logger?: PoolLogger;
+  /**
+   * Respawn backoff (docs/SECURITY.md): after the n-th consecutive crash of an engine, no new
+   * instance of it is spawned for `min(backoffBaseMs * 2^(n-1), backoffMaxMs)` ± 20 %.
+   * Defaults 500 ms and 30 s.
+   */
+  backoffBaseMs?: number;
+  backoffMaxMs?: number;
+  /** An instance alive this long resets its engine's crash counter. Default 60 s. */
+  crashResetMs?: number;
+  /** Consecutive crashes after which the engine is `degraded` (backoff pinned at max). Default 10. */
+  maxConsecutiveCrashes?: number;
+  /** Clock and randomness for the backoff (tests). Defaults `Date.now`, `Math.random`. */
+  now?: () => number;
+  random?: () => number;
 }
 
 export interface Lease {
@@ -45,6 +59,12 @@ export interface EngineStats {
   busy: number;
   /** Started instances waiting for a lease. */
   idle: number;
+  /** Consecutive crashes (unexpected exits or failed starts) since the last healthy run. */
+  crashes: number;
+  /** ISO time until which no new instance is spawned, or null. */
+  backoffUntil: string | null;
+  /** `crashes` reached `maxConsecutiveCrashes`; respawns are attempted every `backoffMaxMs`. */
+  degraded: boolean;
 }
 
 type InstanceState = 'starting' | 'idle' | 'leased' | 'resetting' | 'dead';
@@ -53,6 +73,10 @@ interface Instance {
   readonly proc: UciProcess;
   state: InstanceState;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  /** Time the UCI handshake completed; null while starting. */
+  startedAt: number | null;
+  /** This instance's death was already counted as a crash. */
+  crashCounted: boolean;
 }
 
 interface EngineSlot {
@@ -63,6 +87,10 @@ interface EngineSlot {
   readonly idle: Instance[];
   /** Instances being reset after release, with the promise that settles when they are back. */
   readonly returning: Map<Instance, Promise<void>>;
+  /** Consecutive crashes; reset by a healthy run (see {@link EnginePool.refreshCrashState}). */
+  crashes: number;
+  /** No spawn before this time (epoch ms); 0 = no backoff. */
+  backoffUntil: number;
 }
 
 class LeaseImpl implements Lease {
@@ -84,9 +112,7 @@ class LeaseImpl implements Lease {
  */
 export class EnginePool {
   private readonly slots = new Map<string, EngineSlot>();
-  private readonly options: Required<Omit<EnginePoolOptions, 'logger' | 'spawn'>> & {
-    spawn: SpawnEngine;
-  };
+  private readonly options: Required<Omit<EnginePoolOptions, 'logger'>>;
   private readonly log: PoolLogger;
   private activeLeases = 0;
   private nextLeaseId = 1;
@@ -99,6 +125,8 @@ export class EnginePool {
         instances: new Set(),
         idle: [],
         returning: new Map(),
+        crashes: 0,
+        backoffUntil: 0,
       });
     }
     this.options = {
@@ -107,6 +135,12 @@ export class EnginePool {
       minWarm: options.minWarm ?? 1,
       resetTimeoutMs: options.resetTimeoutMs ?? 5_000,
       spawn: options.spawn ?? ((cfg) => new UciProcess(cfg.binary)),
+      backoffBaseMs: options.backoffBaseMs ?? 500,
+      backoffMaxMs: options.backoffMaxMs ?? 30_000,
+      crashResetMs: options.crashResetMs ?? 60_000,
+      maxConsecutiveCrashes: options.maxConsecutiveCrashes ?? 10,
+      now: options.now ?? Date.now,
+      random: options.random ?? Math.random,
     };
     this.log = options.logger ?? silentLogger;
   }
@@ -137,6 +171,16 @@ export class EnginePool {
         const idle = this.takeIdle(slot);
         if (idle) return { ok: true, lease: this.lease(slot, idle) };
         if (slot.instances.size < slot.config.maxInstances) {
+          // Respawn backoff: refuse right away rather than holding the client's request.
+          const waitMs = this.backoffRemaining(slot);
+          if (waitMs > 0) {
+            this.activeLeases--;
+            return {
+              ok: false,
+              code: 'no_capacity',
+              message: `engine "${engineId}" is restarting after a crash; retry in ${Math.ceil(waitMs / 1_000)} s`,
+            };
+          }
           const inst = await this.spawnInstance(slot);
           if (!inst) {
             this.activeLeases--;
@@ -199,6 +243,7 @@ export class EnginePool {
 
   stats(): EngineStats[] {
     return [...this.slots.values()].map((s) => {
+      this.refreshCrashState(s);
       let busy = 0;
       for (const i of s.instances) if (i.state === 'leased') busy++;
       return {
@@ -207,8 +252,22 @@ export class EnginePool {
         enabled: s.config.enabled,
         busy,
         idle: s.idle.length,
+        crashes: s.crashes,
+        backoffUntil:
+          s.backoffUntil > this.options.now() ? new Date(s.backoffUntil).toISOString() : null,
+        degraded: s.crashes >= this.options.maxConsecutiveCrashes,
       };
     });
+  }
+
+  /**
+   * Tells the pool that the leased instance finished a search (its engine produced `bestmove`),
+   * which proves the engine healthy and resets its crash counter. A running backoff is kept.
+   */
+  reportHealthy(lease: Lease): void {
+    if (!(lease instanceof LeaseImpl) || lease.instance.state === 'dead') return;
+    const slot = this.slots.get(lease.engineId);
+    if (slot) this.resetCrashes(slot, 'search completed');
   }
 
   /** Total processes (starting, idle, leased, resetting) of one engine. */
@@ -247,7 +306,13 @@ export class EnginePool {
 
   private async spawnInstance(slot: EngineSlot): Promise<Instance | null> {
     const proc = this.options.spawn(slot.config);
-    const inst: Instance = { proc, state: 'starting', idleTimer: null };
+    const inst: Instance = {
+      proc,
+      state: 'starting',
+      idleTimer: null,
+      startedAt: null,
+      crashCounted: false,
+    };
     slot.instances.add(inst);
     proc.onExit((exit) => {
       const wasState = inst.state;
@@ -269,10 +334,12 @@ export class EnginePool {
           },
           'engine process exited unexpectedly',
         );
+        if (!this.closed) this.recordCrash(slot, inst);
       }
     });
     try {
       await proc.start();
+      inst.startedAt = this.options.now();
       this.log.info(
         { engine: slot.config.id, pid: proc.pid, instances: slot.instances.size },
         'engine process started',
@@ -283,6 +350,7 @@ export class EnginePool {
         { engine: slot.config.id, err: (err as Error).message, stderr: proc.exited?.stderr },
         'engine process failed to start',
       );
+      if (!this.closed) this.recordCrash(slot, inst);
       await this.kill(slot, inst);
       return null;
     }
@@ -308,6 +376,69 @@ export class EnginePool {
     inst.state = 'idle';
     slot.idle.push(inst);
     this.armIdleTimer(slot, inst);
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Crash accounting and respawn backoff
+
+  /** Milliseconds until the engine may spawn again (0 = now). */
+  private backoffRemaining(slot: EngineSlot): number {
+    this.refreshCrashState(slot);
+    return Math.max(0, slot.backoffUntil - this.options.now());
+  }
+
+  /** A live instance that has been up for `crashResetMs` proves the engine healthy. */
+  private refreshCrashState(slot: EngineSlot): void {
+    if (slot.crashes === 0) return;
+    const now = this.options.now();
+    for (const inst of slot.instances) {
+      if (
+        inst.state !== 'dead' &&
+        inst.startedAt !== null &&
+        now - inst.startedAt >= this.options.crashResetMs
+      ) {
+        this.resetCrashes(slot, 'instance stayed up');
+        return;
+      }
+    }
+  }
+
+  private resetCrashes(slot: EngineSlot, why: string): void {
+    if (slot.crashes === 0) return;
+    const wasDegraded = slot.crashes >= this.options.maxConsecutiveCrashes;
+    (wasDegraded ? this.log.warn : this.log.info).call(
+      this.log,
+      { engine: slot.config.id, crashes: slot.crashes, why },
+      wasDegraded ? 'engine recovered from degraded state' : 'engine crash counter reset',
+    );
+    slot.crashes = 0;
+  }
+
+  /** Counts an unexpected exit or failed start (once per instance) and arms the backoff. */
+  private recordCrash(slot: EngineSlot, inst: Instance): void {
+    if (inst.crashCounted) return;
+    inst.crashCounted = true;
+    const now = this.options.now();
+    // The instance itself may have been healthy for long enough: this is a fresh first crash.
+    if (inst.startedAt !== null && now - inst.startedAt >= this.options.crashResetMs) {
+      this.resetCrashes(slot, 'instance stayed up');
+    } else {
+      this.refreshCrashState(slot);
+    }
+    slot.crashes++;
+    const { backoffBaseMs, backoffMaxMs, maxConsecutiveCrashes } = this.options;
+    const degraded = slot.crashes >= maxConsecutiveCrashes;
+    const base = degraded
+      ? backoffMaxMs
+      : Math.min(backoffBaseMs * 2 ** Math.min(slot.crashes - 1, 30), backoffMaxMs);
+    const delay = Math.round(base * (0.8 + 0.4 * this.options.random()));
+    slot.backoffUntil = Math.max(slot.backoffUntil, now + delay);
+    const fields = { engine: slot.config.id, crashes: slot.crashes, backoffMs: delay };
+    if (slot.crashes === maxConsecutiveCrashes) {
+      this.log.error(fields, 'engine degraded: too many consecutive crashes');
+    } else {
+      this.log.warn(fields, 'engine crashed; delaying respawn');
+    }
   }
 
   private armIdleTimer(slot: EngineSlot, inst: Instance): void {

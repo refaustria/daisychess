@@ -84,6 +84,25 @@ other origins get 403 at the upgrade). Edit it, then
 The unit is read-only on the filesystem (`ProtectSystem=strict`,
 `ProtectHome=read-only`); add `ReadWritePaths=` if the server ever writes.
 
+Abuse-relevant limits (production values; all env vars are documented in
+`apps/server/.env.example`, the rationale in `docs/SECURITY.md`):
+
+| Limit | Value | Where | Over the limit |
+|---|---|---|---|
+| WebSocket connections per IP | 10 | nginx `limit_conn` | 429 |
+| Handshakes per IP | 5/s, burst 20 | nginx `limit_req` | 429 |
+| Engine sessions, global | 4 | `MAX_SESSIONS` | `no_capacity` |
+| Engine sessions per IP (all connections) | 2 | `MAX_SESSIONS_PER_IP` (client IP = `X-Real-IP` from loopback nginx) | `no_capacity` "too many sessions from your address" |
+| Sessions per connection | 2 | `MAX_SESSIONS_PER_CONNECTION` | `limit_exceeded` |
+| Instances per engine | 3 | `engines.json` `maxInstances` | `no_capacity` |
+| Respawn after a crash | 0.5 s doubling to 30 s (±20 %), reset after 60 s up or a completed search; `degraded` after 10 | `ENGINE_CRASH_RESET_MS`, `ENGINE_MAX_CONSECUTIVE_CRASHES` | `no_capacity` "restarting after a crash" |
+| `analyze` / all messages | 20/s / 100/s per connection | server | `rate_limited` / close 1008 |
+
+`/health/detail` shows per engine `crashes`, `backoffUntil` and `degraded`, and
+`clientAddresses` (addresses currently holding engine sessions).
+`node deploy/ws-limits-check.mjs` verifies the per-IP cap end to end (the third
+session from one address must get `no_capacity`).
+
 **Logs.** JSON lines in the journal (your user needs group `adm` or
 `systemd-journal`, otherwise use `sudo`):
 

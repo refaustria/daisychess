@@ -5,6 +5,7 @@ import { WebSocketServer } from 'ws';
 import { MAX_MESSAGE_BYTES } from '@chesslab/engine-core';
 import { Connection, type ConnectionOptions } from './connection.js';
 import { isOriginAllowed, type OriginPolicy } from './origin.js';
+import { IpSessionLedger, resolveClientIp, type TrustedProxies } from './clientIp.js';
 
 export interface WsServerOptions extends ConnectionOptions {
   /** URL path that accepts upgrades. Default `/ws`. */
@@ -13,10 +14,16 @@ export interface WsServerOptions extends ConnectionOptions {
   heartbeatMs?: number;
   /** Browser `Origin` policy (ADR-008). Default: same host as the request. */
   allowedOrigins?: OriginPolicy;
+  /** Concurrently leased engine sessions per client address. Default: unlimited. */
+  maxSessionsPerIp?: number;
+  /** Peers besides loopback whose `X-Real-IP` is trusted. Default: none. */
+  trustedProxies?: TrustedProxies;
 }
 
 export interface WsServerHandle {
   readonly connections: ReadonlySet<Connection>;
+  /** Engine sessions per client address. */
+  readonly ipSessions: IpSessionLedger;
   /** Closes every connection (1001), waits until their sessions are released, closes the server. */
   close(): Promise<void>;
 }
@@ -34,6 +41,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     clientTracking: false,
   });
   const connections = new Set<Connection>();
+  const ledger = new IpSessionLedger(opts.maxSessionsPerIp ?? Number.POSITIVE_INFINITY);
   let closing = false;
 
   const reject = (socket: Duplex, status: string) => {
@@ -67,17 +75,16 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
       reject(socket, '403 Forbidden');
       return;
     }
+    // nginx forwards the client address in X-Real-IP; trusted only from a proxy peer.
+    const ip = resolveClientIp(
+      req.socket.remoteAddress,
+      req.headers['x-real-ip'],
+      opts.trustedProxies ?? [],
+    );
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const conn = new Connection(ws, opts);
+      const conn = new Connection(ws, opts, { ip, ledger });
       connections.add(conn);
-      opts.logger.info(
-        {
-          conn: conn.id,
-          // nginx forwards the client address; never log anything else from the request.
-          ip: headerValue(req.headers['x-real-ip']) ?? req.socket.remoteAddress,
-        },
-        'websocket connected',
-      );
+      opts.logger.info({ conn: conn.id, ip }, 'websocket connected');
       void conn.whenClosed().then(() => {
         connections.delete(conn);
         opts.logger.info({ conn: conn.id }, 'websocket disconnected');
@@ -100,6 +107,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
 
   return {
     connections,
+    ipSessions: ledger,
     async close() {
       if (closing) return;
       closing = true;

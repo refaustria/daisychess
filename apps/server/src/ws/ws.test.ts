@@ -47,8 +47,12 @@ async function start(
   return { app, url: `ws://127.0.0.1:${port}/ws` };
 }
 
-async function client(url: string): Promise<TestClient> {
-  const { client: c } = await TestClient.connectAndHello(url);
+/** `realIp` sets X-Real-IP (trusted: the test peer is loopback, like nginx in production). */
+async function client(url: string, realIp?: string): Promise<TestClient> {
+  const { client: c } = await TestClient.connectAndHello(
+    url,
+    realIp === undefined ? undefined : { headers: { 'X-Real-IP': realIp } },
+  );
   clients.push(c);
   return c;
 }
@@ -283,8 +287,9 @@ describe('WebSocket /ws', () => {
     expect(stats.find((s) => s.id === 'fake2')).toMatchObject({ busy: 1 });
   });
 
-  it('engine crash during a search → engine_crashed with ids; the session recovers', async () => {
-    const { app, url } = await start();
+  it('engine crash during a search → engine_crashed with ids; no_capacity during the respawn backoff; the session recovers', async () => {
+    let t = 0;
+    const { app, url } = await start({}, { pool: { now: () => t, random: () => 0.5 } });
     const c = await client(url);
     c.send(analyze('s', 1, { fen: CRASH_FEN }));
     expect(await c.terminal('s', 1)).toMatchObject({
@@ -294,10 +299,26 @@ describe('WebSocket /ws', () => {
       searchId: 1,
     });
     await until(() => app.chesslab.pool.sessions === 0);
+    expect(app.chesslab.ws.ipSessions.total).toBe(0);
+    // backoff (500 ms): the request is refused at once, not held
     c.send(analyze('s', 2, { depth: 2 }));
-    expect(await c.terminal('s', 2)).toMatchObject({ type: 'bestmove', reason: 'completed' });
-    checkOrdering(c.messages, 's', [1, 2]);
+    expect(await c.terminal('s', 2)).toMatchObject({ type: 'error', code: 'no_capacity' });
+    const detail = (await app.inject({ method: 'GET', url: '/health/detail' })).json() as {
+      engines: { id: string; crashes: number; backoffUntil: string | null; degraded: boolean }[];
+    };
+    expect(detail.engines.find((e) => e.id === 'fake')).toMatchObject({
+      crashes: 1,
+      backoffUntil: new Date(500).toISOString(),
+      degraded: false,
+    });
+    t = 500;
+    c.send(analyze('s', 3, { depth: 2 }));
+    expect(await c.terminal('s', 3)).toMatchObject({ type: 'bestmove', reason: 'completed' });
+    // the completed search proved the engine healthy
+    expect(app.chesslab.pool.stats().find((e) => e.id === 'fake')).toMatchObject({ crashes: 0 });
+    checkOrdering(c.messages, 's', [1, 2, 3]);
     expect(c.messages.filter((m) => m.type === 'bestmove' && m.searchId === 1)).toHaveLength(0);
+    expect(app.chesslab.ws.ipSessions.total).toBe(1);
   });
 
   it('an engine that ignores stop is dropped: engine_crashed for the search, process killed', async () => {
@@ -392,6 +413,95 @@ describe('WebSocket /ws', () => {
     const ws = new WebSocket(url.replace('/ws', '/other'));
     const err = await new Promise<Error>((resolve) => ws.once('error', resolve));
     expect(err.message).toMatch(/404/);
+  });
+
+  describe('per-IP session cap', () => {
+    const noCapacity = (m: ServerMessage) => m.type === 'error' && m.code === 'no_capacity';
+
+    it('two connections from one address share its cap; slots are freed on release and close', async () => {
+      const { app, url } = await start({ maxSessions: 8, maxSessionsPerIp: 2 });
+      const a = await client(url, '203.0.113.7');
+      const b = await client(url, '203.0.113.7');
+      a.send(analyze('s1', 1));
+      await a.waitFor((m) => m.type === 'info' && m.sessionId === 's1');
+      b.send(analyze('s1', 1, { engine: 'fake2' }));
+      await b.waitFor((m) => m.type === 'info' && m.sessionId === 's1');
+      // third and fourth session of the same address
+      a.send(analyze('s2', 1));
+      b.send(analyze('s2', 1));
+      expect(await a.terminal('s2', 1)).toMatchObject({
+        type: 'error',
+        code: 'no_capacity',
+        message: 'too many sessions from your address (at most 2)',
+      });
+      expect(await b.terminal('s2', 1)).toMatchObject({ type: 'error', code: 'no_capacity' });
+      expect(app.chesslab.pool.sessions).toBe(2);
+      expect(app.chesslab.ws.ipSessions.count('203.0.113.7')).toBe(2);
+
+      // release frees a slot
+      a.send({ type: 'release', sessionId: 's1' });
+      await until(() => app.chesslab.ws.ipSessions.count('203.0.113.7') === 1);
+      b.send(analyze('s2', 2));
+      await b.waitFor((m) => m.type === 'info' && m.sessionId === 's2');
+      // closing a connection frees all of its slots
+      await b.close();
+      await until(() => app.chesslab.ws.ipSessions.total === 0);
+      a.send(analyze('s2', 2, { depth: 2 }));
+      expect(await a.terminal('s2', 2)).toMatchObject({ type: 'bestmove', reason: 'completed' });
+    });
+
+    it('reserves synchronously: concurrent sessions from one address never overshoot', async () => {
+      const { app, url } = await start({ maxSessions: 8, maxSessionsPerIp: 2 });
+      const conns = await Promise.all([1, 2, 3].map(() => client(url, '2001:db8::1')));
+      for (const c of conns) {
+        c.send(analyze('x', 1, { depth: 3 }));
+        c.send(analyze('y', 1, { depth: 3, engine: 'fake2' }));
+      }
+      const terminals = await Promise.all(
+        conns.flatMap((c) => [c.terminal('x', 1), c.terminal('y', 1)]),
+      );
+      expect(terminals.filter(noCapacity)).toHaveLength(4);
+      expect(terminals.filter((m) => m.type === 'bestmove')).toHaveLength(2);
+      expect(app.chesslab.ws.ipSessions.count('2001:db8::1')).toBe(2);
+    });
+
+    it('different addresses are independent; IPv4-mapped IPv6 is the same address', async () => {
+      const { app, url } = await start({ maxSessions: 8, maxSessionsPerIp: 1 });
+      const a = await client(url, '198.51.100.1');
+      const a2 = await client(url, '::ffff:198.51.100.1');
+      const b = await client(url, '198.51.100.2');
+      a.send(analyze('s', 1));
+      await a.waitFor((m) => m.type === 'info');
+      a2.send(analyze('s', 1));
+      expect(await a2.terminal('s', 1)).toMatchObject({ type: 'error', code: 'no_capacity' });
+      b.send(analyze('s', 1, { depth: 2 }));
+      expect(await b.terminal('s', 1)).toMatchObject({ type: 'bestmove', reason: 'completed' });
+      expect(app.chesslab.ws.ipSessions.addresses).toBe(2);
+    });
+
+    it('without X-Real-IP all loopback clients count as one address', async () => {
+      const { url } = await start({ maxSessions: 8, maxSessionsPerIp: 1 });
+      const a = await client(url);
+      const b = await client(url);
+      a.send(analyze('s', 1));
+      await a.waitFor((m) => m.type === 'info');
+      b.send(analyze('s', 1));
+      expect(await b.terminal('s', 1)).toMatchObject({ type: 'error', code: 'no_capacity' });
+    });
+
+    it('a failed acquire (global cap) gives the address slot back', async () => {
+      const { app, url } = await start({ maxSessions: 1, maxSessionsPerIp: 1 });
+      const a = await client(url, '192.0.2.1');
+      const b = await client(url, '192.0.2.2');
+      a.send(analyze('s', 1));
+      await a.waitFor((m) => m.type === 'info');
+      b.send(analyze('s', 1));
+      expect(await b.terminal('s', 1)).toMatchObject({
+        code: 'no_capacity',
+        message: 'server session limit reached',
+      });
+      expect(app.chesslab.ws.ipSessions.count('192.0.2.2')).toBe(0);
+    });
   });
 
   describe('Origin check (ADR-008)', () => {

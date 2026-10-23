@@ -38,7 +38,18 @@ describe('EnginePool', () => {
     expect(pool.instanceCount('fake')).toBe(2);
     const c = await pool.acquire('fake');
     expect(c).toMatchObject({ ok: false, code: 'no_capacity' });
-    expect(pool.stats()).toEqual([{ id: 'fake', name: 'fake', enabled: true, busy: 2, idle: 0 }]);
+    expect(pool.stats()).toEqual([
+      {
+        id: 'fake',
+        name: 'fake',
+        enabled: true,
+        busy: 2,
+        idle: 0,
+        crashes: 0,
+        backoffUntil: null,
+        degraded: false,
+      },
+    ]);
     expect(pool.sessions).toBe(2);
   });
 
@@ -103,7 +114,7 @@ describe('EnginePool', () => {
   });
 
   it('drops a crashed instance and respawns on the next acquire', async () => {
-    const pool = makePool(registry({ id: 'fake', maxInstances: 1 }));
+    const pool = makePool(registry({ id: 'fake', maxInstances: 1 }), { backoffBaseMs: 0 });
     const a = await lease(pool);
     const exited = new Promise((r) => a.engine.onExit(r));
     a.engine.send('crash');
@@ -113,13 +124,14 @@ describe('EnginePool', () => {
     expect(pool.sessions).toBe(1);
     await pool.release(a);
     expect(pool.sessions).toBe(0);
+    expect(pool.stats()[0]).toMatchObject({ crashes: 1, degraded: false });
     const b = await lease(pool);
     expect(b.engine.alive).toBe(true);
     expect(b.engine.pid).not.toBe(a.engine.pid);
   });
 
   it('crash of an idle instance removes it from the idle list', async () => {
-    const pool = makePool(registry({ id: 'fake', maxInstances: 1 }));
+    const pool = makePool(registry({ id: 'fake', maxInstances: 1 }), { backoffBaseMs: 0 });
     const a = await lease(pool);
     await pool.release(a);
     const exited = new Promise((r) => a.engine.onExit(r));
@@ -171,5 +183,180 @@ describe('EnginePool', () => {
     expect(await spawnWithTimeout.acquire('fake')).toMatchObject({ ok: false, code: 'internal_error' });
     expect(spawnWithTimeout.sessions).toBe(0);
     expect(spawnWithTimeout.instanceCount('fake')).toBe(0);
+  });
+
+  describe('respawn backoff', () => {
+    /** Injected clock; random 0.5 makes the jitter factor exactly 1. */
+    let t = 0;
+    const clock = { now: () => t, random: () => 0.5 };
+
+    async function crash(pool: EnginePool, l: Lease): Promise<void> {
+      const exited = new Promise((r) => l.engine.onExit(r));
+      l.engine.send('crash');
+      await exited;
+      await pool.release(l);
+    }
+
+    function backoffMs(pool: EnginePool): number {
+      const until = pool.stats()[0]!.backoffUntil;
+      return until === null ? 0 : Date.parse(until) - t;
+    }
+
+    it('grows exponentially, refuses spawns meanwhile and caps at backoffMaxMs', async () => {
+      t = 1_000_000;
+      const pool = makePool(registry({ id: 'fake', maxInstances: 1 }), {
+        ...clock,
+        backoffBaseMs: 500,
+        backoffMaxMs: 4_000,
+      });
+      const expected = [500, 1_000, 2_000, 4_000, 4_000];
+      for (const [i, delay] of expected.entries()) {
+        await crash(pool, await lease(pool));
+        expect(pool.stats()[0]).toMatchObject({ crashes: i + 1, busy: 0, idle: 0 });
+        expect(backoffMs(pool)).toBe(delay);
+        const refused = await pool.acquire('fake');
+        expect(refused).toMatchObject({ ok: false, code: 'no_capacity' });
+        expect(!refused.ok && refused.message).toMatch(/restarting after a crash/);
+        expect(pool.sessions).toBe(0);
+        expect(pool.instanceCount('fake')).toBe(0); // nothing was spawned
+        t += delay - 1;
+        expect(await pool.acquire('fake')).toMatchObject({ ok: false, code: 'no_capacity' });
+        t += 1;
+      }
+      // after the last backoff a spawn is allowed again
+      const ok = await lease(pool);
+      expect(ok.engine.alive).toBe(true);
+      expect(pool.stats()[0]!.backoffUntil).toBeNull();
+    });
+
+    it('jitters the delay by ±20 %', async () => {
+      t = 0;
+      let r = 0;
+      const pool = makePool(registry({ id: 'fake', maxInstances: 1 }), {
+        now: () => t,
+        random: () => r,
+        backoffBaseMs: 1_000,
+      });
+      await crash(pool, await lease(pool));
+      expect(backoffMs(pool)).toBe(800);
+      t += 800;
+      r = 0.999_999;
+      await crash(pool, await lease(pool));
+      expect(backoffMs(pool)).toBe(2_400); // 2 000 × 1.2
+    });
+
+    it('serves an idle instance during backoff, but does not spawn', async () => {
+      t = 0;
+      const pool = makePool(registry({ id: 'fake', maxInstances: 2 }), clock);
+      const a = await lease(pool);
+      const b = await lease(pool);
+      await pool.release(b);
+      await crash(pool, a);
+      expect(backoffMs(pool)).toBe(500);
+      const again = await lease(pool);
+      expect(again.engine.pid).toBe(b.engine.pid);
+      expect(await pool.acquire('fake')).toMatchObject({ ok: false, code: 'no_capacity' });
+      expect(pool.instanceCount('fake')).toBe(1);
+    });
+
+    it('marks the engine degraded after maxConsecutiveCrashes and pins the delay at the max', async () => {
+      t = 0;
+      const pool = makePool(registry({ id: 'fake', maxInstances: 1 }), {
+        ...clock,
+        backoffBaseMs: 100,
+        backoffMaxMs: 10_000,
+        maxConsecutiveCrashes: 3,
+      });
+      for (let i = 0; i < 4; i++) {
+        await crash(pool, await lease(pool));
+        t += backoffMs(pool);
+      }
+      t -= 10_000;
+      expect(pool.stats()[0]).toMatchObject({ crashes: 4, degraded: true });
+      expect(backoffMs(pool)).toBe(10_000); // 3rd and later crashes: max, not 100 × 2^n
+    });
+
+    it('resets after an instance stays up for crashResetMs (also from degraded)', async () => {
+      t = 0;
+      const pool = makePool(registry({ id: 'fake', maxInstances: 1 }), {
+        ...clock,
+        maxConsecutiveCrashes: 2,
+        crashResetMs: 60_000,
+      });
+      await crash(pool, await lease(pool));
+      t += 500;
+      await crash(pool, await lease(pool));
+      t += 30_000;
+      expect(pool.stats()[0]).toMatchObject({ crashes: 2, degraded: true, backoffUntil: null });
+      const healthy = await lease(pool);
+      t += 59_999;
+      expect(pool.stats()[0]).toMatchObject({ crashes: 2 });
+      t += 1;
+      expect(pool.stats()[0]).toMatchObject({ crashes: 0, degraded: false });
+      // the next crash starts over at the base delay
+      await crash(pool, healthy);
+      expect(pool.stats()[0]).toMatchObject({ crashes: 1 });
+      expect(backoffMs(pool)).toBe(500);
+    });
+
+    it('a long-lived instance that crashes counts as a first crash', async () => {
+      t = 0;
+      const pool = makePool(registry({ id: 'fake', maxInstances: 1 }), {
+        ...clock,
+        crashResetMs: 60_000,
+      });
+      await crash(pool, await lease(pool));
+      t += 500;
+      await crash(pool, await lease(pool));
+      t += 1_000;
+      const l = await lease(pool);
+      t += 60_000;
+      await crash(pool, l); // stats() was not called in between: the reset happens on the crash
+      expect(pool.stats()[0]).toMatchObject({ crashes: 1 });
+      expect(backoffMs(pool)).toBe(500);
+    });
+
+    it('reportHealthy (a completed search) resets the counter but keeps a running backoff', async () => {
+      t = 0;
+      const pool = makePool(registry({ id: 'fake', maxInstances: 2 }), clock);
+      const a = await lease(pool);
+      const b = await lease(pool);
+      await crash(pool, a);
+      expect(pool.stats()[0]).toMatchObject({ crashes: 1 });
+      await b.engine.go({ depth: 1 });
+      pool.reportHealthy(b);
+      expect(pool.stats()[0]).toMatchObject({ crashes: 0 });
+      expect(backoffMs(pool)).toBe(500);
+      await pool.release(b);
+      pool.reportHealthy(b); // stale lease: harmless
+    });
+
+    it('counts a failed start once and refuses the next spawn', async () => {
+      t = 0;
+      const pool = new EnginePool(registry({ id: 'fake', maxInstances: 1 }), {
+        maxSessions: 1,
+        idleMs: 1_000,
+        ...clock,
+        spawn: fakeSpawner({ fake: ['--no-uciok'] }, { handshakeTimeoutMs: 100 }),
+      });
+      pools.push(pool);
+      expect(await pool.acquire('fake')).toMatchObject({ ok: false, code: 'internal_error' });
+      expect(pool.stats()[0]).toMatchObject({ crashes: 1 });
+      expect(await pool.acquire('fake')).toMatchObject({ ok: false, code: 'no_capacity' });
+    });
+
+    it('does not count exits caused by shutdown or by killing an unhealthy instance', async () => {
+      t = 0;
+      const pool = makePool(
+        registry({ id: 'fake', maxInstances: 1 }),
+        { ...clock, resetTimeoutMs: 200 },
+        { fake: ['--hang-on-newgame'] },
+      );
+      await pool.release(await lease(pool)); // reset hangs → killed
+      expect(pool.stats()[0]).toMatchObject({ crashes: 0, backoffUntil: null });
+      await lease(pool);
+      await pool.shutdown();
+      expect(pool.stats()[0]).toMatchObject({ crashes: 0 });
+    });
   });
 });

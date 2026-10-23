@@ -3,7 +3,7 @@ import { access, readFile } from 'node:fs/promises';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { EngineDescriptor, Limits } from '@chesslab/engine-core';
 import { loadConfig, type ServerConfig } from './config.js';
-import { EnginePool, type SpawnEngine } from './engines/EnginePool.js';
+import { EnginePool, type EnginePoolOptions, type SpawnEngine } from './engines/EnginePool.js';
 import { loadEngineRegistry, type EngineConfig, type EngineRegistry } from './engines/registry.js';
 import { attachWebSocketServer, type WsServerHandle } from './ws/server.js';
 import type { ConnectionOptions } from './ws/connection.js';
@@ -36,6 +36,8 @@ export interface BuildAppOptions {
   >;
   /** WebSocket heartbeat interval. */
   heartbeatMs?: number;
+  /** Pool tuning for tests (respawn backoff timing, clock). */
+  pool?: Pick<EnginePoolOptions, 'backoffBaseMs' | 'backoffMaxMs' | 'now' | 'random'>;
 }
 
 declare module 'fastify' {
@@ -62,8 +64,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   const descriptors = registry.engines.map((e) => toDescriptor(e, config.limits));
 
   const pool = new EnginePool(registry, {
+    ...opts.pool,
     maxSessions: config.maxSessions,
     idleMs: config.engineIdleMs,
+    crashResetMs: config.engineCrashResetMs,
+    maxConsecutiveCrashes: config.engineMaxConsecutiveCrashes,
     ...(opts.spawnEngine ? { spawn: opts.spawnEngine } : {}),
     logger: app.log.child({ component: 'pool' }),
   });
@@ -76,6 +81,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     logger: app.log.child({ component: 'ws' }),
     sessionIdleMs: config.sessionIdleMs,
     allowedOrigins: config.allowedOrigins,
+    maxSessionsPerIp: config.maxSessionsPerIp,
+    trustedProxies: config.trustedProxies,
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
   });
   app.decorate('chesslab', { pool, ws, config });
@@ -90,6 +97,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     engines: pool.stats(),
     sessions: pool.sessions,
     connections: ws.connections.size,
+    clientAddresses: ws.ipSessions.addresses,
   }));
 
   // Close WebSockets before the HTTP server stops, then kill every engine process.
@@ -105,6 +113,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       engines: descriptors.map((d) => ({ id: d.id, enabled: d.enabled })),
       limits: config.limits,
       maxSessions: config.maxSessions,
+      maxSessionsPerIp: config.maxSessionsPerIp,
     },
     'engine server configured',
   );
