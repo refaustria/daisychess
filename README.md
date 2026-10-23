@@ -55,7 +55,7 @@ chesslab/
   - `RemoteEngineClient` — talks to the server over WebSocket.
 - **Routing/pages:** `/` (play & analyze), `/review/:id` (game review), `/settings`.
 
-Browser engine builds to support (from the `stockfish` npm package, Stockfish 18):
+Browser engine builds to support (from the `stockfish` npm package, Stockfish 17+):
 
 | Build | Size | Needs COOP/COEP headers | Use |
 |---|---|---|---|
@@ -70,7 +70,7 @@ The site must set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Em
 - **Node.js 20 + TypeScript**, `ws` for WebSocket, `fastify` for health/REST endpoints.
 - Spawns native engine processes (child_process) and speaks UCI over stdin/stdout.
 - **Engine pool:** N engine instances per engine type; sessions are leased per client, with idle timeout and hard limits on depth/time/MultiPV to protect the machine.
-- **Engine registry** (`engines.json`): name, binary path, NNUE path, default options (Threads, Hash), enabled flag. Stockfish 18 is the default; others (e.g. Lc0, Fairy-Stockfish) are optional.
+- **Engine registry** (`engines.json`): name, binary path, NNUE path, default options (Threads, Hash), enabled flag. Stockfish 19 is the default (official "universal" Linux build, picks the instruction set at runtime); others (e.g. Lc0, Fairy-Stockfish) are optional.
 - **Setup script** `scripts/fetch-engines.sh` downloads/compiles engines for the host CPU (x86-64 AVX2 / BMI2 / Apple Silicon detection).
 - Dockerfile + `docker-compose.yml` for one-command deployment.
 
@@ -179,7 +179,7 @@ Sub-agent definitions live in `.claude/agents/` (one file per tier with its mode
 pnpm install
 pnpm dev:web        # http://localhost:5180 (see docs/DECISIONS.md ADR-001)
 pnpm dev:server     # http://127.0.0.1:8580 (requires engines, see below)
-pnpm fetch-engines  # downloads native Stockfish 18 + NNUE into ./engines
+pnpm fetch-engines  # downloads native Stockfish 19 (NNUE embedded) into ./engines
 pnpm test
 pnpm build
 ```

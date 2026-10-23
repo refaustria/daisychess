@@ -15,8 +15,8 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M1 — Play
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M1-1 | Game store (Zustand) wrapping chess.js: moves, undo, navigation, FEN/PGN load | worker | todo |
-| M1-2 | Board component with chessground: legal moves, drag & drop, flip, last-move highlight | worker | todo |
+| M1-1 | Game store (Zustand) wrapping chess.js: moves, undo, navigation, FEN/PGN load | worker | review |
+| M1-2 | Board component with chessground: legal moves, drag & drop, flip, last-move highlight | worker | review |
 | M1-3 | Move list with SAN, click-to-navigate, keyboard ←/→/Home/End | worker | todo |
 | M1-4 | FEN input + PGN import (paste/file, multi-game picker) | worker | todo |
 | M1-5 | App layout + basic light/dark theme via `ui-theme`; first deploy to c.referee.at | worker | todo |
@@ -33,7 +33,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 |---|---|---|---|
 | M3-1 | WebSocket protocol schema (Zod) in `engine-core`; ADR | architect | todo |
 | M3-2 | `apps/server`: UCI process wrapper, engine pool, session leasing, limits | senior | todo |
-| M3-3 | `scripts/fetch-engines.sh` (host CPU: sse41-popcnt, no AVX2 on this VM) + `engines.json` | worker | todo |
+| M3-3 | `scripts/fetch-engines.sh` (host CPU: sse41-popcnt, no AVX2 on this VM) + `engines.json` + registry loader | worker | done |
 | M3-4 | `RemoteEngineClient` + backend switch in UI | senior | todo |
 | M3-5 | systemd unit + deploy of server on this host | worker | todo |
 
