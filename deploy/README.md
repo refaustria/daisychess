@@ -10,7 +10,7 @@ Single host (Debian 13), nginx + Let's Encrypt (certbot nginx plugin). See
 | Repo copy (pre-certbot) | `deploy/nginx/c.referee.at.conf` |
 | TLS cert | `/etc/letsencrypt/live/c.referee.at/` |
 | Engine server | `127.0.0.1:8580`, proxied at `/ws` and `/health` |
-| Server unit (template) | `deploy/chesslab-server.service` |
+| Server unit | `deploy/chesslab-server.service` (installed by `deploy/deploy-server.sh`) |
 
 The site sends `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` (multi-threaded WASM), plus CORP,
@@ -49,22 +49,60 @@ Runs `pnpm install --frozen-lockfile`, `pnpm --filter @chesslab/web build`,
 then `rsync -a --delete apps/web/dist/ /var/www/c.referee.at/`. No nginx reload
 needed.
 
-## Engine server (later)
+## Engine server
+
+Systemd unit `chesslab-server` (user `bojan`, `127.0.0.1:8580`), deployed on 2026-10-23.
 
 ```bash
-pnpm --filter @chesslab/server build        # produces apps/server/dist/index.js
-sudo cp deploy/chesslab-server.service /etc/systemd/system/chesslab-server.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now chesslab-server
-systemctl status chesslab-server
-journalctl -u chesslab-server -f
-curl -s https://c.referee.at/health
+deploy/deploy-server.sh
 ```
 
-Until the service runs, `/ws` and `/health` return 502 (expected). The unit
-uses `ProtectSystem=strict` and `ProtectHome=read-only`; if the server needs to
-write anywhere, add the path to `ReadWritePaths=`. After code updates:
-rebuild, then `sudo systemctl restart chesslab-server`.
+Runs `pnpm install --frozen-lockfile`, builds `engine-core` and `server`, runs
+`pnpm fetch-engines` (idempotent), installs `deploy/chesslab-server.service` to
+`/etc/systemd/system/`, `daemon-reload`, `enable` + `restart`, then waits up to
+10 s for `http://127.0.0.1:8580/health` and prints it. Needs `sudo`.
+
+Verify:
+
+```bash
+systemctl status chesslab-server
+curl -s https://c.referee.at/health
+node deploy/ws-smoke.mjs            # hello -> analyze depth 12 -> bestmove (Node 22+)
+```
+
+**Limits and config.** The server does not read `.env` itself; the unit loads
+`apps/server/.env.production` via `EnvironmentFile=-` (optional file, not
+created by the script; copy from `apps/server/.env.example`; currently
+`MAX_SESSIONS=4`, `MAX_THREADS=4`, `LOG_LEVEL=info`). Edit it, then
+`sudo systemctl restart chesslab-server`. Per-engine defaults and
+`maxInstances` live in `apps/server/engines.json`. Resource caps (`MemoryMax`,
+`CPUWeight`, `TasksMax`) are in the unit; after editing it, rerun the script.
+The unit is read-only on the filesystem (`ProtectSystem=strict`,
+`ProtectHome=read-only`); add `ReadWritePaths=` if the server ever writes.
+
+**Logs.** JSON lines in the journal (your user needs group `adm` or
+`systemd-journal`, otherwise use `sudo`):
+
+```bash
+sudo journalctl -u chesslab-server -n 50 --no-pager
+sudo journalctl -u chesslab-server -f
+```
+
+`/health` requests are not logged by the server, so polling it adds no noise.
+
+**Roll back.**
+
+```bash
+git checkout <previous-commit>   # or: git stash / git switch
+deploy/deploy-server.sh
+```
+
+Stopping the service kills the whole cgroup (`KillMode=control-group`), so no
+orphaned `stockfish` processes remain.
+
+**nginx.** `/ws` has `limit_conn chesslab_ws 10` (per IP, excess gets 429); the
+`limit_conn_zone` line sits at the top of the site file (http context). It was
+merged by hand into the live certbot-managed file.
 
 ## Certificate renewal
 

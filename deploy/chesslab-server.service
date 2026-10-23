@@ -1,5 +1,5 @@
 # systemd unit for the ChessLab engine server (ADR-001: 127.0.0.1:8580).
-# Install: see deploy/README.md. Not installed yet.
+# Install/refresh with deploy/deploy-server.sh (see deploy/README.md).
 [Unit]
 Description=ChessLab engine server
 After=network.target
@@ -11,6 +11,8 @@ Group=bojan
 WorkingDirectory=/home/bojan/gitchess/apps/server
 ExecStart=/usr/bin/node dist/index.js
 Environment=PORT=8580 HOST=127.0.0.1 NODE_ENV=production
+# Overrides (MAX_SESSIONS, MAX_THREADS, LOG_LEVEL, ...); git-ignored, optional.
+EnvironmentFile=-/home/bojan/gitchess/apps/server/.env.production
 Restart=on-failure
 RestartSec=2s
 # Engine child processes are part of the service cgroup; stop them all.
@@ -34,6 +36,11 @@ RestrictSUIDSGID=true
 LockPersonality=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 LimitNOFILE=65536
+
+# Resource limits (shared 16-core host, ADR-003)
+MemoryMax=12G
+CPUWeight=80
+TasksMax=512
 
 [Install]
 WantedBy=multi-user.target

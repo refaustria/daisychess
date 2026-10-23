@@ -78,4 +78,4 @@
 - All outgoing messages are validated against `ServerMessageSchema` (always on; invalid ones are logged and dropped).
 - Enabled engines whose binary is missing are listed as disabled.
 
-**Consequences.** Defaults (`MAX_SESSIONS=4`, `MAX_THREADS=4`, `maxInstances=3`) use at most 12 of 16 cores. Open: no Origin check and no per-IP limit yet (to be decided in the M6-3 security review; nginx `limit_conn` is the likely answer).
+**Consequences.** Defaults (`MAX_SESSIONS=4`, `MAX_THREADS=4`, `maxInstances=3`) use at most 12 of 16 cores. Per-IP limit: nginx `limit_conn chesslab_ws 10` on `/ws` (429 above). Open: no Origin check yet (M6-3 security review).
