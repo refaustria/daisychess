@@ -95,6 +95,11 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M13 — Play live on lichess (Board API)
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M13-1 | "Log in with lichess" (OAuth PKCE), shared token store used by Explorer and Import ("my games"), logout/revoke | senior | in-progress |
+| M13-1 | "Log in with lichess" (OAuth PKCE), shared token store used by Explorer and Import ("my games"), logout/revoke | senior | done |
 | M13-2 | Live games via Board API: seek/challenge/AI, event + game streams, clocks, moves, draw/resign/abort, hard engine lock during a live game, auto review afterwards | senior | in-progress |
 | M13-3 | Incoming challenges and ongoing games shown on open; Live tab wiring in App | senior | in-progress (part of M13-2) |
+
+## M14 — Clocks and time controls for local play
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M14-1 | Shared `Clock` component (mm:ss, tenths under 10 s, hours for long games, low-time state) used by Live and Play; time-control presets with categories (Bullet/Blitz/Rapid/Classical, lichess rules) and custom; play vs engine with both clocks running, increment, flag = loss on time, engine thinking time derived from its remaining time; premove setting applied to local play | senior | todo |
