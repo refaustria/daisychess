@@ -1,0 +1,300 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.panel button {
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.panel button:focus-visible,
+.panel summary:focus-visible,
+.panel a:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.panel a {
+  color: var(--accent);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.dbs {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.db {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+
+.db span {
+  display: block;
+  padding: 0.35rem 0.8rem;
+  color: var(--text-muted);
+}
+
+.dbInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.dbInput:checked + span {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.db:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.opening {
+  margin: 0;
+  font-weight: 600;
+}
+
+.eco {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.status {
+  margin: 0;
+  min-height: 1.2em;
+  color: var(--text-muted);
+}
+
+.errorBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.help {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.wdl {
+  display: flex;
+  width: 100%;
+  height: 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.7rem;
+  line-height: 1.1rem;
+}
+
+.wdl span {
+  display: block;
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.barWhite {
+  background: var(--eval-white);
+  color: var(--eval-black);
+}
+
+.barDraw {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.barBlack {
+  background: var(--eval-black);
+  color: var(--eval-white);
+}
+
+.moves {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.moves th {
+  padding: 0.2rem 0.3rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.moves td {
+  padding: 0.15rem 0.3rem;
+  border-bottom: 1px solid var(--surface-2);
+}
+
+.moves .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.barCell {
+  width: 45%;
+}
+
+.panel button.move {
+  min-height: 28px;
+  min-width: 3.5rem;
+  padding: 0 0.4rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.heading {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.games {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'players load'
+    'meta load';
+  align-items: center;
+  gap: 0 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.players {
+  grid-area: players;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.winner {
+  font-weight: 700;
+}
+
+.meta {
+  grid-area: meta;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.panel button.load {
+  grid-area: load;
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.4rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
+
+.tokenForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

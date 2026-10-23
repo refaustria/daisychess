@@ -73,7 +73,7 @@ COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for t
 **CSP (enforced since 2026-10-23).** Single source: `apps/web/csp.config.mjs` (`PRODUCTION_CSP`). nginx (`deploy/nginx/c.referee.at.conf`, `docker/nginx.web.conf`) holds a copy in `map $host $chesslab_csp` and sends it on every response (including `/assets/`, so the engine Workers get the same policy); `node scripts/check-csp.mjs [live conf]` fails on drift and runs in CI. `vite preview` sends the same policy (plus loopback `ws:` for the e2e engine servers, `'report-sample'` and a `report-uri`), so every Playwright spec runs under it.
 
 ```
-default-src 'self'; script-src 'self' 'sha256-YOswKRJVs+FwLZbQstA9GmeqiOLqFnNMWa/1cEzxiD0=' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://lichess.org https://api.chess.com wss://c.referee.at; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+default-src 'self'; script-src 'self' 'sha256-YOswKRJVs+FwLZbQstA9GmeqiOLqFnNMWa/1cEzxiD0=' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://lichess.org https://explorer.lichess.org https://api.chess.com wss://c.referee.at; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 ```
 
 | Directive | Why |
@@ -83,7 +83,7 @@ default-src 'self'; script-src 'self' 'sha256-YOswKRJVs+FwLZbQstA9GmeqiOLqFnNMWa
 | `worker-src 'self'` | The engine worker is `new Worker(<same-origin URL>)`; Emscripten pthread workers are spawned from the worker's own script URL (`mainScriptUrlOrBlob` unset), verified live: 6 pthread workers from `/assets/engine/…/stockfish-19-lite.js`. No `blob:` needed. |
 | `style-src 'self'` | CSS files only. React `style` props and chessground write through the CSSOM, which CSP does not govern; no `<style>`/`style=""` injection in the production build (dev server gets no CSP — Vite injects inline styles/scripts for HMR). |
 | `img-src 'self' data:` | Piece sets and chessground board SVGs are `data:` URIs. |
-| `connect-src` | Same-origin engine WebSocket (`wss://c.referee.at` listed explicitly for browsers without CSP3 `'self'`→`wss:` matching), lichess and chess.com APIs for the online import. The Docker image uses the same list. A different deployment host needs its own `wss://` origin. |
+| `connect-src` | Same-origin engine WebSocket (`wss://c.referee.at` listed explicitly for browsers without CSP3 `'self'`→`wss:` matching), lichess and chess.com APIs for the online import; `https://explorer.lichess.org` for the position explorer (M12-2; browser requests with the user's own lichess token as `Authorization: Bearer`, see the apps/web README). The Docker image uses the same list. A different deployment host needs its own `wss://` origin. |
 | `object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'` | Plugin, `<base>` and form hijacking; clickjacking. |
 
 Rollout: Report-Only on the live site first (headless Chromium through the app: board, browser engine to depth, Import/Settings tabs → only the zod probe below), then enforcing; all e2e specs pass under the enforced policy with zero non-benign reports (`apps/web/e2e/csp-violations.ts` fails the run otherwise).

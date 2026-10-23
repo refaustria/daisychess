@@ -30,8 +30,8 @@ export function buildCsp(extraConnect = []) {
     // Piece sets and chessground board SVGs are data: URIs.
     "img-src 'self' data:",
     "font-src 'self'",
-    // Engine server WebSocket (same origin) and the online game import APIs.
-    ["connect-src 'self' https://lichess.org https://api.chess.com wss://c.referee.at", ...extraConnect].join(' '),
+    // Engine server WebSocket (same origin), the online game import APIs and the lichess opening explorer.
+    ["connect-src 'self' https://lichess.org https://explorer.lichess.org https://api.chess.com wss://c.referee.at", ...extraConnect].join(' '),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
