@@ -93,3 +93,12 @@
 - *Host hardening* applied live: systemd `CapabilityBoundingSet=`, `SystemCallFilter=@system-service` (+`SystemCallErrorNumber=EPERM`, `SystemCallArchitectures=native`), `IPAddressDeny=any`/`IPAddressAllow=localhost` (no egress), `ProtectProc=invisible`, `ProtectClock/Hostname/KernelLogs`, `RestrictNamespaces/Realtime`, `RemoveIPC`, `UMask=0077`; nginx `limit_req` 5 handshakes/s (burst 20) per IP on `/ws` next to the existing `limit_conn 10`, and `Content-Security-Policy: frame-ancestors 'none'`; Docker `server` runs read-only with `cap_drop: ALL` and `no-new-privileges`.
 
 **Consequences.** Hosting the web app on a different origin than the server now requires `ALLOWED_ORIGINS`. `deploy/nginx/c.referee.at.conf` (committed empty by mistake in 47cffbf) is restored and is again the source for the live vhost. `ProcSubset=pid` is deliberately not set (Stockfish and libuv read `/proc/cpuinfo`, `/proc/stat`). Residual risks and the prioritised backlog (per-IP session cap, full CSP, base-image digests, respawn backoff) are in `docs/SECURITY.md`.
+
+## ADR-009 — Multi-engine analysis store
+**Date:** 2026-10-23 · **Status:** accepted
+
+**Context.** M5-1 lets users run several engines (browser WASM builds, server engines) on the same position side by side. The single-engine store (`settings.backend`) could not express that.
+
+**Decision.** Engines are identified by registry keys (`wasm:lite`, `wasm:lite-single`, `remote:<engineId>`; `apps/web/src/engine/registry.ts`). The analysis store keeps shared `fen`/`terminal`/`settings` (depth, MultiPV, threads apply to all engines) and per-engine state in `instances[key]`, with one `AnalysisController` per enabled key. `enabledEngines` is persisted; a master `enabled` switch stops/resumes all. Server engines are discovered by a probe (`hello`/`welcome`, cached 60 s). Resource guard: at most one of each WASM build and two server engines. `selectPrimary` (first enabled engine) feeds the eval bar and the best-move arrow. Old persisted settings (`backend: 'remote'`) migrate to `['remote:stockfish']`.
+
+**Consequences.** Settings are shared across engines (per-engine settings would be a product decision). The probe opens a short extra WebSocket connection when the picker opens. The engine factory signature in `startAnalysisController` is `(spec, settings)`.

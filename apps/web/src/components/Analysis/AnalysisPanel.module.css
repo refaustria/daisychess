@@ -163,17 +163,18 @@
   color: var(--text-muted);
 }
 
-.segmented {
+/* --- engine picker ---------------------------------------------------------------------------- */
+
+.pickerWrap {
+  position: relative;
   display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
 }
 
-.segment {
+.pickerButton {
   min-height: 28px;
   padding: 0 0.6rem;
-  border: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -181,21 +182,210 @@
   cursor: pointer;
 }
 
-.segment + .segment {
-  border-left: 1px solid var(--border);
-}
-
-.segment:hover {
+.pickerButton:hover,
+.pickerButton[aria-expanded='true'] {
   background: var(--surface-2);
 }
 
-.segmentOn,
-.segmentOn:hover {
-  background: var(--accent);
-  color: var(--accent-contrast, #fff);
-}
-
-.segment:focus-visible {
+.pickerButton:focus-visible,
+.linkButton:focus-visible,
+.engineTab:focus-visible,
+.compareChip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+.picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: max-content;
+  max-width: min(22rem, 90vw);
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.optionName {
+  cursor: pointer;
+}
+
+.optionOff {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.optionOff .optionName {
+  cursor: not-allowed;
+}
+
+.optionReason {
+  grid-column: 2;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.linkButton {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--danger);
+}
+
+/* --- multi-engine: compare strip + tabs ------------------------------------------------------- */
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.35rem;
+  padding: 0 0.75rem 0.45rem;
+}
+
+.compareChip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.4rem;
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compareActive {
+  border-color: var(--accent);
+}
+
+.compareName {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-basis: 100%;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.compareBadge,
+.tabBadge {
+  font-weight: 400;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.compareMove {
+  min-width: 2.5em;
+  font-family: var(--font-mono);
+}
+
+.compareWait {
+  color: var(--text-muted);
+}
+
+.engineTabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.engineTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 28px;
+  padding: 0 0.6rem;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.engineTab:hover {
+  color: var(--text);
+}
+
+.engineTabOn {
+  border-color: var(--border);
+  border-bottom-color: var(--surface);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.dot[data-status='analysing'],
+.dot[data-status='ready'] {
+  background: var(--success);
+}
+
+.dot[data-status='loading'] {
+  background: var(--accent);
+}
+
+.dot[data-status='error'] {
+  background: var(--danger);
+}
+
+.dot[data-status='analysing'] {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot[data-status='analysing'] {
+    animation: none;
+  }
 }

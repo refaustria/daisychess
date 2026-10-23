@@ -104,11 +104,15 @@ test.describe('engine backend switch (server mode)', () => {
     await expect(label).toHaveText(LABEL, { timeout: 30_000 });
     await expect(page.getByTestId('backend-badge')).toHaveText('Browser');
 
-    await page.getByRole('radio', { name: 'Server' }).click();
-    await expect(page.getByRole('radio', { name: 'Server' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    // Switch to the server engine with the engine picker (M5-1 replaced the Browser|Server
+    // radio): enable the server engine once the probe lists it, then disable the browser one.
+    await page.getByRole('button', { name: /^Engines/ }).click();
+    const picker = page.getByTestId('engine-picker');
+    const serverBox = picker.getByRole('checkbox', { name: /Stockfish 19 \(server\)/ });
+    await serverBox.check({ timeout: 15_000 });
+    await picker.getByRole('checkbox', { name: /\(browser/, checked: true }).uncheck();
+    await expect(serverBox).toBeChecked();
+    await page.keyboard.press('Escape');
     await expect(status).toContainText('server', { timeout: 20_000 });
     await expect(page.getByTestId('backend-badge')).toHaveText('Server');
     await expect(label).toHaveText(LABEL, { timeout: 20_000 });

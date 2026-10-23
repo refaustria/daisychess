@@ -1,6 +1,6 @@
 import { evalBarShare, formatScore, type Score } from '@chesslab/engine-core';
 import { useRef } from 'react';
-import { useAnalysisStore, type TerminalKind } from '../../store/analysisStore';
+import { selectPrimary, useAnalysisStore, type TerminalKind } from '../../store/analysisStore';
 import { useGameStore, type Orientation } from '../../store/gameStore';
 import styles from './EvalBar.module.css';
 
@@ -89,10 +89,10 @@ export function EvalBar({ score, orientation, fen, terminal, stale }: EvalBarPro
 export function ConnectedEvalBar() {
   const orientation = useGameStore((s) => s.orientation);
   const enabled = useAnalysisStore((s) => s.enabled);
-  const status = useAnalysisStore((s) => s.status);
+  const status = useAnalysisStore((s) => selectPrimary(s).status);
   const fen = useAnalysisStore((s) => s.fen);
   const terminal = useAnalysisStore((s) => s.terminal);
-  const best = useAnalysisStore((s) => s.lines[0]?.score ?? null);
+  const best = useAnalysisStore((s) => selectPrimary(s).lines[0]?.score ?? null);
   // Keep the previous score while the new position's first info is pending, so the bar does not
   // bounce to 50 % on every navigation step.
   const last = useRef<Score | null>(null);

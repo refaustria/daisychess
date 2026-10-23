@@ -27,7 +27,7 @@ describe('engineStatusText', () => {
   });
 
   it('describes the server backend', () => {
-    const remote = { ...base, settings: { depth: 22, multipv: 1, backend: 'remote' as const } };
+    const remote = { ...base, remote: true };
     expect(engineStatusText({ ...remote, status: 'loading', backendStatus: 'connecting' })).toBe(
       'Connecting to server…',
     );

@@ -12,7 +12,7 @@ import { ReviewPanel } from './components/Review/ReviewPanel';
 import { SettingsPanel } from './components/Settings/SettingsPanel';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
-import { useAnalysisStore } from './store/analysisStore';
+import { selectPrimary, useAnalysisStore } from './store/analysisStore';
 import { usePreviewStore } from './store/previewStore';
 import {
   currentFen,
@@ -47,7 +47,8 @@ function ConnectedBoard() {
   const enabled = useAnalysisStore((s) => s.enabled);
   const terminal = useAnalysisStore((s) => s.terminal);
   const analysisFen = useAnalysisStore((s) => s.fen);
-  const best = useAnalysisStore((s) => s.lines[0]?.pv[0]);
+  // The best-move arrow comes from the primary (first enabled) engine.
+  const best = useAnalysisStore((s) => selectPrimary(s).lines[0]?.pv[0]);
   const shapes = useMemo(
     () =>
       analysisShapes({

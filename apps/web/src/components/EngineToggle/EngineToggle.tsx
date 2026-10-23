@@ -1,14 +1,24 @@
-import { useAnalysisStore, type AnalysisState } from '../../store/analysisStore';
+import {
+  isRemoteKey,
+  useAnalysisStore,
+  usePrimaryAnalysis,
+  type AnalysisState,
+  type EngineInstanceState,
+} from '../../store/analysisStore';
 import styles from './EngineToggle.module.css';
 
+/** Status line of the (primary) engine; `remote` marks a server engine. */
 export function engineStatusText(
-  s: Pick<
-    AnalysisState,
-    'enabled' | 'status' | 'error' | 'engineName' | 'capabilities' | 'lines' | 'terminal'
-  > &
-    Partial<Pick<AnalysisState, 'settings' | 'backendStatus' | 'backendError'>>,
+  s: Pick<AnalysisState, 'enabled' | 'terminal'> &
+    Pick<EngineInstanceState, 'status' | 'lines'> &
+    Partial<
+      Pick<
+        EngineInstanceState,
+        'error' | 'engineName' | 'capabilities' | 'backendStatus' | 'backendError'
+      >
+    > & { remote?: boolean },
 ): string {
-  const remote = s.settings?.backend === 'remote';
+  const remote = s.remote === true;
   if (s.status === 'error') {
     if (remote) return s.backendError ?? s.error ?? 'Server error';
     return `Error: ${s.error ?? 'engine failed'}`;
@@ -31,9 +41,16 @@ export function engineStatusText(
   return parts.join(' · ');
 }
 
-/** Engine on/off switch with load/error status (browser engine). */
+/** Engine on/off switch (all enabled engines) with the primary engine's load/error status. */
 export function EngineToggle() {
-  const s = useAnalysisStore();
+  const enabled = useAnalysisStore((a) => a.enabled);
+  const terminal = useAnalysisStore((a) => a.terminal);
+  const remote = useAnalysisStore((a) => isRemoteKey(a.enabledEngines[0]));
+  const setEnabled = useAnalysisStore((a) => a.setEnabled);
+  const retry = useAnalysisStore((a) => a.retry);
+  const fallBackToBrowser = useAnalysisStore((a) => a.fallBackToBrowser);
+  const primary = usePrimaryAnalysis();
+  const s = { ...primary, enabled, terminal, remote };
   const text = engineStatusText(s);
   return (
     <div className={styles.engine}>
@@ -41,8 +58,8 @@ export function EngineToggle() {
         <input
           type="checkbox"
           role="switch"
-          checked={s.enabled}
-          onChange={(e) => s.setEnabled(e.currentTarget.checked)}
+          checked={enabled}
+          onChange={(e) => setEnabled(e.currentTarget.checked)}
           aria-describedby="engine-status"
         />
         <span className={styles.track} aria-hidden="true" />
@@ -57,17 +74,13 @@ export function EngineToggle() {
       >
         {text}
       </span>
-      {s.status === 'error' && s.enabled && (
-        <button type="button" className={styles.retry} onClick={s.retry}>
+      {s.status === 'error' && enabled && (
+        <button type="button" className={styles.retry} onClick={() => retry(primary.key)}>
           Retry
         </button>
       )}
-      {s.status === 'error' && s.enabled && s.settings.backend === 'remote' && (
-        <button
-          type="button"
-          className={styles.retry}
-          onClick={() => s.setSettings({ backend: 'wasm' })}
-        >
+      {s.status === 'error' && enabled && remote && (
+        <button type="button" className={styles.retry} onClick={fallBackToBrowser}>
           Use browser engine
         </button>
       )}
