@@ -19,3 +19,26 @@
 .status {
   font-weight: 600;
 }
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab,
+.tabActive {
+  padding: 0.3rem 0.8rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.tabActive {
+  border-bottom-color: var(--text);
+  font-weight: 600;
+}

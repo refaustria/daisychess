@@ -1,0 +1,66 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.panel button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.input,
+.textarea {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.drop {
+  display: block;
+  padding: 0.8rem;
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.dragging {
+  background: var(--surface);
+}
+
+.file {
+  display: none;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger, #c0392b);
+  font-size: 0.85rem;
+}

@@ -1,0 +1,74 @@
+.wrap {
+  margin-top: 1rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.result {
+  font-family: ui-monospace, monospace;
+}
+
+.list {
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 0.25rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 1fr;
+  align-items: center;
+}
+
+.num {
+  color: var(--text-muted, var(--text));
+  opacity: 0.7;
+  padding-left: 0.3rem;
+}
+
+.move {
+  text-align: left;
+  padding: 0.2rem 0.4rem;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.move:hover {
+  background: var(--border);
+}
+
+.current,
+.current:hover {
+  background: var(--accent, var(--border));
+  font-weight: 700;
+}
+
+.empty {
+  padding: 0.2rem 0.4rem;
+  opacity: 0.5;
+}
+
+.hint {
+  margin: 0.3rem;
+  opacity: 0.7;
+}
+
+.end {
+  text-align: center;
+  font-weight: 600;
+  padding: 0.3rem;
+  font-family: ui-monospace, monospace;
+}

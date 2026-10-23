@@ -1,4 +1,6 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 // Screenshots go to the git-ignored test-results dir unless E2E_SHOTS_DIR overrides it.
@@ -127,4 +129,43 @@ test('flip, undo and keyboard navigation', async ({ page }) => {
   await expect(fen(page)).toHaveValue(/^rnbqkbnr\/pppppppp\/8\/8\/4P3\/8\/PPPP1PPP\/RNBQKBNR b/);
 });
 
-// Checkmate is not covered here: the UI has no FEN input / PGN import yet.
+
+const SCHOLAR = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7#';
+
+test('PGN import: checkmate, move list, click to navigate', async ({ page }) => {
+  await page.getByRole('tab', { name: 'Import' }).click();
+  await page.getByLabel('PGN text').fill(SCHOLAR);
+  await page.getByRole('button', { name: 'Load PGN' }).click();
+  // Loaded games start at ply 0; jump to the end to see the mate.
+  await page.getByRole('button', { name: 'Last move' }).click();
+  await expect(page.getByTestId('status')).toHaveText('Checkmate — White wins');
+  await expect(page.getByTestId('movelist').getByRole('button')).toHaveCount(7);
+  await page.getByRole('button', { name: '2... Nc6' }).click();
+  await expect(fen(page)).toHaveValue(
+    'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/8/PPPP1PPP/RNBQK1NR w KQkq - 2 3',
+  );
+  await page.screenshot({ path: `${SHOTS}/pgn-loaded.png`, fullPage: true });
+});
+
+test('PGN import via file upload', async ({ page }) => {
+  const dir = mkdtempSync(join(tmpdir(), 'chesslab-'));
+  const file = join(dir, 'game.pgn');
+  writeFileSync(file, `[White "Ann"]\n[Black "Bob"]\n[Result "1-0"]\n\n${SCHOLAR} 1-0\n`);
+  await page.getByRole('tab', { name: 'Import' }).click();
+  await page.getByLabel('PGN file').setInputFiles(file);
+  await expect(page.getByText('Ann – Bob')).toBeVisible();
+  await expect(page.getByTestId('movelist').getByRole('button')).toHaveCount(7);
+});
+
+test('FEN import and invalid FEN error', async ({ page }) => {
+  await page.getByRole('tab', { name: 'Import' }).click();
+  await page.getByLabel('Position to import').fill('nonsense');
+  await page.getByRole('button', { name: 'Load', exact: true }).click();
+  await expect(page.getByText('Invalid FEN')).toBeVisible();
+
+  const target = '4k3/8/8/8/8/8/4P3/4K3 w - - 0 1';
+  await page.getByLabel('Position to import').fill(target);
+  await page.getByRole('button', { name: 'Load', exact: true }).click();
+  await expect(fen(page)).toHaveValue(target);
+  await expect(page.locator('piece:not(.ghost)')).toHaveCount(3);
+});
