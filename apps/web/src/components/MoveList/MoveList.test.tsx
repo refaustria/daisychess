@@ -45,6 +45,29 @@ describe('MoveList', () => {
   });
 });
 
+describe('MoveList opening', () => {
+  it('shows ECO and name, follows the current ply, hides for custom FEN', async () => {
+    const { loadOpenings } = await import('../../openings');
+    await loadOpenings();
+    render(<MoveList />);
+    expect(screen.queryByText('C40')).toBeNull();
+    play(['e2', 'e4'], ['e7', 'e5'], ['g1', 'f3']);
+    expect(screen.getByText('C40')).toBeTruthy();
+    expect(screen.getByText("King's Knight Opening")).toBeTruthy();
+    expect(screen.getByTestId('opening').getAttribute('aria-live')).toBe('polite');
+    fireEvent.click(screen.getByRole('button', { name: '1. e4' }));
+    expect(screen.getByText('B00')).toBeTruthy();
+    expect(screen.getByText("King's Pawn Game")).toBeTruthy();
+    act(() => {
+      useGameStore
+        .getState()
+        .loadFen('rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b - - 1 2');
+    });
+    expect(screen.queryByText('B00')).toBeNull();
+    expect(screen.queryByText('C40')).toBeNull();
+  });
+});
+
 describe('MoveList review badges', () => {
   it('shows class glyphs with tooltip once a review is done', async () => {
     const { useReviewStore } = await import('../../review/reviewStore');

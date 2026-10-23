@@ -99,3 +99,30 @@
   font-size: 0.75em;
   font-weight: 700;
 }
+
+.opening {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.opening:empty {
+  display: none;
+}
+
+.eco {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.openingName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { CLASS_INFO } from '../../review/format';
 import { useReviewStore } from '../../review/reviewStore';
 import { gameStatus, useGameStore, type MoveRecord } from '../../store/gameStore';
+import { useOpening } from '../../openings/useOpening';
 import styles from './MoveList.module.css';
 
 // TODO: variations (README "PGN import & navigation") are not supported yet.
@@ -40,6 +41,7 @@ export function MoveList() {
   const goTo = useGameStore((s) => s.goTo);
   const state = useGameStore();
   const reviewed = useReviewStore((s) => (s.status === 'done' ? s.summary : undefined));
+  const opening = useOpening();
   const currentRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -100,6 +102,19 @@ export function MoveList() {
           )}
         </div>
       )}
+      <div
+        className={styles.opening}
+        aria-live="polite"
+        data-testid="opening"
+        title="Opening as of the current position"
+      >
+        {opening && (
+          <>
+            <span className={styles.eco}>{opening.eco}</span>
+            <span className={styles.openingName}>{opening.name}</span>
+          </>
+        )}
+      </div>
       <div className={styles.list}>
         {rows.length === 0 && <p className={styles.hint}>No moves yet.</p>}
         {rows.map((r) => (
