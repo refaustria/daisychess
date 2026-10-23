@@ -201,10 +201,13 @@ pnpm build
 Server mode via Docker:
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+docker compose -f docker/docker-compose.yml up --build -d   # web UI + /ws + /health on http://localhost:8080
+docker compose -f docker/docker-compose.yml down
 ```
 
-Environment variables (`apps/server/.env.example`): `PORT`, `MAX_SESSIONS`, `MAX_DEPTH`, `MAX_THREADS`, `ENGINES_CONFIG`.
+- `server` (`docker/server.Dockerfile`): Node 22, Stockfish fetched at build time (`STOCKFISH_VERSION` / `STOCKFISH_ARCH` build args), runs as non-root `chesslab` under `tini`. Port 8580 is only reachable inside the compose network; uncomment `ports` in the compose file to publish it.
+- `web` (`docker/web.Dockerfile`, `docker/nginx.web.conf`): nginx serving the build with COOP/COEP headers and proxying `/ws` and `/health` to `server`. Public port: `WEB_PORT` (default 8080).
+- Configuration: `docker/server.env` (`MAX_SESSIONS`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_THREADS`, `MAX_HASH_MB`, ... see `apps/server/.env.example`); engine registry `docker/engines.docker.json` (baked into the image as `ENGINES_CONFIG`). Suggested `cpus`/`mem_limit` are commented in the compose file.
 
 ---
 

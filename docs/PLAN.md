@@ -53,6 +53,6 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M6 — Polish & deploy
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M6-1 | Docker image + compose for server mode | worker | todo |
+| M6-1 | Docker image + compose for server mode | worker | done |
 | M6-2 | Performance pass, accessibility, docs | worker | todo |
 | M6-3 | Security review of server + hosting | architect | todo |

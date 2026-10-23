@@ -1,0 +1,13 @@
+{
+  "_comment": "Engine registry for the Docker image. Binary paths are absolute inside the container.",
+  "engines": [
+    {
+      "id": "stockfish",
+      "name": "Stockfish 19",
+      "binary": "/app/engines/stockfish/stockfish",
+      "enabled": true,
+      "options": { "Threads": 4, "Hash": 256 },
+      "maxInstances": 3
+    }
+  ]
+}

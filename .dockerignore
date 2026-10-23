@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+**/dist
+engines
+.git
+apps/web/test-results
+playwright-report
+*.log
+.env
