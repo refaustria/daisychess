@@ -4,7 +4,10 @@ import {
   browserEngines,
   canEnable,
   defaultWasmKey,
+  defaultThreads,
   describeEngine,
+  displacedBy,
+  formatDownload,
   listEngines,
   NOT_ISOLATED_REASON,
   parseEngineKey,
@@ -33,11 +36,12 @@ describe('parseEngineKey', () => {
   it('parses browser builds and server engine ids', () => {
     expect(parseEngineKey('wasm:lite')).toEqual({ backend: 'wasm', build: 'lite' });
     expect(parseEngineKey('wasm:lite-single')).toEqual({ backend: 'wasm', build: 'lite-single' });
+    expect(parseEngineKey('wasm:full')).toEqual({ backend: 'wasm', build: 'full' });
     expect(parseEngineKey('remote:stockfish')).toEqual({
       backend: 'remote',
       engineId: 'stockfish',
     });
-    for (const bad of ['wasm:full', 'remote:', 'remote:../x', 'remote:a b', 'x', 3, null]) {
+    for (const bad of ['wasm:max', 'remote:', 'remote:../x', 'remote:a b', 'x', 3, null]) {
       expect(parseEngineKey(bad)).toBeNull();
     }
   });
@@ -45,19 +49,33 @@ describe('parseEngineKey', () => {
 
 describe('browser engines', () => {
   it('offers the multi-threaded build only on cross-origin isolated pages', () => {
-    const [lite, single] = browserEngines(PLAIN);
+    const [lite, single, full] = browserEngines(PLAIN);
     expect(lite).toMatchObject({ key: 'wasm:lite', available: false, reason: NOT_ISOLATED_REASON });
+    expect(full).toMatchObject({ key: 'wasm:full', available: false, reason: NOT_ISOLATED_REASON });
     expect(single).toMatchObject({ key: 'wasm:lite-single', available: true, badge: 'browser' });
     expect(single!.reason).toBeUndefined();
 
     const iso = browserEngines(ISOLATED);
     expect(iso.every((d) => d.available)).toBe(true);
-    expect(iso[0]!.name).toMatch(/^Stockfish \d+ \(browser, 4 threads\)$/);
-    expect(iso[1]!.name).toMatch(/^Stockfish \d+ \(browser, 1 thread\)$/);
+    expect(iso[0]!.name).toMatch(/^Stockfish \d+ \(browser, multi-thread, 4 threads\)$/);
+    expect(iso[1]!.name).toMatch(/^Stockfish \d+ \(browser, single-thread\)$/);
     expect(iso[1]!.badge).toBe('browser 1T');
-    expect(browserEngines({ crossOriginIsolated: true, hardwareConcurrency: 2 })[0]!.name).toMatch(
-      /1 thread\)$/,
-    );
+    expect(iso[2]!.name).toMatch(/^Stockfish \d+ \(browser, maximum strength, ~\d+ MB download\)$/);
+    expect(iso[2]!.downloadBytes).toBeGreaterThan(50e6);
+    expect(iso[2]!.badge).toBe('browser max');
+  });
+
+  it('labels stay unique on a 2-core machine', () => {
+    const two = browserEngines({ crossOriginIsolated: true, hardwareConcurrency: 2 });
+    expect(two[0]!.name).toMatch(/multi-thread, 1 thread\)$/);
+    expect(new Set(two.map((d) => d.name)).size).toBe(two.length);
+  });
+
+  it('formats download sizes and default threads', () => {
+    expect(formatDownload(99_076_105)).toBe('~99 MB');
+    expect(formatDownload(10)).toBe('~1 MB');
+    expect(defaultThreads({ crossOriginIsolated: true, hardwareConcurrency: 2 })).toBe(1);
+    expect(defaultThreads(ISOLATED)).toBe(4);
   });
 
   it('defaults to the best build the page can run', () => {
@@ -115,6 +133,7 @@ describe('server engines', () => {
     expect(listEngines(probe, [], PLAIN).map((d) => d.key)).toEqual([
       'wasm:lite',
       'wasm:lite-single',
+      'wasm:full',
       'remote:stockfish',
     ]);
     expect(describeEngine('remote:stockfish', probe, PLAIN).name).toBe('Stockfish 19 (server)');
@@ -145,6 +164,15 @@ describe('canEnable (resource guard)', () => {
       reason: 'At most 2 server engines can run at once',
     });
     expect(canEnable('bogus', [], ISOLATED).ok).toBe(false);
+  });
+
+  it('full build: needs isolation; lite and full displace each other', () => {
+    expect(canEnable('wasm:full', [], PLAIN)).toEqual({ ok: false, reason: NOT_ISOLATED_REASON });
+    expect(canEnable('wasm:full', ['wasm:lite'], ISOLATED)).toEqual({ ok: true });
+    expect(displacedBy('wasm:full', ['wasm:lite', 'wasm:lite-single'])).toEqual(['wasm:lite']);
+    expect(displacedBy('wasm:lite', ['remote:a', 'wasm:full'])).toEqual(['wasm:full']);
+    expect(displacedBy('wasm:lite-single', ['wasm:lite', 'wasm:full'])).toEqual([]);
+    expect(displacedBy('remote:a', ['wasm:full'])).toEqual([]);
   });
 });
 

@@ -11,17 +11,23 @@ import {
 import { convertPv } from '../../engine/pvToSan';
 import {
   describeEngine,
+  formatDownload,
   listEngines,
   shortEngineName,
   type EngineDescriptor,
 } from '../../engine/registry';
 import {
+  ENGINE_SETTING_FIELDS,
+  isAuthError,
   isRemoteKey,
   MAX_MULTIPV,
   newInstance,
+  UNAUTHORIZED_HINT,
   useAnalysisStore,
   type AnalysisLine,
   type EngineInstanceState,
+  type EngineSettingsOverride,
+  type EngineSettingsPatch,
 } from '../../store/analysisStore';
 import { usePreviewStore } from '../../store/previewStore';
 import styles from './AnalysisPanel.module.css';
@@ -107,18 +113,51 @@ export function instanceDot(
   return i.status;
 }
 
+/** localStorage flag: the user agreed to the large download of the full browser build once. */
+export const FULL_BUILD_CONFIRMED_KEY = 'chesslab.fullBuildConfirmed';
+
+function downloadConfirmed(): boolean {
+  try {
+    return localStorage.getItem(FULL_BUILD_CONFIRMED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberDownloadConfirmed(): void {
+  try {
+    localStorage.setItem(FULL_BUILD_CONFIRMED_KEY, '1');
+  } catch {
+    /* storage unavailable: ask again next time */
+  }
+}
+
 /** Engine picker: checkbox list of the registry (browser builds + server engines). */
 function EnginePicker() {
   const enabledEngines = useAnalysisStore((s) => s.enabledEngines);
   const probe = useAnalysisStore((s) => s.serverProbe);
+  const env = useAnalysisStore((s) => s.env);
   const hint = useAnalysisStore((s) => s.engineHint);
   const setEngineEnabled = useAnalysisStore((s) => s.setEngineEnabled);
   const probeServer = useAnalysisStore((s) => s.probeServer);
   const clearEngineHint = useAnalysisStore((s) => s.clearEngineHint);
   const [open, setOpen] = useState(false);
+  /** Engine waiting for the download confirmation (full build, first time only). */
+  const [confirm, setConfirm] = useState<EngineDescriptor | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const id = useId();
-  const engines = useMemo(() => listEngines(probe, enabledEngines), [probe, enabledEngines]);
+  const engines = useMemo(
+    () => listEngines(probe, enabledEngines, env),
+    [probe, enabledEngines, env],
+  );
+  const toggle = (d: EngineDescriptor, on: boolean) => {
+    if (on && d.downloadBytes !== undefined && !downloadConfirmed()) {
+      setConfirm(d);
+      return;
+    }
+    setConfirm(null);
+    setEngineEnabled(d.key, on);
+  };
 
   // Server engines are discovered when the picker opens (cached by the store).
   useEffect(() => {
@@ -181,7 +220,7 @@ function EnginePicker() {
                   checked={checked}
                   disabled={disabled}
                   aria-describedby={d.reason ? `${inputId}-reason` : undefined}
-                  onChange={(e) => setEngineEnabled(d.key, e.currentTarget.checked)}
+                  onChange={(e) => toggle(d, e.currentTarget.checked)}
                 />
                 <label htmlFor={inputId} className={styles.optionName}>
                   {d.name}
@@ -194,6 +233,40 @@ function EnginePicker() {
               </div>
             );
           })}
+          {confirm && (
+            <div className={styles.confirm} role="alertdialog" aria-labelledby={`${id}-confirm`}>
+              <p id={`${id}-confirm`}>
+                {confirm.name.replace(/\s*\(.*$/, '')} at maximum strength downloads{' '}
+                {formatDownload(confirm.downloadBytes ?? 0)} once (cached afterwards) and uses more
+                memory. Load it?
+              </p>
+              <div className={styles.confirmActions}>
+                <button
+                  type="button"
+                  className={styles.linkButton}
+                  onClick={() => {
+                    rememberDownloadConfirmed();
+                    setConfirm(null);
+                    setEngineEnabled(confirm.key, true);
+                  }}
+                >
+                  Download and enable
+                </button>
+                <button
+                  type="button"
+                  className={styles.linkButton}
+                  onClick={() => setConfirm(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {probe.status === 'error' && isAuthError(probe.error) && (
+            <p className={styles.hint} data-testid="auth-hint">
+              {UNAUTHORIZED_HINT}
+            </p>
+          )}
           {probe.status === 'error' && (
             <button
               type="button"
@@ -275,10 +348,14 @@ export function AnalysisPanel() {
   const enabledEngines = useAnalysisStore((s) => s.enabledEngines);
   const instances = useAnalysisStore((s) => s.instances);
   const probe = useAnalysisStore((s) => s.serverProbe);
-  const settings = useAnalysisStore((s) => s.settings);
+  const defaults = useAnalysisStore((s) => s.settings);
+  const engineSettings = useAnalysisStore((s) => s.engineSettings);
+  const env = useAnalysisStore((s) => s.env);
   const fen = useAnalysisStore((s) => s.fen);
   const terminal = useAnalysisStore((s) => s.terminal);
   const setSettings = useAnalysisStore((s) => s.setSettings);
+  const setEngineSettings = useAnalysisStore((s) => s.setEngineSettings);
+  const applySettingsToAll = useAnalysisStore((s) => s.applySettingsToAll);
   const [open, setOpen] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const tabsId = useId();
@@ -289,8 +366,8 @@ export function AnalysisPanel() {
   const lines = useDeferredValue(inst.lines);
   const multi = enabledEngines.length > 1;
   const descriptors = useMemo(
-    () => enabledEngines.map((k) => describeEngine(k, probe)),
-    [enabledEngines, probe],
+    () => enabledEngines.map((k) => describeEngine(k, probe, env)),
+    [enabledEngines, probe, env],
   );
 
   // Leaving the panel (engine off) must not leave arrows or a preview behind.
@@ -307,8 +384,12 @@ export function AnalysisPanel() {
   const remote = isRemoteKey(activeKey);
   const caps = inst.capabilities;
   const limits = inst.remoteLimits;
-  const hw = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 2 : 2;
-  const maxThreads = remote && limits ? limits.maxThreads : Math.max(1, hw - 1);
+  // Settings of the selected engine: the defaults merged with its override (ADR-010).
+  const override: EngineSettingsOverride | undefined = engineSettings[activeKey];
+  const settings = override ? { ...defaults, ...override } : defaults;
+  const activeDescriptor = descriptors.find((d) => d.key === activeKey);
+  const maxThreads =
+    remote && limits ? limits.maxThreads : Math.max(1, env.hardwareConcurrency - 1);
   const maxLines = remote && limits ? Math.min(MAX_MULTIPV, limits.maxMultipv) : MAX_MULTIPV;
   const maxDepth = remote && limits ? limits.maxDepth : Infinity;
   // The server clamps to its limits; show what will actually run.
@@ -327,6 +408,22 @@ export function AnalysisPanel() {
   const nps = formatNps(lines[0]?.nps);
   const depth = lines[0]?.depth;
 
+  /**
+   * With several engines the selects edit the selected engine only; with one engine they edit
+   * the defaults (and drop that engine's override of the field, so what is shown is what runs).
+   */
+  const change = (patch: Partial<Record<'depth' | 'multipv' | 'threads', number>>) => {
+    if (multi) {
+      setEngineSettings(activeKey, patch);
+      return;
+    }
+    setSettings(patch);
+    const clear: EngineSettingsPatch = {};
+    for (const f of ENGINE_SETTING_FIELDS)
+      if (f in patch && override?.[f] !== undefined) clear[f] = null;
+    if (Object.keys(clear).length > 0) setEngineSettings(activeKey, clear);
+  };
+
   const onTabKey = (e: KeyboardEvent<HTMLButtonElement>) => {
     const i = enabledEngines.indexOf(activeKey);
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
@@ -343,11 +440,18 @@ export function AnalysisPanel() {
       {terminal === 'checkmate' ? 'Checkmate' : 'Stalemate'}: nothing to analyse.
     </p>
   ) : lines.length === 0 ? (
-    <p className={styles.empty}>
-      {inst.status === 'error'
-        ? (inst.backendError ?? inst.error ?? 'Engine unavailable.')
-        : 'Thinking…'}
-    </p>
+    <>
+      <p className={styles.empty}>
+        {inst.status === 'error'
+          ? (inst.backendError ?? inst.error ?? 'Engine unavailable.')
+          : 'Thinking…'}
+      </p>
+      {inst.status === 'error' && isAuthError(inst.backendError ?? inst.error) && (
+        <p className={styles.authHint} data-testid="auth-hint">
+          {UNAUTHORIZED_HINT}
+        </p>
+      )}
+    </>
   ) : (
     <ol className={styles.lines} data-testid="analysis-lines">
       {lines.map((l) => (
@@ -400,11 +504,19 @@ export function AnalysisPanel() {
         <>
           <div className={styles.settings}>
             <EnginePicker />
+            {multi && activeDescriptor && (
+              <span className={styles.settingsFor} data-testid="settings-engine">
+                Settings for{' '}
+                <span className={styles.settingsForName} title={activeDescriptor.name}>
+                  {shortLabel(activeDescriptor, inst)} {activeDescriptor.badge}
+                </span>
+              </span>
+            )}
             <label className={styles.setting}>
               Depth
               <select
                 value={shownDepth}
-                onChange={(e) => setSettings({ depth: Number(e.currentTarget.value) })}
+                onChange={(e) => change({ depth: Number(e.currentTarget.value) })}
               >
                 {depthOptions.map((d) => (
                   <option key={d} value={d}>
@@ -417,7 +529,7 @@ export function AnalysisPanel() {
               Lines
               <select
                 value={multipv}
-                onChange={(e) => setSettings({ multipv: Number(e.currentTarget.value) })}
+                onChange={(e) => change({ multipv: Number(e.currentTarget.value) })}
               >
                 {range(1, maxLines).map((m) => (
                   <option key={m} value={m}>
@@ -436,7 +548,7 @@ export function AnalysisPanel() {
               <select
                 value={threads}
                 disabled={!threadsOk}
-                onChange={(e) => setSettings({ threads: Number(e.currentTarget.value) })}
+                onChange={(e) => change({ threads: Number(e.currentTarget.value) })}
               >
                 {(remote ? range(1, maxThreads) : withCurrent(range(1, maxThreads), threads)).map(
                   (t) => (
@@ -447,6 +559,16 @@ export function AnalysisPanel() {
                 )}
               </select>
             </label>
+            {multi && (
+              <button
+                type="button"
+                className={`${styles.linkButton} ${styles.applyAll}`}
+                title="Use these settings for every engine"
+                onClick={() => applySettingsToAll(activeKey)}
+              >
+                Apply to all
+              </button>
+            )}
           </div>
           {multi ? (
             <>

@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
-import { engineStatusText } from './EngineToggle';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { UNAUTHORIZED_MESSAGE, useAnalysisStore } from '../../store/analysisStore';
+import { EngineToggle, engineStatusText } from './EngineToggle';
+
+afterEach(cleanup);
 
 const base = { enabled: true, status: 'analysing' as const, lines: [], terminal: null };
 
@@ -59,5 +63,20 @@ describe('engineStatusText', () => {
       'Connection lost',
     );
     expect(engineStatusText({ ...remote, status: 'error', error: 'boom' })).toBe('boom');
+  });
+
+  it('shows the access-token error with a hint to open Settings', () => {
+    const key = 'remote:stockfish';
+    useAnalysisStore.setState({
+      enabled: true,
+      enabledEngines: [key],
+      instances: {
+        [key]: { key, status: 'error', lines: [], backendError: UNAUTHORIZED_MESSAGE },
+      },
+    });
+    render(<EngineToggle />);
+    const status = screen.getByTestId('engine-status');
+    expect(status.textContent).toBe('Access token required or wrong (see Settings)');
+    expect(status.getAttribute('title')).toMatch(/Settings tab/);
   });
 });

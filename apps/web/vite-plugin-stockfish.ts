@@ -11,7 +11,7 @@
  *     cross-origin isolation headers.
  * The client learns the location through the `__STOCKFISH_ENGINE__` define.
  */
-import { createReadStream, existsSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { Plugin } from 'vite';
@@ -20,8 +20,10 @@ export interface StockfishEngineManifest {
   version: string;
   /** Directory relative to the Vite `base`, with trailing slash. */
   dir: string;
-  /** Worker script file name per build. */
-  builds: { 'lite-single': string; lite: string };
+  /** Worker script file name per build (`full` = the multi-threaded build with the big NNUE). */
+  builds: { 'lite-single': string; lite: string; full: string };
+  /** Download size in bytes per build (worker script + `.wasm`), for the UI. */
+  sizes: { 'lite-single': number; lite: number; full: number };
 }
 
 const ISOLATION_HEADERS = {
@@ -40,17 +42,26 @@ export function stockfishEngines(): Plugin {
   const builds = {
     'lite-single': `stockfish-${major}-lite-single.js`,
     lite: `stockfish-${major}-lite.js`,
+    // Opt-in (ADR-010): full-strength network embedded in a ~99 MB .wasm, loaded on demand only.
+    full: `stockfish-${major}.js`,
   };
-  const files = Object.values(builds).flatMap((js) => [js, js.replace(/\.js$/, '.wasm')]);
+  const filesOf = (js: string) => [js, js.replace(/\.js$/, '.wasm')];
+  const files = Object.values(builds).flatMap(filesOf);
   for (const f of files) {
     if (!existsSync(join(binDir, f))) {
       throw new Error(`[stockfish-engines] missing ${f} in ${binDir} (stockfish ${version})`);
     }
   }
+  const sizeOf = (js: string) => filesOf(js).reduce((n, f) => n + statSync(join(binDir, f)).size, 0);
   const manifest: StockfishEngineManifest = {
     version,
     dir: `assets/engine/stockfish-${version}/`,
     builds,
+    sizes: {
+      'lite-single': sizeOf(builds['lite-single']),
+      lite: sizeOf(builds.lite),
+      full: sizeOf(builds.full),
+    },
   };
   let base = '/';
 

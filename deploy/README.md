@@ -15,8 +15,10 @@ policies); the threat model and hardening checklist are in `docs/SECURITY.md`.
 
 The site sends `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` (multi-threaded WASM), plus CORP,
-nosniff and Referrer-Policy. `/assets/*` is cached immutably, `index.html` is
-`no-cache`, unknown paths fall back to `index.html` (SPA). No HSTS.
+nosniff, Referrer-Policy, an enforced `Content-Security-Policy` and
+`Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`, no
+preload). `/assets/*` is cached immutably, `index.html` is `no-cache`, unknown
+paths fall back to `index.html` (SPA).
 
 ## First-time setup (already done on 2026-10-23)
 
@@ -49,6 +51,9 @@ deploy/deploy-web.sh
 Runs `pnpm install --frozen-lockfile`, `pnpm --filter @chesslab/web build`,
 then `rsync -a --delete apps/web/dist/ /var/www/c.referee.at/`. No nginx reload
 needed.
+The build includes the opt-in full-strength Stockfish build
+(`assets/engine/stockfish-<version>/stockfish-19.wasm`, ~99 MB; ADR-010), so `dist/`
+is ~105 MB; browsers fetch it only when a user enables "maximum strength".
 
 ## Engine server
 
@@ -70,6 +75,8 @@ systemctl status chesslab-server
 curl -s https://c.referee.at/health            # {status, version} only
 curl -s http://127.0.0.1:8580/health/detail   # pool stats, sessions, connections (loopback)
 node deploy/ws-smoke.mjs            # hello -> analyze depth 12 -> bestmove (Node 22+)
+# with ACCESS_TOKEN set: without the token the smoke test fails with `unauthorized`
+CHESSLAB_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" node deploy/ws-smoke.mjs
 ```
 
 **Limits and config.** The server does not read `.env` itself; the unit loads
@@ -83,6 +90,22 @@ other origins get 403 at the upgrade). Edit it, then
 `CPUWeight`, `TasksMax`) are in the unit; after editing it, rerun the script.
 The unit is read-only on the filesystem (`ProtectSystem=strict`,
 `ProtectHome=read-only`); add `ReadWritePaths=` if the server ever writes.
+
+**Access token (ADR-010).** If `ACCESS_TOKEN` is set in
+`apps/server/.env.production` (git-ignored, mode 600), every client must send it
+in `hello.token`; otherwise it gets `error unauthorized` and close 1008, before
+`welcome`. Empty or unset = public server. The token is never logged. Users enter
+it once in the web app (Settings → "Server access token"; stored in the
+browser's `localStorage`). Rotate it:
+
+```bash
+sed -i "s/^ACCESS_TOKEN=.*/ACCESS_TOKEN=$(openssl rand -hex 16)/" apps/server/.env.production
+sudo systemctl restart chesslab-server
+CHESSLAB_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" node deploy/ws-smoke.mjs
+```
+
+Then hand the new value to the users (old tokens stop working immediately;
+open connections stay until they reconnect).
 
 Abuse-relevant limits (production values; all env vars are documented in
 `apps/server/.env.example`, the rationale in `docs/SECURITY.md`):
@@ -101,7 +124,8 @@ Abuse-relevant limits (production values; all env vars are documented in
 `/health/detail` shows per engine `crashes`, `backoffUntil` and `degraded`, and
 `clientAddresses` (addresses currently holding engine sessions).
 `node deploy/ws-limits-check.mjs` verifies the per-IP cap end to end (the third
-session from one address must get `no_capacity`).
+session from one address must get `no_capacity`; prefix `CHESSLAB_TOKEN=…` when
+the server requires a token).
 
 **Logs.** JSON lines in the journal (your user needs group `adm` or
 `systemd-journal`, otherwise use `sudo`):
@@ -125,11 +149,60 @@ orphaned `stockfish` processes remain.
 
 **nginx.** `/ws` has `limit_conn chesslab_ws 10` (per IP) and
 `limit_req zone=chesslab_ws_req burst=20 nodelay` (5 handshakes/s per IP);
-excess gets 429. The two `*_zone` lines sit at the top of the site file (http
-context). All responses carry `Content-Security-Policy: frame-ancestors 'none'`.
+excess gets 429. The two `*_zone` lines, the `$chesslab_csp` map and the
+`chesslab` log format sit at the top of the site file (http context).
 `deploy/nginx/c.referee.at.conf` is the source; the live file additionally has
 the certbot lines. Apply a change by merging it into the live file, then
-`sudo nginx -t && sudo systemctl reload nginx` (back the live file up first).
+`sudo nginx -t && sudo systemctl reload nginx` (back the live file up first:
+`sudo cp -a /etc/nginx/sites-available/c.referee.at{,.bak-$(date +%Y%m%d-%H%M%S)}`).
+
+**Content-Security-Policy.** Built by `apps/web/csp.config.mjs` (policy and
+rationale: `docs/SECURITY.md` §2.8). The nginx copy contains the sha256 of the
+inline theme script in `apps/web/index.html`; if that script changes, the
+browser blocks it until nginx is updated. Check repo and live file with
+
+```bash
+node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at
+```
+
+which prints the expected `default "…";` line on a mismatch (CI runs it for
+the repo files). Deploy the web build and the nginx change together. To
+debug a suspected CSP problem, temporarily rename the header to
+`Content-Security-Policy-Report-Only` in all three places (violations then only
+show in the browser console) and keep `add_header Content-Security-Policy
+"frame-ancestors 'none'" always;` next to it, since `frame-ancestors` is
+ignored in report-only mode.
+
+**HSTS.** One year, this host only. Browsers cache it: going back to plain
+HTTP needs `max-age=0` served over HTTPS for a while first.
+
+## Abuse logging and fail2ban
+
+nginx writes `/var/log/nginx/c.referee.at.access.log` (and `.error.log`) in the
+`chesslab` format: address, time, method, path **without query string**,
+status, bytes, `rt=` request time, `urt=` upstream time, `Origin`, User-Agent.
+No bodies. The stock `/etc/logrotate.d/nginx` rotates it (daily, 14 days).
+
+```bash
+# refused WebSocket upgrades per address (403 = foreign Origin, 429 = nginx limits)
+sudo awk '$5 ~ /^\/ws/ && ($7 == 403 || $7 == 429) {print $7, $1}' \
+  /var/log/nginx/c.referee.at.access.log | sort | uniq -c | sort -rn | head
+```
+
+Engine-level refusals (`rate_limited`, `no_capacity`, `limit_exceeded`) happen
+inside an accepted socket and are only in the server journal.
+
+`deploy/fail2ban/` has a filter (403/429 on `/ws`) and a jail (30 within 60 s
+→ 10 min ban). fail2ban is **not installed** on this host (2026-10-23), so the
+files are inactive. To enable:
+
+```bash
+sudo apt install fail2ban
+sudo cp deploy/fail2ban/filter.d/chesslab-ws.conf /etc/fail2ban/filter.d/
+sudo cp deploy/fail2ban/jail.d/chesslab-ws.conf /etc/fail2ban/jail.d/
+sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log chesslab-ws   # dry run
+sudo systemctl restart fail2ban && sudo fail2ban-client status chesslab-ws
+```
 
 ## Certificate renewal
 

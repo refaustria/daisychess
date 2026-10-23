@@ -8,6 +8,7 @@ import {
   parseServerMessage,
   PROTOCOL_BOUNDS,
   PROTOCOL_ERROR_CODES,
+  MAX_TOKEN_LENGTH,
   PROTOCOL_VERSION,
   type AnalyzeMessage,
   type ClientMessage,
@@ -229,6 +230,23 @@ describe('client message constraints', () => {
     expect(parseClientMessage({ type: 'hello', protocolVersion: PROTOCOL_VERSION + 1 }).ok).toBe(
       true,
     );
+  });
+  it('hello accepts an optional access token up to MAX_TOKEN_LENGTH characters', () => {
+    const base = { type: 'hello', protocolVersion: PROTOCOL_VERSION };
+    const without = parseClientMessage(base);
+    expect(without.ok && without.message.type === 'hello' && without.message.token).toBe(undefined);
+    const withToken = parseClientMessage({ ...base, token: 'secret' });
+    expect(withToken.ok && withToken.message.type === 'hello' && withToken.message.token).toBe(
+      'secret',
+    );
+    expect(parseClientMessage({ ...base, token: 'x'.repeat(MAX_TOKEN_LENGTH) }).ok).toBe(true);
+    expectError(parseClientMessage({ ...base, token: 'x'.repeat(MAX_TOKEN_LENGTH + 1) }), /token/);
+    expectError(parseClientMessage({ ...base, token: 42 }), /token/);
+  });
+  it('error codes include unauthorized (additive, protocol 1)', () => {
+    expect(PROTOCOL_ERROR_CODES).toContain('unauthorized');
+    expect(PROTOCOL_VERSION).toBe(1);
+    expect(parseServerMessage({ type: 'error', code: 'unauthorized', message: 'x' }).ok).toBe(true);
   });
   it('analyze requires sessionId, searchId, engine and fen', () => {
     for (const key of ['sessionId', 'searchId', 'engine', 'fen']) {

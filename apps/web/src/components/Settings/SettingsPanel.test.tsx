@@ -37,4 +37,24 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
     expect(useSettingsStore.getState().boardTheme).toBe('brown');
   });
+
+  it('server access token: hidden by default, show/hide, saved on submit', () => {
+    useSettingsStore.getState().setServerToken('');
+    render(<SettingsPanel />);
+    const input = screen.getByLabelText('Server access token') as HTMLInputElement;
+    expect(input.type).toBe('password');
+    const save = screen.getByRole('button', { name: 'Save token' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: ' s3cret ' } });
+    expect(useSettingsStore.getState().serverToken).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    expect(input.type).toBe('text');
+    fireEvent.click(save);
+    expect(useSettingsStore.getState().serverToken).toBe('s3cret');
+    expect(input.value).toBe('s3cret');
+    expect(screen.getByText(/Server engines reconnect/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    expect(input.type).toBe('password');
+    useSettingsStore.getState().setServerToken('');
+  });
 });

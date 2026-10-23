@@ -83,6 +83,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     allowedOrigins: config.allowedOrigins,
     maxSessionsPerIp: config.maxSessionsPerIp,
     trustedProxies: config.trustedProxies,
+    accessToken: config.accessToken,
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
   });
   app.decorate('chesslab', { pool, ws, config });

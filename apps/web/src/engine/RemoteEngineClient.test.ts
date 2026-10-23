@@ -68,6 +68,28 @@ describe('RemoteEngineClient handshake', () => {
     expect(client.capabilities()).toEqual({ threads: true, build: 'Stockfish 19@0.0.0-test', threadCount: 4 });
   });
 
+  it('sends the access token in hello when configured, nothing otherwise', async () => {
+    const withToken = await loaded({ token: 'tok-123' });
+    expect(withToken.socket().sent[0]).toEqual({
+      type: 'hello',
+      protocolVersion: PROTOCOL_VERSION,
+      client: { name: 'chesslab-web' },
+      token: 'tok-123',
+    });
+    const empty = await loaded({ token: '' });
+    expect(empty.socket().sent[0]).not.toHaveProperty('token');
+  });
+
+  it('rejects with code unauthorized when the server refuses the token', async () => {
+    const { client } = setup({}, (s) => {
+      s.welcome = { type: 'error', code: 'unauthorized', message: 'access token required or wrong' };
+    });
+    const err = await client.load().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RemoteEngineError);
+    expect((err as RemoteEngineError).code).toBe('unauthorized');
+    expect(client.status).toBe('error');
+  });
+
   it('is idempotent', async () => {
     const { client, sockets } = setup();
     await Promise.all([client.load(), client.load()]);

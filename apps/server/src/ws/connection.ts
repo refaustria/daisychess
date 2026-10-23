@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import WebSocket, { type RawData } from 'ws';
 import {
   BestMoveSchema,
@@ -45,6 +46,19 @@ export interface ConnectionOptions {
   messageRateLimit?: RateLimit;
   /** `info` messages are dropped (never terminal messages) while the socket buffers more than this. */
   maxBufferedBytes?: number;
+  /** When set (non-empty), `hello.token` must equal it (ADR-010); otherwise `unauthorized`. */
+  accessToken?: string | null;
+}
+
+/**
+ * Constant-time token check: both sides are hashed first, so neither the content nor the length
+ * of the expected token leaks through timing.
+ */
+export function tokenMatches(given: string | undefined, expected: string): boolean {
+  if (given === undefined) return false;
+  const a = createHash('sha256').update(given, 'utf8').digest();
+  const b = createHash('sha256').update(expected, 'utf8').digest();
+  return timingSafeEqual(a, b);
 }
 
 /** Who a connection is accounted to for the per-IP session cap. */
@@ -209,6 +223,17 @@ export class Connection {
           `server speaks protocol ${PROTOCOL_VERSION}, client sent ${msg.protocolVersion}`,
         );
         this.close(1008, 'protocol mismatch');
+        return;
+      }
+      const required = this.opts.accessToken;
+      if (required && !tokenMatches(msg.token, required)) {
+        // Never log the token itself, only whether one was sent.
+        this.log.warn(
+          { conn: this.id, tokenSent: msg.token !== undefined },
+          'rejecting handshake: access token missing or wrong',
+        );
+        this.sendError('unauthorized', 'access token required or wrong');
+        this.close(1008, 'unauthorized');
         return;
       }
       this.handshaken = true;

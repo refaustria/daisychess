@@ -5,6 +5,7 @@ export { sideToMove, scoreToWhitePov, infoToWhitePov } from './pov.js';
 export {
   PROTOCOL_VERSION,
   MAX_MESSAGE_BYTES,
+  MAX_TOKEN_LENGTH,
   PROTOCOL_ERROR_CODES,
   PROTOCOL_BOUNDS,
   DEFAULT_LIMITS,

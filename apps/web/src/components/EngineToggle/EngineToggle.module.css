@@ -102,3 +102,7 @@
 .retry:hover {
   background: var(--surface-2);
 }
+
+.hint {
+  color: var(--text-muted);
+}

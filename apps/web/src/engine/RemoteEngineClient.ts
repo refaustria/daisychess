@@ -49,6 +49,11 @@ export interface RemoteEngineClientOptions {
   responseTimeoutMs?: number;
   /** Sent in `hello.client`. */
   clientInfo?: { name: string; version?: string };
+  /**
+   * Server access token, sent in `hello.token` (ADR-010). Empty/undefined sends none; a server
+   * with `ACCESS_TOKEN` then answers `unauthorized`.
+   */
+  token?: string;
 }
 
 export interface RemoteEngineCapabilities extends EngineCapabilities {
@@ -336,6 +341,7 @@ export class RemoteEngineClient implements AnalysisEngine {
         type: 'hello',
         protocolVersion: PROTOCOL_VERSION,
         client: this.options.clientInfo ?? { name: 'chesslab-web' },
+        ...(this.options.token ? { token: this.options.token } : {}),
       };
       this.send(hello);
     };

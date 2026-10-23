@@ -1,8 +1,15 @@
 import type { AnalyzeOptions, Engine } from '@chesslab/engine-core';
 import { UciSession, type AnalysisHandle, type UciTransport } from './UciSession';
 
-/** Browser builds shipped from the `stockfish` npm package (see vite-plugin-stockfish.ts). */
-export type WasmBuild = 'lite' | 'lite-single';
+/**
+ * Browser builds shipped from the `stockfish` npm package (see vite-plugin-stockfish.ts):
+ * `lite` (multi-threaded, small network), `lite-single` (single-threaded) and `full`
+ * (multi-threaded with the full-strength network, ~99 MB; opt-in, ADR-010).
+ */
+export type WasmBuild = 'lite' | 'lite-single' | 'full';
+
+/** Builds that run pthreads (need cross-origin isolation / SharedArrayBuffer). */
+export const isMultiThreadBuild = (build: WasmBuild): boolean => build !== 'lite-single';
 
 /** The subset of `Worker` the client uses (injectable for tests). */
 export interface EngineWorker {
@@ -18,7 +25,10 @@ export interface WasmEngineClientOptions {
   crossOriginIsolated?: boolean;
   /** Defaults to `navigator.hardwareConcurrency`. */
   hardwareConcurrency?: number;
-  /** Force a build instead of auto-selecting (e.g. `lite-single` on an isolated page). */
+  /**
+   * Force a build instead of auto-selecting (e.g. `lite-single` on an isolated page, or `full`).
+   * A multi-threaded build forced on a non-isolated page gets 1 thread (and will fail to load).
+   */
   build?: WasmBuild;
   /** URL of the directory holding the engine files (trailing slash). Defaults to the bundled one. */
   engineBaseUrl?: string;
@@ -29,9 +39,9 @@ export interface WasmEngineClientOptions {
 }
 
 export interface WasmEngineCapabilities {
-  /** True when the multi-threaded build runs (requires cross-origin isolation). */
+  /** True when a multi-threaded build runs (requires cross-origin isolation). */
   threads: boolean;
-  /** e.g. `stockfish-19.0.1-lite-single`. */
+  /** e.g. `stockfish-19.0.1-lite-single`, `stockfish-19.0.1-full`. */
   build: string;
   /** Value of the UCI `Threads` option set at load time. */
   threadCount: number;
@@ -78,17 +88,16 @@ export class WasmEngineClient implements Engine {
       hardwareConcurrency:
         options.hardwareConcurrency ?? globalThis.navigator?.hardwareConcurrency ?? 1,
     });
+    const build = options.build ?? auto.build;
     this.selected =
-      options.build === 'lite-single'
-        ? { build: 'lite-single', threads: 1 }
-        : options.build === 'lite' && auto.build === 'lite-single'
-          ? { build: 'lite', threads: 1 }
-          : auto;
+      build === 'lite-single'
+        ? { build, threads: 1 }
+        : { build, threads: auto.build === 'lite-single' ? 1 : auto.threads };
   }
 
   capabilities(): WasmEngineCapabilities {
     return {
-      threads: this.selected.build === 'lite',
+      threads: isMultiThreadBuild(this.selected.build),
       build: `stockfish-${__STOCKFISH_ENGINE__.version}-${this.selected.build}`,
       threadCount: this.selected.threads,
     };
@@ -148,7 +157,7 @@ export class WasmEngineClient implements Engine {
     // is set (setOptions would otherwise stop that search).
     await Promise.all([
       session.handshake(),
-      this.selected.build === 'lite'
+      isMultiThreadBuild(this.selected.build)
         ? session.setOptions({ Threads: this.selected.threads })
         : undefined,
     ]);

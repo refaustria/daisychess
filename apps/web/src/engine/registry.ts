@@ -5,7 +5,8 @@ import type { WasmBuild } from './WasmEngineClient';
  * Engine registry of the browser: which engines the user can enable for live analysis.
  *
  * Keys: `wasm:lite` (multi-threaded WASM, needs cross-origin isolation), `wasm:lite-single`
- * (single-threaded WASM, works everywhere) and `remote:<engineId>` (an engine of the ChessLab
+ * (single-threaded WASM, works everywhere), `wasm:full` (multi-threaded with the full-strength
+ * network, ~99 MB download, opt-in; ADR-010) and `remote:<engineId>` (an engine of the ChessLab
  * server, discovered with {@link probeServer}).
  */
 export type EngineKey = string;
@@ -14,15 +15,17 @@ export type EngineBackend = 'wasm' | 'remote';
 export interface EngineDescriptor {
   key: EngineKey;
   backend: EngineBackend;
-  /** Picker label, e.g. "Stockfish 19 (browser, 4 threads)". */
+  /** Picker label, e.g. "Stockfish 19 (browser, multi-thread, 4 threads)". */
   name: string;
   /** Short label for tabs / the compare strip, e.g. "SF19". */
   short: string;
-  /** Location badge, e.g. "browser", "browser 1T", "server". */
+  /** Location badge, e.g. "browser", "browser 1T", "browser max", "server". */
   badge: string;
   available: boolean;
   /** Why the engine cannot be enabled (when `available` is false). */
   reason?: string;
+  /** Approximate download in bytes when it is large enough to ask first (the full build). */
+  downloadBytes?: number;
 }
 
 export type ParsedEngineKey =
@@ -52,6 +55,7 @@ const REMOTE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 export function parseEngineKey(key: unknown): ParsedEngineKey | null {
   if (key === 'wasm:lite') return { backend: 'wasm', build: 'lite' };
   if (key === 'wasm:lite-single') return { backend: 'wasm', build: 'lite-single' };
+  if (key === 'wasm:full') return { backend: 'wasm', build: 'full' };
   if (typeof key === 'string' && key.startsWith('remote:')) {
     const engineId = key.slice('remote:'.length);
     if (REMOTE_ID.test(engineId)) return { backend: 'remote', engineId };
@@ -61,6 +65,20 @@ export function parseEngineKey(key: unknown): ParsedEngineKey | null {
 
 export function remoteKey(engineId: string): EngineKey {
   return `remote:${engineId}`;
+}
+
+/** Multi-threaded browser builds: they need cross-origin isolation and only one runs at a time. */
+export const MULTI_THREAD_KEYS: readonly EngineKey[] = ['wasm:lite', 'wasm:full'];
+
+export const isMultiThreadKey = (key: EngineKey): boolean => MULTI_THREAD_KEYS.includes(key);
+
+/**
+ * Keys that enabling `key` replaces: `wasm:lite` and `wasm:full` are mutually exclusive (each
+ * spawns one worker per thread and they would compete for the same cores).
+ */
+export function displacedBy(key: EngineKey, enabled: readonly EngineKey[]): EngineKey[] {
+  if (!isMultiThreadKey(key)) return [];
+  return enabled.filter((k) => k !== key && isMultiThreadKey(k));
 }
 
 export function currentEnv(): RegistryEnv {
@@ -88,30 +106,62 @@ export function shortEngineName(name: string): string {
   return (name.split(/\s+/)[0] ?? name).slice(0, 10) || 'Engine';
 }
 
-/** The two browser builds (static; `lite` is available only on cross-origin isolated pages). */
+/** Download size of the full build in bytes (0 when unknown, e.g. outside Vite). */
+export function fullBuildBytes(): number {
+  return typeof __STOCKFISH_ENGINE__ !== 'undefined' ? __STOCKFISH_ENGINE__.sizes.full : 0;
+}
+
+/** "~99 MB" (decimal megabytes, as download sizes are usually shown). */
+export function formatDownload(bytes: number): string {
+  return `~${Math.max(1, Math.round(bytes / 1e6))} MB`;
+}
+
+/** Default thread count of the multi-threaded builds: `min(cores - 1, 4)`, at least 1. */
+export function defaultThreads(env: RegistryEnv): number {
+  // Same rule as `selectBuild` in WasmEngineClient (not imported: that module is loaded lazily).
+  const cores = Number.isFinite(env.hardwareConcurrency) ? Math.floor(env.hardwareConcurrency) : 1;
+  return Math.max(1, Math.min(cores - 1, 4));
+}
+
+/**
+ * The browser builds (static). `lite` and `full` are available only on cross-origin isolated
+ * pages. Labels are unique on every machine (also when the multi-threaded build gets 1 thread).
+ */
 export function browserEngines(env: RegistryEnv = currentEnv()): EngineDescriptor[] {
   const major = stockfishMajor();
   const sf = major ? `Stockfish ${major}` : 'Stockfish';
-  // Same rule as `selectBuild` in WasmEngineClient (not imported: that module is loaded lazily).
-  const threads = Math.max(1, Math.min(env.hardwareConcurrency - 1, 4));
+  const threads = defaultThreads(env);
   const short = shortEngineName(sf);
+  const isolated = env.crossOriginIsolated;
+  const notIsolated = isolated ? {} : { reason: NOT_ISOLATED_REASON };
+  const fullBytes = fullBuildBytes();
   return [
     {
       key: 'wasm:lite',
       backend: 'wasm',
-      name: `${sf} (browser, ${threads} thread${threads === 1 ? '' : 's'})`,
+      name: `${sf} (browser, multi-thread, ${threads} thread${threads === 1 ? '' : 's'})`,
       short,
       badge: 'browser',
-      available: env.crossOriginIsolated,
-      ...(env.crossOriginIsolated ? {} : { reason: NOT_ISOLATED_REASON }),
+      available: isolated,
+      ...notIsolated,
     },
     {
       key: 'wasm:lite-single',
       backend: 'wasm',
-      name: `${sf} (browser, 1 thread)`,
+      name: `${sf} (browser, single-thread)`,
       short,
-      badge: env.crossOriginIsolated ? 'browser 1T' : 'browser',
+      badge: isolated ? 'browser 1T' : 'browser',
       available: true,
+    },
+    {
+      key: 'wasm:full',
+      backend: 'wasm',
+      name: `${sf} (browser, maximum strength${fullBytes > 0 ? `, ${formatDownload(fullBytes)} download` : ''})`,
+      short,
+      badge: 'browser max',
+      available: isolated,
+      ...notIsolated,
+      ...(fullBytes > 0 ? { downloadBytes: fullBytes } : {}),
     },
   ];
 }
@@ -195,7 +245,8 @@ export type GuardResult = { ok: true } | { ok: false; reason: string };
 /**
  * Resource guard for enabling `key` next to `enabled`: unknown keys and unavailable browser builds
  * are refused, and at most {@link MAX_REMOTE_ENGINES} server engines run at once. Keys are unique,
- * so there is never more than one multi-threaded and one single-threaded WASM instance.
+ * and `wasm:lite`/`wasm:full` replace each other ({@link displacedBy}), so there is never more
+ * than one multi-threaded and one single-threaded WASM instance.
  */
 export function canEnable(
   key: EngineKey,
@@ -206,7 +257,7 @@ export function canEnable(
   if (!parsed) return { ok: false, reason: `Unknown engine "${String(key)}"` };
   if (enabled.includes(key)) return { ok: false, reason: 'Engine is already running' };
   if (parsed.backend === 'wasm') {
-    if (parsed.build === 'lite' && !env.crossOriginIsolated) {
+    if (parsed.build !== 'lite-single' && !env.crossOriginIsolated) {
       return { ok: false, reason: NOT_ISOLATED_REASON };
     }
     return { ok: true };

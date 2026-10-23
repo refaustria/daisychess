@@ -91,4 +91,10 @@ describe('loadConfig', () => {
     });
     expect(() => loadConfig({ TRUSTED_PROXIES: 'nginx' })).toThrow(/TRUSTED_PROXIES/);
   });
+  it('parses ACCESS_TOKEN (ADR-010): unset or empty = public, max 256 characters', () => {
+    expect(loadConfig({}).accessToken).toBeNull();
+    expect(loadConfig({ ACCESS_TOKEN: '' }).accessToken).toBeNull();
+    expect(loadConfig({ ACCESS_TOKEN: 'abc123' }).accessToken).toBe('abc123');
+    expect(() => loadConfig({ ACCESS_TOKEN: 'x'.repeat(257) })).toThrow(/ACCESS_TOKEN/);
+  });
 });

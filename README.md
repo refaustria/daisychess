@@ -96,7 +96,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 
 ```jsonc
 // client → server
-{ "type": "hello", "protocolVersion": 1, "client": { "name": "chesslab-web", "version": "0.1.0" } }
+{ "type": "hello", "protocolVersion": 1, "client": { "name": "chesslab-web", "version": "0.1.0" }, "token": "…" }  // token only if the server sets ACCESS_TOKEN
 { "type": "analyze", "sessionId": "tab-1", "searchId": 7, "engine": "stockfish", "fen": "...",
   "multipv": 3, "depth": 24, "movetime": 5000, "threads": 4, "hash": 256 }   // all after fen optional; no depth/movetime = infinite
 { "type": "stop", "sessionId": "tab-1" }        // stops the running search, bestmove follows
@@ -117,7 +117,8 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - A **session** (`sessionId`, client-chosen) leases one engine instance; it is created by the first `analyze`, freed by `release`, by an idle timeout or when the socket closes. Several sessions per connection allow multi-engine comparison, bounded by `limits.maxSessionsPerConnection`.
 - Each `analyze` starts a **search** (`searchId`, client-chosen, unique per session). A new `analyze` on a session with a running search stops it first; every accepted search ends with exactly one `bestmove` (or an `error` carrying its `searchId`).
 - `info` scores are side-to-move, like UCI; the client converts with `infoToWhitePov` exactly as the WASM client does.
-- Error codes: `invalid_message`, `protocol_mismatch`, `handshake_required`, `unknown_engine`, `limit_exceeded`, `no_capacity`, `session_not_found`, `engine_crashed`, `rate_limited`, `internal_error`.
+- **Access token** (optional, ADR-010): a server started with `ACCESS_TOKEN` answers a `hello` without the matching `token` (max 256 chars, compared in constant time) with `error: unauthorized` and closes the socket (1008). Unset, the server is public. Additive: `PROTOCOL_VERSION` stays 1.
+- Error codes: `invalid_message`, `protocol_mismatch`, `handshake_required`, `unknown_engine`, `limit_exceeded`, `no_capacity`, `session_not_found`, `engine_crashed`, `rate_limited`, `internal_error`, `unauthorized`.
 
 ### 2.4 Shared (`packages/engine-core`)
 

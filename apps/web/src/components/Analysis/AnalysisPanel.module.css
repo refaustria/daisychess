@@ -389,3 +389,51 @@
     animation: none;
   }
 }
+
+/* --- per-engine settings (ADR-010) ------------------------------------------------------------ */
+
+.settingsFor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.settingsForName {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.applyAll {
+  align-self: center;
+}
+
+.authHint {
+  margin: 0;
+  padding: 0 0.75rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* --- full-build download confirmation -------------------------------------------------------- */
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.78rem;
+}
+
+.confirm p {
+  margin: 0;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 0.9rem;
+}

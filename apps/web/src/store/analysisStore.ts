@@ -13,6 +13,8 @@ import {
   canEnable,
   currentEnv,
   defaultWasmKey,
+  displacedBy,
+  isMultiThreadKey,
   MAX_REMOTE_ENGINES,
   parseEngineKey,
   probeServer as runProbe,
@@ -23,6 +25,7 @@ import {
   type ServerProbeState,
 } from '../engine/registry';
 import { currentFen, useGameStore } from './gameStore';
+import { useSettingsStore } from './settingsStore';
 
 export type { AnalysisStatus, EngineCapabilities, EngineKey, TerminalKind };
 
@@ -33,6 +36,13 @@ export interface AnalysisSettings extends ControllerSettings {
   /** WebSocket URL of the engine server (dev/e2e; default derived from the page host). Not shown in the UI. */
   remoteUrl?: string;
 }
+
+/** Fields an engine can override (ADR-010); the rest of {@link AnalysisSettings} is global. */
+export type EngineSettingField = 'depth' | 'multipv' | 'threads';
+export type EngineSettingsOverride = Partial<Pick<AnalysisSettings, EngineSettingField>>;
+/** Patch for {@link AnalysisActions.setEngineSettings}: `null` removes the override of a field. */
+export type EngineSettingsPatch = Partial<Record<EngineSettingField, number | null>>;
+export const ENGINE_SETTING_FIELDS: readonly EngineSettingField[] = ['depth', 'multipv', 'threads'];
 
 /** One principal variation (scores are White-POV, moves in UCI notation). */
 export interface AnalysisLine {
@@ -69,8 +79,15 @@ export interface AnalysisState {
   enabled: boolean;
   /** Engines selected for analysis (registry keys, ≥ 1, in tab order; the first is the primary). */
   enabledEngines: EngineKey[];
-  /** Shared by all engines. */
+  /** Global defaults (and the server URL); each engine may override depth/MultiPV/threads. */
   settings: AnalysisSettings;
+  /**
+   * Per-engine overrides of {@link settings}, persisted per registry key (also for engines that are
+   * currently disabled). Effective settings: {@link effectiveSettings}.
+   */
+  engineSettings: Record<EngineKey, EngineSettingsOverride>;
+  /** Page capabilities used for labels, thread options and the resource guard (injectable for tests). */
+  env: RegistryEnv;
   /** Position the lines belong to (follows the game store's current FEN). */
   fen: string;
   /** Set for checkmate/stalemate positions, which are not analysed (lines stay empty). */
@@ -86,10 +103,18 @@ export interface AnalysisState {
 export interface AnalysisActions {
   /** Master switch for all enabled engines. */
   setEnabled(enabled: boolean): void;
+  /** Updates the global defaults (engines without an override of a field follow them). */
   setSettings(settings: Partial<AnalysisSettings>): void;
+  /** Overrides depth/MultiPV/threads for one engine; `null` falls back to the default again. */
+  setEngineSettings(key: EngineKey, patch: EngineSettingsPatch): void;
+  /** Makes `key`'s effective settings the defaults and removes every engine's override. */
+  applySettingsToAll(key: EngineKey): void;
+  /** Drops the probe cache and reconnects every server engine (server URL or access token changed). */
+  reconnectServer(): void;
   /**
    * Adds or removes an engine. Refused (returns false, sets `engineHint`) when the resource guard
    * says no or when removing the last engine. A removed engine's worker/socket is disposed.
+   * Enabling `wasm:lite` or `wasm:full` replaces the other one (in its tab position).
    */
   setEngineEnabled(key: EngineKey, on: boolean): boolean;
   /** Replaces the server engines by the default browser engine (error fallback). */
@@ -114,7 +139,7 @@ export const DEFAULT_SETTINGS: AnalysisSettings = { depth: 22, multipv: 1 };
 export const STORAGE_KEY = 'chesslab.analysis';
 export const PROBE_TTL_MS = 60_000;
 export const PROBE_ERROR_TTL_MS = 5_000;
-/** Upper bound of `enabledEngines` (2 browser builds + the server engines). */
+/** Upper bound of `enabledEngines` (one multi- and one single-threaded browser build + the server engines). */
 export const MAX_ENGINES = 2 + MAX_REMOTE_ENGINES;
 
 const clampInt = (v: unknown, min: number, max: number, fallback: number): number =>
@@ -145,8 +170,9 @@ export function sanitizeSettings(
 }
 
 /**
- * Valid, unique keys in order: a `wasm:lite` that this page cannot run becomes `wasm:lite-single`,
- * server engines are capped at {@link MAX_REMOTE_ENGINES}; never empty (default browser engine).
+ * Valid, unique keys in order: a multi-threaded build (`wasm:lite`/`wasm:full`) that this page
+ * cannot run becomes `wasm:lite-single`, only the first multi-threaded build is kept, server
+ * engines are capped at {@link MAX_REMOTE_ENGINES}; never empty (default browser engine).
  */
 export function sanitizeEngineKeys(keys: unknown, env: RegistryEnv = currentEnv()): EngineKey[] {
   const out: EngineKey[] = [];
@@ -155,10 +181,11 @@ export function sanitizeEngineKeys(keys: unknown, env: RegistryEnv = currentEnv(
     const parsed = parseEngineKey(raw);
     if (!parsed) continue;
     let key = raw as string;
-    if (parsed.backend === 'wasm' && parsed.build === 'lite' && !env.crossOriginIsolated) {
+    if (parsed.backend === 'wasm' && parsed.build !== 'lite-single' && !env.crossOriginIsolated) {
       key = 'wasm:lite-single';
     }
     if (out.includes(key)) continue;
+    if (isMultiThreadKey(key) && out.some(isMultiThreadKey)) continue;
     if (parsed.backend === 'remote' && ++remotes > MAX_REMOTE_ENGINES) continue;
     out.push(key);
     if (out.length >= MAX_ENGINES) break;
@@ -170,6 +197,41 @@ export interface PersistedAnalysis {
   enabled: boolean;
   enabledEngines: EngineKey[];
   settings: AnalysisSettings;
+  /** Omitted when no engine has an override (the pre-ADR-010 shape). */
+  engineSettings?: Record<EngineKey, EngineSettingsOverride>;
+}
+
+/** Clamps one override like {@link sanitizeSettings}; unknown fields and non-numbers are dropped. */
+export function sanitizeOverride(raw: unknown): EngineSettingsOverride {
+  const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const out: EngineSettingsOverride = {};
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  if (num(o.depth)) out.depth = clampInt(o.depth, 0, MAX_DEPTH, 0);
+  if (num(o.multipv)) out.multipv = clampInt(o.multipv, 1, MAX_MULTIPV, 1);
+  if (num(o.threads)) out.threads = clampInt(o.threads, 1, 1024, 1);
+  return out;
+}
+
+/** Valid registry keys with a non-empty override (at most 16 entries). */
+export function sanitizeEngineSettings(raw: unknown): Record<EngineKey, EngineSettingsOverride> {
+  const out: Record<EngineKey, EngineSettingsOverride> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!parseEngineKey(key)) continue;
+    const o = sanitizeOverride(value);
+    if (Object.keys(o).length > 0) out[key] = o;
+    if (Object.keys(out).length >= 16) break;
+  }
+  return out;
+}
+
+/** Defaults merged with the engine's override (what its controller runs with). */
+export function effectiveSettings(
+  s: Pick<AnalysisState, 'settings' | 'engineSettings'>,
+  key: EngineKey,
+): AnalysisSettings {
+  const o = s.engineSettings[key];
+  return o ? { ...s.settings, ...o } : s.settings;
 }
 
 /**
@@ -181,11 +243,13 @@ export function migratePersisted(raw: unknown, env: RegistryEnv = currentEnv()):
     enabled?: unknown;
     enabledEngines?: unknown;
     settings?: (Partial<AnalysisSettings> & { backend?: unknown }) | null;
+    engineSettings?: unknown;
   };
   const settings = sanitizeSettings(
     typeof v.settings === 'object' && v.settings !== null ? v.settings : undefined,
   );
   const legacy = v.settings?.backend === 'remote' ? ['remote:stockfish'] : [];
+  const engineSettings = sanitizeEngineSettings(v.engineSettings);
   return {
     enabled: v.enabled === true,
     enabledEngines: sanitizeEngineKeys(
@@ -193,6 +257,7 @@ export function migratePersisted(raw: unknown, env: RegistryEnv = currentEnv()):
       env,
     ),
     settings,
+    ...(Object.keys(engineSettings).length > 0 ? { engineSettings } : {}),
   };
 }
 
@@ -254,6 +319,9 @@ function persist(s: PersistedAnalysis): void {
         enabled: s.enabled,
         enabledEngines: s.enabledEngines,
         settings: s.settings,
+        ...(s.engineSettings && Object.keys(s.engineSettings).length > 0
+          ? { engineSettings: s.engineSettings }
+          : {}),
       }),
     );
   } catch {
@@ -293,11 +361,18 @@ export const isRemoteKey = (key: EngineKey | undefined): boolean =>
 export const RECONNECT_MAX_ATTEMPTS = 3;
 export const RECONNECT_BASE_MS = 1000;
 
+/** Shown when the server requires an access token and none or a wrong one was sent (ADR-010). */
+export const UNAUTHORIZED_MESSAGE = 'Access token required or wrong';
+export const UNAUTHORIZED_HINT = 'Enter the server access token in the Settings tab.';
+export const isAuthError = (message: string | undefined): boolean =>
+  message !== undefined && message.includes(UNAUTHORIZED_MESSAGE);
+
 /** Maps a remote load/search failure to a short user-facing message. */
 export function describeRemoteError(err: unknown): string {
   const code = (err as { code?: unknown } | null)?.code;
   if (code === 'closed' || code === 'timeout') return 'Server unreachable';
   if (code === 'no_capacity') return 'Server busy, try again';
+  if (code === 'unauthorized') return UNAUTHORIZED_MESSAGE;
   if (code === 'unknown_engine') return err instanceof Error ? err.message : 'Unknown engine';
   return err instanceof Error ? err.message : String(err);
 }
@@ -312,7 +387,10 @@ export interface RemoteLikeEngine extends AnalysisEngine {
 interface ControllerBridge {
   sync(): void;
   setEnabled(enabled: boolean): void;
-  setSettings(settings: AnalysisSettings, remoteChanged: boolean): void;
+  /** Pushes the effective settings to every controller (defaults or an override changed). */
+  applySettings(): void;
+  /** Recreates the server engines (new URL or token). */
+  reconnectRemote(): void;
   retry(key?: EngineKey): void;
   setPosition(fen: string): void;
 }
@@ -323,10 +401,15 @@ let stopActive: (() => void) | null = null;
 
 export type ProbeClientFactory = (settings: AnalysisSettings) => ProbeClient | Promise<ProbeClient>;
 
+/** The access token from the Settings tab (sent in `hello.token`; ADR-010). */
+const serverToken = (): string | undefined => useSettingsStore.getState().serverToken || undefined;
+
 const defaultProbeClient: ProbeClientFactory = async (settings) => {
   const { RemoteEngineClient } = await import('../engine/RemoteEngineClient');
+  const token = serverToken();
   return new RemoteEngineClient({
     ...(settings.remoteUrl ? { url: settings.remoteUrl } : {}),
+    ...(token ? { token } : {}),
     handshakeTimeoutMs: 5_000,
     clientInfo: { name: 'chesslab-web-probe' },
   });
@@ -340,6 +423,10 @@ let probeGen = 0;
 export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
   const initial = loadPersisted();
   const save = () => persist(get());
+  const settingsChanged = () => {
+    save();
+    bridge?.applySettings();
+  };
 
   const replaceEngines = (keys: EngineKey[]) => {
     set((s) => ({ enabledEngines: keys, instances: instancesFor(keys, s.instances) }));
@@ -349,6 +436,8 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
 
   return {
     ...initial,
+    engineSettings: initial.engineSettings ?? {},
+    env: currentEnv(),
     instances: instancesFor(initial.enabledEngines),
     fen: currentFen(useGameStore.getState()),
     terminal: null,
@@ -374,20 +463,50 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
     setSettings: (patch) => {
       const prev = get().settings;
       const settings = sanitizeSettings(patch, prev);
-      const remoteChanged = settings.remoteUrl !== prev.remoteUrl;
       set({ settings });
-      if (remoteChanged) {
-        probeGen++;
-        probePromise = null;
-        set((s) => ({
-          serverProbe: { status: 'idle' },
-          instances: Object.fromEntries(
-            Object.entries(s.instances).map(([k, i]) => [k, isRemoteKey(k) ? newInstance(k) : i]),
-          ),
-        }));
+      settingsChanged();
+      if (settings.remoteUrl !== prev.remoteUrl) get().reconnectServer();
+    },
+
+    setEngineSettings: (key, patch) => {
+      if (!parseEngineKey(key)) return;
+      const current = get().engineSettings[key] ?? {};
+      const merged: Record<string, number> = { ...current };
+      for (const f of ENGINE_SETTING_FIELDS) {
+        const v = patch[f];
+        if (v === null) delete merged[f];
+        else if (v !== undefined) merged[f] = v;
       }
-      save();
-      bridge?.setSettings(settings, remoteChanged);
+      const next = sanitizeOverride(merged);
+      const all = { ...get().engineSettings };
+      if (Object.keys(next).length > 0) all[key] = next;
+      else delete all[key];
+      set({ engineSettings: all });
+      settingsChanged();
+    },
+
+    applySettingsToAll: (key) => {
+      const eff = effectiveSettings(get(), key);
+      const settings = sanitizeSettings(
+        { depth: eff.depth, multipv: eff.multipv, threads: eff.threads },
+        get().settings,
+      );
+      if (eff.threads === undefined) delete settings.threads;
+      set({ settings, engineSettings: {} });
+      settingsChanged();
+    },
+
+    reconnectServer: () => {
+      probeGen++;
+      probePromise = null;
+      set((s) => ({
+        serverProbe: { status: 'idle' },
+        instances: Object.fromEntries(
+          Object.entries(s.instances).map(([k, i]) => [k, isRemoteKey(k) ? newInstance(k) : i]),
+        ),
+      }));
+      bridge?.reconnectRemote();
+      if (get().enabledEngines.some(isRemoteKey)) void get().probeServer();
     },
 
     setEngineEnabled: (key, on) => {
@@ -406,13 +525,36 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
         return true;
       }
       if (keys.includes(key)) return true;
+      const displaced = displacedBy(key, keys);
       const guard =
-        keys.length >= MAX_ENGINES
+        keys.length - displaced.length >= MAX_ENGINES
           ? { ok: false as const, reason: `At most ${MAX_ENGINES} engines can run at once` }
-          : canEnable(key, keys);
+          : canEnable(
+              key,
+              keys.filter((k) => !displaced.includes(k)),
+              get().env,
+            );
       if (!guard.ok) {
         set({ engineHint: guard.reason });
         return false;
+      }
+      if (displaced.length > 0) {
+        // One multi-threaded browser engine at a time: take the replaced one's tab position.
+        let placed = false;
+        const next: EngineKey[] = [];
+        for (const k of keys) {
+          if (!displaced.includes(k)) next.push(k);
+          else if (!placed) {
+            next.push(key);
+            placed = true;
+          }
+        }
+        set({
+          engineHint:
+            'Only one multi-threaded browser engine runs at a time; it replaced the other one',
+        });
+        replaceEngines(next);
+        return true;
       }
       set({ engineHint: undefined });
       replaceEngines([...keys, key]);
@@ -422,7 +564,7 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
 
     fallBackToBrowser: () => {
       const browser = get().enabledEngines.filter((k) => !isRemoteKey(k));
-      replaceEngines(browser.length > 0 ? browser : [defaultWasmKey()]);
+      replaceEngines(browser.length > 0 ? browser : [defaultWasmKey(get().env)]);
     },
 
     clearEngineHint: () => set({ engineHint: undefined }),
@@ -504,8 +646,10 @@ const createDefaultEngine = async (
 ): Promise<RemoteLikeEngine> => {
   if (spec.backend === 'remote') {
     const { RemoteEngineClient } = await import('../engine/RemoteEngineClient');
+    const token = serverToken();
     return new RemoteEngineClient({
       ...(settings.remoteUrl ? { url: settings.remoteUrl } : {}),
+      ...(token ? { token } : {}),
       engineId: spec.engineId,
     });
   }
@@ -568,8 +712,7 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
       remote: null,
       reconnect: { attempts: 0, wasReady: false, timer: null },
       makeEngine: async () => {
-        const settings = get().settings;
-        const engine = await create(spec, settings);
+        const engine = await create(spec, effectiveSettings(get(), key));
         if (spec.backend !== 'remote') return engine;
         runner.remote = engine;
         let released = false;
@@ -637,7 +780,7 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
       createEngine: () => r.makeEngine(),
       debounceMs: opts.debounceMs,
       classify: classifyPosition,
-      settings: get().settings,
+      settings: effectiveSettings(get(), key),
       callbacks: {
         onStatus: (status, error) =>
           patch(r, { status, error: status === 'error' ? error : undefined }),
@@ -650,7 +793,7 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
           ),
         onInfo: (fen, info) => {
           if (fen !== get().fen) return;
-          const multipv = get().settings.multipv;
+          const multipv = effectiveSettings(get(), key).multipv;
           patch(r, (i) => {
             const lines = mergeLine(i.lines, info, multipv);
             return lines === i.lines ? null : { lines };
@@ -696,13 +839,14 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
         r.controller.setEnabled(enabled);
       }
     },
-    setSettings: (settings, remoteChanged) => {
+    applySettings: () => {
+      for (const r of runners.values()) r.controller.setSettings(effectiveSettings(get(), r.key));
+    },
+    reconnectRemote: () => {
       for (const r of runners.values()) {
-        r.controller.setSettings(settings);
-        if (remoteChanged && r.spec.backend === 'remote') {
-          resetReconnect(r);
-          r.controller.setEngineFactory(() => r.makeEngine());
-        }
+        if (r.spec.backend !== 'remote') continue;
+        resetReconnect(r);
+        r.controller.setEngineFactory(() => r.makeEngine());
       }
     },
     retry: (key) => {
@@ -722,6 +866,11 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
   set({ fen: fen0, terminal: classifyPosition(fen0) });
   sync();
   if (get().enabledEngines.some(isRemoteKey)) void get().probeServer();
+
+  // A new access token (Settings tab) reconnects the server engines with it.
+  const unsubscribeToken = useSettingsStore.subscribe((s, prev) => {
+    if (s.serverToken !== prev.serverToken) get().reconnectServer();
+  });
 
   let lastFen = fen0;
   const unsubscribe = useGameStore.subscribe((g) => {
@@ -744,6 +893,7 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
     if (disposed) return;
     disposed = true;
     unsubscribe();
+    unsubscribeToken();
     window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('pageshow', onPageShow);
     for (const r of [...runners.values()]) disposeRunner(r);

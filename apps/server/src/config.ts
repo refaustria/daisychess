@@ -1,7 +1,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { DEFAULT_LIMITS, PROTOCOL_BOUNDS, type Limits } from '@chesslab/engine-core';
+import {
+  DEFAULT_LIMITS,
+  MAX_TOKEN_LENGTH,
+  PROTOCOL_BOUNDS,
+  type Limits,
+} from '@chesslab/engine-core';
 import { parseAllowedOrigins, type OriginPolicy } from './ws/origin.js';
 import { parseTrustedProxies, type TrustedProxies } from './ws/clientIp.js';
 
@@ -82,6 +87,14 @@ export const EnvSchema = z.object({
       }
     })
     .optional(),
+  /**
+   * Shared access token (ADR-010): when set, `hello.token` must match or the handshake fails
+   * with `unauthorized`. Unset or empty: the server is public.
+   */
+  ACCESS_TOKEN: z
+    .string()
+    .max(MAX_TOKEN_LENGTH, `must be at most ${MAX_TOKEN_LENGTH} characters`)
+    .optional(),
 });
 
 export interface ServerConfig {
@@ -98,6 +111,8 @@ export interface ServerConfig {
   logLevel: z.infer<typeof EnvSchema>['LOG_LEVEL'];
   allowedOrigins: OriginPolicy;
   trustedProxies: TrustedProxies;
+  /** Required `hello.token`, or null when the server is public. */
+  accessToken: string | null;
 }
 
 /** Parses the environment; throws with a readable message on invalid values. */
@@ -141,5 +156,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     logLevel: e.LOG_LEVEL,
     allowedOrigins: e.ALLOWED_ORIGINS ?? null,
     trustedProxies: e.TRUSTED_PROXIES ?? [],
+    accessToken: e.ACCESS_TOKEN ?? null,
   };
 }

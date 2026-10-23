@@ -55,6 +55,21 @@ describe('settingsStore', () => {
     ).toBe('brown');
   });
 
+  it('stores the server access token trimmed and keeps it on reset', () => {
+    expect(useSettingsStore.getState().serverToken).toBe('');
+    useSettingsStore.getState().setServerToken('  abc123 \n');
+    expect(useSettingsStore.getState().serverToken).toBe('abc123');
+    expect(stored()).toMatchObject({ serverToken: 'abc123' });
+    useSettingsStore.getState().reset();
+    expect(useSettingsStore.getState().serverToken).toBe('abc123');
+    expect(
+      parseSettings(JSON.stringify({ serverToken: 'x'.repeat(300) })).serverToken,
+    ).toHaveLength(256);
+    expect(parseSettings(JSON.stringify({ serverToken: 42 })).serverToken).toBe('');
+    useSettingsStore.getState().setServerToken('');
+    expect(stored()).toMatchObject({ serverToken: '' });
+  });
+
   it('applies board colours as CSS variables and tracks changes', () => {
     const stop = applySettings();
     expect(root.style.getPropertyValue('--board-light')).toBe('');

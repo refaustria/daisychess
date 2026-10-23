@@ -1,12 +1,20 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAnalysisStore, type EngineInstanceState } from '../../store/analysisStore';
+import {
+  UNAUTHORIZED_MESSAGE,
+  useAnalysisStore,
+  type EngineInstanceState,
+} from '../../store/analysisStore';
 import { usePreviewStore } from '../../store/previewStore';
-import { AnalysisPanel, formatNps, scoreTone } from './AnalysisPanel';
+import { AnalysisPanel, FULL_BUILD_CONFIRMED_KEY, formatNps, scoreTone } from './AnalysisPanel';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const setSettings = vi.fn();
+const setEngineSettings = vi.fn();
+const applySettingsToAll = vi.fn();
+/** Explicit page capabilities: labels and thread options must not depend on the test machine. */
+const ENV = { crossOriginIsolated: true, hardwareConcurrency: 8 };
 const setEngineEnabled = vi.fn(() => true);
 const probeServer = vi.fn(async () => undefined);
 const SINGLE = 'wasm:lite-single';
@@ -41,17 +49,24 @@ function single(instance: EngineInstanceState = browserInstance) {
 
 beforeEach(() => {
   setSettings.mockClear();
+  setEngineSettings.mockClear();
+  applySettingsToAll.mockClear();
   setEngineEnabled.mockClear();
+  localStorage.removeItem(FULL_BUILD_CONFIRMED_KEY);
   probeServer.mockClear();
   usePreviewStore.setState({ fen: null, moves: [], hover: null });
   useAnalysisStore.setState({
     enabled: true,
     settings: { depth: 22, multipv: 2 },
+    engineSettings: {},
+    env: ENV,
     fen: START,
     terminal: null,
     serverProbe: { status: 'idle' },
     engineHint: undefined,
     setSettings,
+    setEngineSettings,
+    applySettingsToAll,
     setEngineEnabled,
     probeServer,
   });
@@ -88,6 +103,56 @@ describe('AnalysisPanel', () => {
     expect(setSettings).toHaveBeenLastCalledWith({ multipv: 3 });
     fireEvent.change(screen.getByLabelText('Threads'), { target: { value: '2' } });
     expect(setSettings).toHaveBeenLastCalledWith({ threads: 2 });
+    // 8 cores → threads 1..7 (the page env, not the test machine).
+    const threads = Array.from(screen.getByLabelText('Threads').querySelectorAll('option'));
+    expect(threads.map((o) => o.value)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+    expect(setEngineSettings).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('settings-engine')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Apply to all' })).toBeNull();
+  });
+
+  it('thread options follow the injected core count (2 cores → 1 thread)', () => {
+    useAnalysisStore.setState({ env: { crossOriginIsolated: true, hardwareConcurrency: 2 } });
+    single({ ...browserInstance, capabilities: { threads: true, build: 'mt', threadCount: 1 } });
+    render(<AnalysisPanel />);
+    const threads = Array.from(screen.getByLabelText('Threads').querySelectorAll('option'));
+    expect(threads.map((o) => o.value)).toEqual(['1']);
+  });
+
+  it("single engine: a change of the defaults drops that engine's override of the field", () => {
+    useAnalysisStore.setState({ engineSettings: { [SINGLE]: { depth: 14, multipv: 3 } } });
+    render(<AnalysisPanel />);
+    expect((screen.getByLabelText('Depth') as HTMLSelectElement).value).toBe('14');
+    expect((screen.getByLabelText('Lines') as HTMLSelectElement).value).toBe('3');
+    fireEvent.change(screen.getByLabelText('Depth'), { target: { value: '18' } });
+    expect(setSettings).toHaveBeenLastCalledWith({ depth: 18 });
+    expect(setEngineSettings).toHaveBeenLastCalledWith(SINGLE, { depth: null });
+  });
+
+  it('several engines: the selects edit the selected engine; apply to all', () => {
+    useAnalysisStore.setState({
+      enabledEngines: [SINGLE, REMOTE],
+      instances: { [SINGLE]: browserInstance, [REMOTE]: serverInstance },
+      engineSettings: { [REMOTE]: { depth: 30, multipv: 1 } },
+    });
+    render(<AnalysisPanel />);
+    expect(screen.getByTestId('settings-engine').textContent).toMatch(
+      /^Settings for SF\d+ browser/,
+    );
+    expect((screen.getByLabelText('Depth') as HTMLSelectElement).value).toBe('22');
+    expect((screen.getByLabelText('Lines') as HTMLSelectElement).value).toBe('2');
+    fireEvent.change(screen.getByLabelText('Lines'), { target: { value: '4' } });
+    expect(setEngineSettings).toHaveBeenLastCalledWith(SINGLE, { multipv: 4 });
+    expect(setSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole('tab')[1]!);
+    expect(screen.getByTestId('settings-engine').textContent).toBe('Settings for SF19 server');
+    expect((screen.getByLabelText('Depth') as HTMLSelectElement).value).toBe('30');
+    expect((screen.getByLabelText('Lines') as HTMLSelectElement).value).toBe('1');
+    fireEvent.change(screen.getByLabelText('Depth'), { target: { value: '18' } });
+    expect(setEngineSettings).toHaveBeenLastCalledWith(REMOTE, { depth: 18 });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply to all' }));
+    expect(applySettingsToAll).toHaveBeenCalledWith(REMOTE);
   });
 
   it('disables threads without engine support', () => {
@@ -145,23 +210,69 @@ describe('AnalysisPanel', () => {
     const picker = screen.getByTestId('engine-picker');
     const box = (name: RegExp) =>
       within(picker).getByRole('checkbox', { name }) as HTMLInputElement;
-    // jsdom is not cross-origin isolated: the multi-threaded build is greyed out with a reason.
-    const [lite] = within(picker).getAllByRole('checkbox') as HTMLInputElement[];
-    expect(lite!.disabled).toBe(true);
-    expect(within(picker).getByText(/cross-origin isolated/)).toBeTruthy();
-    expect(box(/browser, 1 thread/).checked).toBe(true);
+    // Isolated page with 8 cores: unique labels for the three browser builds.
+    expect(box(/browser, multi-thread, 4 threads/).disabled).toBe(false);
+    expect(box(/browser, maximum strength, ~\d+ MB download/).disabled).toBe(false);
+    expect(box(/browser, single-thread/).checked).toBe(true);
     expect(box(/Lc0 \(server\)/).disabled).toBe(true);
     expect(within(picker).getByText('Disabled on the server')).toBeTruthy();
     const server = box(/Stockfish 19 \(server\)/);
     expect(server.disabled).toBe(false);
     fireEvent.click(server);
     expect(setEngineEnabled).toHaveBeenLastCalledWith(REMOTE, true);
-    fireEvent.click(box(/browser, 1 thread/));
+    fireEvent.click(box(/browser, single-thread/));
     expect(setEngineEnabled).toHaveBeenLastCalledWith(SINGLE, false);
     expect(screen.getByTestId('backend-badge').textContent).toBe('Browser');
     // Escape closes the popover.
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByTestId('engine-picker')).toBeNull();
+  });
+
+  it('engine picker on a non-isolated 2-core page: multi-threaded builds greyed out, labels unique', () => {
+    useAnalysisStore.setState({ env: { crossOriginIsolated: false, hardwareConcurrency: 2 } });
+    render(<AnalysisPanel />);
+    fireEvent.click(screen.getByRole('button', { name: /Engines/ }));
+    const picker = screen.getByTestId('engine-picker');
+    const boxes = within(picker).getAllByRole('checkbox') as HTMLInputElement[];
+    const [lite, single, full] = boxes;
+    expect(lite!.disabled).toBe(true);
+    expect(full!.disabled).toBe(true);
+    expect(single!.checked).toBe(true);
+    expect(within(picker).getAllByText(/cross-origin isolated/)).toHaveLength(2);
+    const names = boxes.map((b) => b.labels?.[0]?.textContent);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('asks before the first download of the full build', () => {
+    render(<AnalysisPanel />);
+    fireEvent.click(screen.getByRole('button', { name: /Engines/ }));
+    const picker = screen.getByTestId('engine-picker');
+    const full = within(picker).getByRole('checkbox', { name: /maximum strength/ });
+    fireEvent.click(full);
+    expect(setEngineEnabled).not.toHaveBeenCalled();
+    expect(within(picker).getByRole('alertdialog').textContent).toMatch(/downloads ~\d+ MB once/);
+    fireEvent.click(within(picker).getByRole('button', { name: 'Cancel' }));
+    expect(within(picker).queryByRole('alertdialog')).toBeNull();
+    fireEvent.click(full);
+    fireEvent.click(within(picker).getByRole('button', { name: 'Download and enable' }));
+    expect(setEngineEnabled).toHaveBeenLastCalledWith('wasm:full', true);
+    expect(localStorage.getItem(FULL_BUILD_CONFIRMED_KEY)).toBe('1');
+    // Confirmed once: later toggles go straight through.
+    setEngineEnabled.mockClear();
+    fireEvent.click(full);
+    expect(setEngineEnabled).toHaveBeenLastCalledWith('wasm:full', true);
+  });
+
+  it('access-token errors point to the Settings tab', () => {
+    useAnalysisStore.setState({
+      serverProbe: { status: 'error', error: UNAUTHORIZED_MESSAGE, lastProbe: 1 },
+    });
+    single({ key: REMOTE, status: 'error', lines: [], backendError: UNAUTHORIZED_MESSAGE });
+    render(<AnalysisPanel />);
+    expect(screen.getByText(UNAUTHORIZED_MESSAGE, { selector: 'p' })).toBeTruthy();
+    expect(screen.getByTestId('auth-hint').textContent).toMatch(/Settings tab/);
+    fireEvent.click(screen.getByRole('button', { name: /Engines/ }));
+    expect(within(screen.getByTestId('engine-picker')).getByTestId('auth-hint')).toBeTruthy();
   });
 
   it('engine picker shows the guard hint and a probe error', () => {
@@ -193,7 +304,7 @@ describe('AnalysisPanel', () => {
     render(<AnalysisPanel />);
     const chips = screen.getAllByTestId('compare-chip');
     expect(chips.map((c) => c.getAttribute('data-engine'))).toEqual([SINGLE, REMOTE]);
-    expect(chips[0]!.textContent).toMatch(/^SF\d+ browser\+0\.35d18e4$/);
+    expect(chips[0]!.textContent).toMatch(/^SF\d+ browser 1T\+0\.35d18e4$/);
     expect(chips[1]!.textContent).toBe('SF19 server+0.28d30d4');
     expect(screen.getAllByTestId('compare-eval').map((e) => e.textContent)).toEqual([
       '+0.35',

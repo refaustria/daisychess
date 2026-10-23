@@ -1,5 +1,7 @@
 import {
+  isAuthError,
   isRemoteKey,
+  UNAUTHORIZED_HINT,
   useAnalysisStore,
   usePrimaryAnalysis,
   type AnalysisState,
@@ -52,6 +54,7 @@ export function EngineToggle() {
   const primary = usePrimaryAnalysis();
   const s = { ...primary, enabled, terminal, remote };
   const text = engineStatusText(s);
+  const auth = s.status === 'error' && remote && isAuthError(text);
   return (
     <div className={styles.engine}>
       <label className={styles.switch}>
@@ -69,10 +72,17 @@ export function EngineToggle() {
         id="engine-status"
         className={s.status === 'error' ? `${styles.status} ${styles.error}` : styles.status}
         data-testid="engine-status"
-        title={s.engineName ? `${s.engineName} (${s.capabilities?.build ?? 'browser'})` : text}
+        title={
+          auth
+            ? `${text}. ${UNAUTHORIZED_HINT}`
+            : s.engineName
+              ? `${s.engineName} (${s.capabilities?.build ?? 'browser'})`
+              : text
+        }
         aria-live="polite"
       >
         {text}
+        {auth && <span className={styles.hint}> (see Settings)</span>}
       </span>
       {s.status === 'error' && enabled && (
         <button type="button" className={styles.retry} onClick={() => retry(primary.key)}>

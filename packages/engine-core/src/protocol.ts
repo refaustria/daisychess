@@ -51,6 +51,11 @@ export const PROTOCOL_ERROR_CODES = [
   'rate_limited',
   /** Unexpected server failure. */
   'internal_error',
+  /**
+   * The server requires an access token and `hello.token` is missing or wrong; the server closes
+   * the connection (1008). Added in protocol 1 (additive, ADR-010).
+   */
+  'unauthorized',
 ] as const;
 export type ProtocolErrorCode = (typeof PROTOCOL_ERROR_CODES)[number];
 
@@ -331,6 +336,9 @@ export const EngineDescriptorSchema = z.object({
 // ---------------------------------------------------------------------------------------------
 // Client → server
 
+/** Maximum length of `hello.token`. */
+export const MAX_TOKEN_LENGTH = 256;
+
 export const HelloMessageSchema = z.object({
   type: z.literal('hello'),
   protocolVersion: z.number().int().min(1),
@@ -340,6 +348,8 @@ export const HelloMessageSchema = z.object({
       version: z.string().max(32).optional(),
     })
     .optional(),
+  /** Shared access token; required when the server sets `ACCESS_TOKEN` (ADR-010). */
+  token: z.string().max(MAX_TOKEN_LENGTH).optional(),
 });
 
 /**

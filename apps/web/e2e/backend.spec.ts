@@ -136,3 +136,111 @@ test.describe('engine backend switch (server mode)', () => {
     await expect(page.getByTestId('analysis-line').first()).toBeVisible();
   });
 });
+
+/**
+ * Server access token (ADR-010): a server started with `ACCESS_TOKEN` refuses the handshake
+ * without the token; once it is entered in Settings the server engine analyses.
+ */
+test.describe('server access token', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.setTimeout(90_000);
+  const TOKEN_PORT = 8584;
+  const TOKEN_URL = `ws://127.0.0.1:${TOKEN_PORT}/ws`;
+  const TOKEN = 'e2e-secret-token';
+  let tokenServer: ChildProcess | null = null;
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    if (!existsSync(SERVER_ENTRY) || !existsSync(`${REPO}packages/engine-core/dist/index.js`)) {
+      execSync(
+        'pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server build',
+        { cwd: REPO, stdio: 'inherit' },
+      );
+    }
+    tokenServer = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: REPO,
+      env: {
+        ...process.env,
+        PORT: String(TOKEN_PORT),
+        HOST: '127.0.0.1',
+        MAX_SESSIONS: '2',
+        LOG_LEVEL: 'warn',
+        ACCESS_TOKEN: TOKEN,
+      },
+      stdio: ['ignore', 'inherit', 'inherit'],
+    });
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      if (tokenServer.exitCode !== null) throw new Error('token server exited');
+      const ok = await fetch(`http://127.0.0.1:${TOKEN_PORT}/health`)
+        .then((r) => r.ok)
+        .catch(() => false);
+      if (ok) break;
+      if (Date.now() > deadline) throw new Error('token server did not become healthy');
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  });
+
+  test.afterAll(async () => {
+    const proc = tokenServer;
+    tokenServer = null;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) return;
+    const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
+    proc.kill('SIGKILL');
+    await exited;
+  });
+
+  test('without the token the server engine reports it; after saving it in Settings it analyses', async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      ({ url }) => {
+        const key = 'chesslab.analysis';
+        if (!localStorage.getItem(key)) {
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              enabled: true,
+              enabledEngines: ['remote:stockfish'],
+              settings: { depth: 12, multipv: 1, remoteUrl: url },
+            }),
+          );
+        }
+      },
+      { url: TOKEN_URL },
+    );
+    await page.goto('/');
+    await expect(page.locator('cg-board')).toBeVisible();
+    const status = page.getByTestId('engine-status');
+    await expect(status).toContainText('Access token required or wrong', { timeout: 20_000 });
+    await expect(status).toContainText('see Settings');
+    await expect(page.getByTestId('auth-hint').first()).toContainText('Settings tab');
+
+    // The picker's server probe fails the same way.
+    await page.getByRole('button', { name: /^Engines/ }).click();
+    await expect(page.getByTestId('engine-picker')).toContainText(
+      'Server unavailable: Access token required or wrong',
+      { timeout: 15_000 },
+    );
+    await page.keyboard.press('Escape');
+
+    // A wrong token is still refused.
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    const field = page.getByLabel('Server access token');
+    await expect(field).toHaveAttribute('type', 'password');
+    await field.fill('wrong');
+    await page.getByRole('button', { name: 'Save token' }).click();
+    await expect(status).toContainText('Access token required or wrong', { timeout: 20_000 });
+
+    await field.fill(TOKEN);
+    await page.getByRole('button', { name: 'Save token' }).click();
+    await expect(status).toContainText('server', { timeout: 20_000 });
+    await expect(status).not.toContainText('Access token');
+    await expect(page.getByTestId('eval-label')).toHaveText(LABEL, { timeout: 20_000 });
+    expect(
+      await page.evaluate(() => JSON.parse(localStorage.getItem('chesslab.settings') ?? '{}')),
+    ).toMatchObject({ serverToken: TOKEN });
+    mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: `${SHOTS}/backend-token.png`, fullPage: true });
+  });
+});

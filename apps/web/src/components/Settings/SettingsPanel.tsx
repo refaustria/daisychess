@@ -1,6 +1,13 @@
 import { boardThemes, findBoardTheme } from '@chesslab/ui-theme/boardThemes';
 import { pieceSets } from '@chesslab/ui-theme/pieceSets';
-import { HIGHLIGHT_STYLES, useSettingsStore, type HighlightStyle } from '../../store/settingsStore';
+import { useId, useState, type FormEvent } from 'react';
+import {
+  HIGHLIGHT_STYLES,
+  MAX_SERVER_TOKEN_LENGTH,
+  normalizeToken,
+  useSettingsStore,
+  type HighlightStyle,
+} from '../../store/settingsStore';
 import styles from './SettingsPanel.module.css';
 
 const HIGHLIGHT_LABEL: Record<HighlightStyle, string> = {
@@ -8,6 +15,70 @@ const HIGHLIGHT_LABEL: Record<HighlightStyle, string> = {
   subtle: 'Subtle',
   none: 'None',
 };
+
+/**
+ * Access token for an engine server started with `ACCESS_TOKEN` (ADR-010). Saved explicitly
+ * (button or Enter), because every change reconnects the server engines.
+ */
+function ServerTokenField() {
+  const token = useSettingsStore((s) => s.serverToken);
+  const setServerToken = useSettingsStore((s) => s.setServerToken);
+  const [draft, setDraft] = useState(token);
+  const [shown, setShown] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const id = useId();
+  const dirty = normalizeToken(draft) !== token;
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    setServerToken(draft);
+    setDraft(normalizeToken(draft));
+    setSaved(true);
+  };
+  return (
+    <form className={styles.group} onSubmit={onSubmit} aria-labelledby={`${id}-legend`}>
+      <span id={`${id}-legend`} className={styles.legend}>
+        Engine server
+      </span>
+      <label className={styles.field} htmlFor={`${id}-token`}>
+        Server access token
+      </label>
+      <div className={styles.tokenRow}>
+        <input
+          id={`${id}-token`}
+          className={styles.tokenInput}
+          type={shown ? 'text' : 'password'}
+          value={draft}
+          maxLength={MAX_SERVER_TOKEN_LENGTH}
+          autoComplete="off"
+          spellCheck={false}
+          aria-describedby={`${id}-help`}
+          onChange={(e) => {
+            setDraft(e.currentTarget.value);
+            setSaved(false);
+          }}
+        />
+        <button
+          type="button"
+          className={styles.reset}
+          aria-pressed={shown}
+          onClick={() => setShown((v) => !v)}
+        >
+          {shown ? 'Hide' : 'Show'}
+        </button>
+        <button type="submit" className={styles.reset} disabled={!dirty}>
+          Save token
+        </button>
+      </div>
+      <p id={`${id}-help`} className={styles.help} role="status">
+        {saved && !dirty
+          ? token
+            ? 'Saved. Server engines reconnect with the new token.'
+            : 'Token removed.'
+          : 'Only needed when the engine server requires one. Stored in this browser.'}
+      </p>
+    </form>
+  );
+}
 
 export function SettingsPanel() {
   const s = useSettingsStore();
@@ -106,6 +177,8 @@ export function SettingsPanel() {
       <button type="button" className={styles.reset} onClick={() => s.reset()}>
         Reset to defaults
       </button>
+
+      <ServerTokenField />
     </div>
   );
 }

@@ -28,7 +28,7 @@ interface RunResult {
 /** Loads a WasmEngineClient in the page through the `window.__chesslab` hook and runs searches. */
 async function runEngine(
   page: Page,
-  options: { crossOriginIsolated?: boolean },
+  options: { crossOriginIsolated?: boolean; build?: 'lite' | 'lite-single' | 'full' },
   searches: { fen: string; depth: number }[],
 ): Promise<RunResult> {
   return page.evaluate(
@@ -97,6 +97,37 @@ test.describe('WASM engine', () => {
     console.log(
       `[engine] ${res.capabilities.build} threads=${res.capabilities.threadCount} load=${res.loadMs.toFixed(0)}ms ` +
         `depth10=${start!.ms.toFixed(0)}ms nps=${last.nps ?? '?'} (engine time ${last.time ?? '?'}ms)`,
+    );
+  });
+
+  test('full-strength build (opt-in, ~99 MB) loads and analyses the start position', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const failed: string[] = [];
+    const wasmBytes: number[] = [];
+    page.on('requestfailed', (r) => failed.push(r.url()));
+    page.on('response', (r) => {
+      if (r.url().endsWith('.wasm')) wasmBytes.push(Number(r.headers()['content-length'] ?? 0));
+    });
+    await page.goto('/');
+    const t0 = Date.now();
+    const res = await runEngine(page, { build: 'full' }, [{ fen: START, depth: 10 }]);
+    const totalMs = Date.now() - t0;
+    expect(res.isolated).toBe(true);
+    expect(res.capabilities.threads).toBe(true);
+    expect(res.capabilities.build).toMatch(/^stockfish-\d+\.\d+\.\d+-full$/);
+    // Allow 60 s for the download, compilation and the depth-10 search.
+    expect(totalMs).toBeLessThan(60_000);
+    const last = res.runs[0]!.infos.at(-1)!;
+    expect(last.depth).toBeGreaterThanOrEqual(10);
+    expect(SANE_OPENING_MOVES).toContain(res.runs[0]!.bestMove?.move);
+    expect(last.score.cp).toBeGreaterThan(-100);
+    expect(last.score.cp).toBeLessThan(100);
+    expect(failed).toEqual([]);
+    console.log(
+      `[engine] ${res.capabilities.build} threads=${res.capabilities.threadCount} wasm=${(Math.max(0, ...wasmBytes) / 1e6).toFixed(1)}MB ` +
+        `load=${res.loadMs.toFixed(0)}ms depth10=${res.runs[0]!.ms.toFixed(0)}ms nps=${last.nps ?? '?'}`,
     );
   });
 

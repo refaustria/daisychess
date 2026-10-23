@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
-import type { EngineDescriptor as ServerEngine, EngineInfo } from '@chesslab/engine-core';
+import type {
+  AnalyzeOptions,
+  EngineDescriptor as ServerEngine,
+  EngineInfo,
+} from '@chesslab/engine-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalysisEngine } from '../engine/AnalysisController';
 import type { ProbeClient } from '../engine/registry';
 import {
   classifyPosition,
   DEFAULT_SETTINGS,
+  effectiveSettings,
   mergeLine,
   migratePersisted,
   newInstance,
   PROBE_ERROR_TTL_MS,
   PROBE_TTL_MS,
   sanitizeEngineKeys,
+  sanitizeEngineSettings,
   sanitizeSettings,
   selectPrimary,
   startAnalysisController,
@@ -22,6 +28,7 @@ import {
   type EngineSpec,
 } from './analysisStore';
 import { START_FEN, useGameStore } from './gameStore';
+import { useSettingsStore } from './settingsStore';
 
 const info = (multipv: number, depth: number, cp = 10): EngineInfo => ({
   multipv,
@@ -98,6 +105,12 @@ describe('sanitizeEngineKeys / migratePersisted', () => {
       SINGLE,
     ]);
     expect(sanitizeEngineKeys([], ISOLATED)).toEqual(['wasm:lite']);
+    // Full build: needs isolation; only one multi-threaded build survives.
+    expect(sanitizeEngineKeys(['wasm:full', 'wasm:lite', SINGLE], ISOLATED)).toEqual([
+      'wasm:full',
+      SINGLE,
+    ]);
+    expect(sanitizeEngineKeys(['wasm:full'], PLAIN)).toEqual([SINGLE]);
     expect(sanitizeEngineKeys(undefined, PLAIN)).toEqual([SINGLE]);
     // The multi-threaded build needs isolation.
     expect(sanitizeEngineKeys(['wasm:lite', SINGLE], PLAIN)).toEqual([SINGLE]);
@@ -134,6 +147,33 @@ describe('sanitizeEngineKeys / migratePersisted', () => {
       migratePersisted({ enabledEngines: [SINGLE, REMOTE], settings: { backend: 'remote' } }, PLAIN)
         .enabledEngines,
     ).toEqual([SINGLE, REMOTE]);
+    // Per-engine overrides (ADR-010): sanitized; omitted when empty (old shape round-trips).
+    expect(
+      migratePersisted(
+        {
+          enabledEngines: [SINGLE, REMOTE],
+          settings: { depth: 18, multipv: 1 },
+          engineSettings: {
+            [REMOTE]: { depth: 99, multipv: 2, bogus: 1 },
+            [SINGLE]: { depth: 'x' },
+            'nope:x': { depth: 10 },
+          },
+        },
+        PLAIN,
+      ),
+    ).toEqual({
+      enabled: false,
+      enabledEngines: [SINGLE, REMOTE],
+      settings: { depth: 18, multipv: 1 },
+      engineSettings: { [REMOTE]: { depth: 40, multipv: 2 } },
+    });
+    expect(sanitizeEngineSettings([1, 2])).toEqual({});
+    expect(
+      effectiveSettings(
+        { settings: { depth: 22, multipv: 1 }, engineSettings: { [REMOTE]: { multipv: 3 } } },
+        REMOTE,
+      ),
+    ).toEqual({ depth: 22, multipv: 3 });
     expect(migratePersisted('garbage', PLAIN)).toEqual({
       enabled: false,
       enabledEngines: [SINGLE],
@@ -169,7 +209,12 @@ describe('selectPrimary', () => {
 class ScriptedEngine implements AnalysisEngine {
   engineName = 'Stockfish Test';
   disposedCount = 0;
-  readonly searches: { fen: string; emit: (i: EngineInfo) => void; end: () => void }[] = [];
+  readonly searches: {
+    fen: string;
+    opts?: AnalyzeOptions;
+    emit: (i: EngineInfo) => void;
+    end: () => void;
+  }[] = [];
   readonly options: Record<string, unknown>[] = [];
   capabilities() {
     return { threads: false, build: 'test', threadCount: 1 };
@@ -185,13 +230,14 @@ class ScriptedEngine implements AnalysisEngine {
     this.disposedCount++;
     this.searches.at(-1)?.end();
   }
-  analyze(fen: string) {
+  analyze(fen: string, opts?: AnalyzeOptions) {
     this.searches.at(-1)?.end();
     const queue: EngineInfo[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
     const search = {
       fen,
+      opts,
       emit: (i: EngineInfo) => {
         queue.push(i);
         wake?.();
@@ -290,6 +336,8 @@ function resetStores(enabledEngines: string[] = [SINGLE]) {
     enabledEngines,
     instances: Object.fromEntries(enabledEngines.map((k) => [k, newInstance(k)])),
     settings: { ...DEFAULT_SETTINGS },
+    engineSettings: {},
+    env: PLAIN,
     serverProbe: { status: 'idle' },
     engineHint: undefined,
   });
@@ -438,6 +486,84 @@ describe('multi-engine instances', () => {
     expect(engineOf(REMOTE).searches.at(-1)!.fen).toBe(fen);
     expect(inst(SINGLE)!.lines).toEqual([]);
     expect(inst(REMOTE)!.lines).toEqual([]);
+  });
+
+  it('per-engine settings: an override reaches only its engine, is persisted and can be applied to all', async () => {
+    const s = useAnalysisStore.getState();
+    s.setEnabled(true);
+    s.setEngineEnabled(REMOTE, true);
+    await settle();
+    s.setEngineSettings(REMOTE, { multipv: 3, depth: 30 });
+    await settle();
+    expect(engineOf(REMOTE).options).toContainEqual({ MultiPV: 3 });
+    expect(engineOf(SINGLE).options).toEqual([]);
+    expect(engineOf(REMOTE).searches.at(-1)!.opts).toMatchObject({ depth: 30, multipv: 3 });
+    expect(JSON.parse(storage.get(STORAGE_KEY)!).engineSettings).toEqual({
+      [REMOTE]: { multipv: 3, depth: 30 },
+    });
+    // Lines beyond the engine's own MultiPV are kept for it (3), not cut to the default (1).
+    engineOf(REMOTE).searches.at(-1)!.emit(info(3, 5));
+    engineOf(SINGLE).searches.at(-1)!.emit(info(3, 5));
+    await settle();
+    expect(inst(REMOTE)!.lines.map((l) => l.multipv)).toEqual([3]);
+    expect(inst(SINGLE)!.lines).toEqual([]);
+
+    // The defaults still reach engines without an override of that field.
+    s.setSettings({ depth: 12 });
+    await settle();
+    expect(engineOf(SINGLE).searches.at(-1)!.opts).toMatchObject({ depth: 12 });
+    expect(effectiveSettings(useAnalysisStore.getState(), REMOTE).depth).toBe(30);
+
+    // null removes a field; an empty override disappears from the persisted state.
+    s.setEngineSettings(REMOTE, { depth: null });
+    expect(useAnalysisStore.getState().engineSettings).toEqual({ [REMOTE]: { multipv: 3 } });
+    s.applySettingsToAll(REMOTE);
+    expect(useAnalysisStore.getState().settings).toMatchObject({ depth: 12, multipv: 3 });
+    expect(useAnalysisStore.getState().engineSettings).toEqual({});
+    expect(JSON.parse(storage.get(STORAGE_KEY)!)).not.toHaveProperty('engineSettings');
+    await settle();
+    expect(engineOf(SINGLE).options).toContainEqual({ MultiPV: 3 });
+    // Unknown keys are ignored.
+    s.setEngineSettings('bogus', { depth: 3 });
+    expect(useAnalysisStore.getState().engineSettings).toEqual({});
+  });
+
+  it('lite and full replace each other in place (one multi-threaded browser engine)', async () => {
+    useAnalysisStore.setState({ env: ISOLATED });
+    const s = useAnalysisStore.getState();
+    s.setEnabled(true);
+    expect(s.setEngineEnabled('wasm:lite', true)).toBe(true);
+    expect(s.setEngineEnabled(REMOTE, true)).toBe(true);
+    await settle();
+    const lite = engineOf('wasm:lite');
+    expect(s.setEngineEnabled('wasm:full', true)).toBe(true);
+    await settle();
+    expect(useAnalysisStore.getState().enabledEngines).toEqual([SINGLE, 'wasm:full', REMOTE]);
+    expect(useAnalysisStore.getState().engineHint).toMatch(/one multi-threaded browser engine/);
+    expect(lite.disposedCount).toBe(1);
+    expect(inst('wasm:lite')).toBeUndefined();
+    expect(inst('wasm:full')!.status).toBe('analysing');
+    expect(s.setEngineEnabled('wasm:lite', true)).toBe(true);
+    expect(useAnalysisStore.getState().enabledEngines).toEqual([SINGLE, 'wasm:lite', REMOTE]);
+    // Not isolated: refused.
+    useAnalysisStore.setState({ env: PLAIN });
+    expect(s.setEngineEnabled('wasm:full', true)).toBe(false);
+    expect(useAnalysisStore.getState().engineHint).toMatch(/cross-origin isolated/);
+  });
+
+  it('a new access token in the settings reconnects the server engines', async () => {
+    const s = useAnalysisStore.getState();
+    s.setEnabled(true);
+    s.setEngineEnabled(REMOTE, true);
+    await settle();
+    const before = created.filter((c) => c.key === REMOTE).length;
+    const local = created.filter((c) => c.key === SINGLE).length;
+    useSettingsStore.getState().setServerToken('new-token');
+    await settle();
+    expect(created.filter((c) => c.key === REMOTE).length).toBe(before + 1);
+    expect(created.filter((c) => c.key === SINGLE).length).toBe(local);
+    expect(inst(REMOTE)!.status).toBe('analysing');
+    useSettingsStore.getState().setServerToken('');
   });
 
   it('disabling an engine disposes it, drops its state and ignores its late events', async () => {

@@ -7,6 +7,7 @@ import { buildApp, type BuildAppOptions } from '../app.js';
 import { loadConfig, type ServerConfig } from '../config.js';
 import { fakeSpawner, registry, until } from '../../test/helpers.js';
 import { TestClient } from '../../test/ws-client.js';
+import { tokenMatches } from './connection.js';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 /** The fake engine crashes on `go` for full-move 999 and ignores `stop` for 998. */
@@ -544,6 +545,67 @@ describe('WebSocket /ws', () => {
         any.once('error', reject);
       });
       any.terminate();
+    });
+  });
+
+  describe('access token (ADR-010)', () => {
+    const hello = (token?: string) => ({
+      type: 'hello',
+      protocolVersion: PROTOCOL_VERSION,
+      client: { name: 'test' },
+      ...(token === undefined ? {} : { token }),
+    });
+
+    it('tokenMatches compares exactly', () => {
+      expect(tokenMatches('abc', 'abc')).toBe(true);
+      expect(tokenMatches('abd', 'abc')).toBe(false);
+      expect(tokenMatches('abcd', 'abc')).toBe(false);
+      expect(tokenMatches(undefined, 'abc')).toBe(false);
+    });
+
+    it('accepts the correct token', async () => {
+      const { url } = await start({ accessToken: 'secret-token' });
+      const c = await TestClient.connect(url);
+      clients.push(c);
+      c.send(hello('secret-token'));
+      expect(await c.waitFor((m) => m.type === 'welcome')).toBeTruthy();
+      c.send(analyze('s', 1, { depth: 2 }));
+      expect(await c.waitFor((m) => m.type === 'bestmove')).toBeTruthy();
+    });
+
+    it('rejects a missing or wrong token with unauthorized and close 1008', async () => {
+      const { url } = await start({ accessToken: 'secret-token' });
+      for (const token of [undefined, 'wrong', 'secret-token ', '', 'secret-toke']) {
+        const c = await TestClient.connect(url);
+        clients.push(c);
+        c.send(hello(token));
+        expect(await c.waitFor((m) => m.type === 'error')).toMatchObject({
+          type: 'error',
+          code: 'unauthorized',
+        });
+        expect(await c.waitClosed()).toBe(1008);
+        expect(c.messages.some((m) => m.type === 'welcome')).toBe(false);
+      }
+    });
+
+    it('nothing but hello is accepted before a successful token check', async () => {
+      const { url } = await start({ accessToken: 'secret-token' });
+      const c = await TestClient.connect(url);
+      clients.push(c);
+      c.send(analyze('s', 1));
+      expect(await c.waitFor((m) => m.type === 'error')).toMatchObject({
+        code: 'handshake_required',
+      });
+    });
+
+    it('is public when no token is configured (a sent token is ignored)', async () => {
+      const { url } = await start({ accessToken: null });
+      for (const token of [undefined, 'anything']) {
+        const c = await TestClient.connect(url);
+        clients.push(c);
+        c.send(hello(token));
+        expect(await c.waitFor((m) => m.type === 'welcome')).toBeTruthy();
+      }
     });
   });
 

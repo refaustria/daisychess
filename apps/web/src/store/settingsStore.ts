@@ -13,6 +13,20 @@ export interface Settings {
   coordinates: boolean;
   highlightStyle: HighlightStyle;
   sound: boolean;
+  /**
+   * Access token of the engine server (ADR-010), sent in `hello.token`. Empty = none. Stored in
+   * localStorage like the other settings: it is a shared gate against casual use, not a secret
+   * that needs protection from this browser's user.
+   */
+  serverToken: string;
+}
+
+/** Same bound as the protocol's `hello.token`. */
+export const MAX_SERVER_TOKEN_LENGTH = 256;
+
+/** Trims surrounding whitespace (pasted tokens) and caps the length. */
+export function normalizeToken(raw: string): string {
+  return raw.trim().slice(0, MAX_SERVER_TOKEN_LENGTH);
 }
 
 export const SETTINGS_KEY = 'chesslab.settings';
@@ -23,6 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
   coordinates: true,
   highlightStyle: 'classic',
   sound: true,
+  serverToken: '',
 };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -62,6 +77,7 @@ export function parseSettings(raw: string | null): Settings {
     out.highlightStyle = o.highlightStyle as HighlightStyle;
   }
   if (typeof o.sound === 'boolean') out.sound = o.sound;
+  if (typeof o.serverToken === 'string') out.serverToken = normalizeToken(o.serverToken);
   return out;
 }
 
@@ -85,6 +101,9 @@ interface SettingsActions {
   set: (patch: Partial<Settings>) => void;
   /** Selects a custom board colour pair (also switches boardTheme to 'custom'). */
   setCustomBoard: (c: { light: string; dark: string }) => void;
+  /** Stores the engine server access token (trimmed; empty removes it). */
+  setServerToken: (token: string) => void;
+  /** Resets the appearance settings; the server access token is kept. */
   reset: () => void;
 }
 
@@ -97,6 +116,7 @@ function pick(s: Settings): Settings {
     coordinates: s.coordinates,
     highlightStyle: s.highlightStyle,
     sound: s.sound,
+    serverToken: s.serverToken,
   };
   if (s.customBoard) out.customBoard = s.customBoard;
   return out;
@@ -112,8 +132,14 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
     set({ customBoard, boardTheme: 'custom' });
     persist(pick(get()));
   },
+  setServerToken: (token) => {
+    const serverToken = normalizeToken(token);
+    if (serverToken === get().serverToken) return;
+    set({ serverToken });
+    persist(pick(get()));
+  },
   reset: () => {
-    set({ ...DEFAULT_SETTINGS, customBoard: undefined });
+    set({ ...DEFAULT_SETTINGS, serverToken: get().serverToken, customBoard: undefined });
     persist(pick(get()));
   },
 }));

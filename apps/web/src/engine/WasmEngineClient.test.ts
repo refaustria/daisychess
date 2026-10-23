@@ -1,6 +1,11 @@
 import type { EngineInfo } from '@chesslab/engine-core';
 import { describe, expect, it } from 'vitest';
-import { WasmEngineClient, selectBuild, type EngineWorker } from './WasmEngineClient';
+import {
+  WasmEngineClient,
+  selectBuild,
+  type EngineWorker,
+  type WasmBuild,
+} from './WasmEngineClient';
 import { flush } from './testing';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -27,7 +32,7 @@ class FakeWorker implements EngineWorker {
   }
 }
 
-function setup(opts: { isolated: boolean; cores?: number; build?: 'lite' | 'lite-single' }) {
+function setup(opts: { isolated: boolean; cores?: number; build?: WasmBuild }) {
   const workers: FakeWorker[] = [];
   const client = new WasmEngineClient({
     crossOriginIsolated: opts.isolated,
@@ -97,6 +102,24 @@ describe('WasmEngineClient', () => {
     await client.load();
     expect(client.capabilities().threads).toBe(false);
     expect(workers[0]?.received).toEqual(['uci', 'isready']);
+  });
+
+  it('loads the full build (multi-threaded, big network) when forced on an isolated page', async () => {
+    const { client, workers } = setup({ isolated: true, cores: 4, build: 'full' });
+    expect(client.capabilities()).toEqual({
+      threads: true,
+      build: `stockfish-${__STOCKFISH_ENGINE__.version}-full`,
+      threadCount: 3,
+    });
+    await client.load();
+    expect(workers[0]?.url).toBe(`https://example.test/engine/${__STOCKFISH_ENGINE__.builds.full}`);
+    expect(workers[0]?.url).toMatch(/stockfish-\d+\.js$/);
+    expect(workers[0]?.received).toEqual([
+      'uci',
+      'isready',
+      'setoption name Threads value 3',
+      'isready',
+    ]);
   });
 
   it('load() is idempotent', async () => {
