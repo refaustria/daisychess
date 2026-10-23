@@ -465,4 +465,50 @@ describe('AnalysisController', () => {
     await settle();
     expect(engine().last().fen).toBe(FEN_A);
   });
+
+  it('switching the factory while enabled creates a new engine and disposes the old one', async () => {
+    const { c, cb, factory, engines } = setup();
+    c.setPosition(FEN_A);
+    c.setEnabled(true);
+    await settle();
+    expect(engines).toHaveLength(1);
+    engines[0]!.last().push(info(3));
+    await settle();
+
+    const second: FakeEngine[] = [];
+    c.setEngineFactory(() => {
+      const e = new FakeEngine();
+      second.push(e);
+      return e;
+    });
+    // Lines are cleared at once; the old engine is gone before the new search starts.
+    expect(cb.resets.at(-1)).toEqual({ fen: FEN_A, terminal: null });
+    await settle();
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(engines[0]!.disposed).toBe(true);
+    expect(second).toHaveLength(1);
+    expect(second[0]!.last().fen).toBe(FEN_A);
+    expect(cb.statuses.at(-1)).toBe('analysing');
+
+    // Late infos of the old engine never arrive.
+    engines[0]!.last().push(info(9));
+    second[0]!.last().push(info(1));
+    await settle();
+    expect(cb.infos.map((i) => i.info.depth)).toEqual([3, 1]);
+  });
+
+  it('switching the factory while disabled only swaps it for the next enable', async () => {
+    const { c, factory } = setup();
+    c.setPosition(FEN_A);
+    const engines: FakeEngine[] = [];
+    c.setEngineFactory(() => {
+      const e = new FakeEngine();
+      engines.push(e);
+      return e;
+    });
+    c.setEnabled(true);
+    await settle();
+    expect(factory).not.toHaveBeenCalled();
+    expect(engines).toHaveLength(1);
+  });
 });

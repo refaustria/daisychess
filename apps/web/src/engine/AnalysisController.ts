@@ -43,6 +43,7 @@ export interface AnalysisCallbacks {
 }
 
 export interface AnalysisControllerOptions {
+  /** Replaceable at runtime via {@link AnalysisController.setEngineFactory}. */
   createEngine: () => AnalysisEngine | Promise<AnalysisEngine>;
   callbacks: AnalysisCallbacks;
   settings: AnalysisSettings;
@@ -165,6 +166,21 @@ export class AnalysisController {
     this.gen++;
     this.dropEngine();
     if (!this.disposed && this.status !== 'error') this.setStatus('idle');
+  }
+
+  /**
+   * Replaces the engine factory (backend switch): drops the current engine, clears the lines and,
+   * while enabled, starts again with an engine from the new factory.
+   */
+  setEngineFactory(factory: () => AnalysisEngine | Promise<AnalysisEngine>): void {
+    if (this.disposed) return;
+    this.opts.createEngine = factory;
+    this.clearTimer();
+    this.gen++;
+    this.dropEngine();
+    if (this.fen !== null) this.opts.callbacks.onReset(this.fen, this.classify(this.fen));
+    if (this.enabled) this.start();
+    else if (this.status !== 'idle') this.setStatus('idle');
   }
 
   /** Restarts analysis after {@link release} (e.g. on `pageshow` from the bfcache). */

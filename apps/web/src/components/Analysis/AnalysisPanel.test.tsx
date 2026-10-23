@@ -16,7 +16,8 @@ beforeEach(() => {
     status: 'analysing',
     engineName: 'Stockfish 19 Lite WASM',
     capabilities: { threads: true, build: 'multi-thread', threadCount: 4 },
-    settings: { depth: 22, multipv: 2 },
+    settings: { depth: 22, multipv: 2, backend: 'wasm' },
+    remoteLimits: undefined,
     fen: START,
     terminal: null,
     lines: [
@@ -86,5 +87,42 @@ describe('AnalysisPanel', () => {
     expect(scoreTone({ cp: 10 })).toBe('neutral');
     expect(scoreTone({ mate: -2 })).toBe('negative');
     expect(scoreTone({ cp: 200 })).toBe('positive');
+  });
+
+  it('segmented control switches the backend', () => {
+    render(<AnalysisPanel />);
+    const group = screen.getByRole('radiogroup');
+    const browser = within(group).getByRole('radio', { name: 'Browser' });
+    const server = within(group).getByRole('radio', { name: 'Server' });
+    expect(browser.getAttribute('aria-checked')).toBe('true');
+    expect(server.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(browser);
+    expect(setSettings).not.toHaveBeenCalled();
+    fireEvent.click(server);
+    expect(setSettings).toHaveBeenLastCalledWith({ backend: 'remote' });
+    expect(screen.getByTestId('backend-badge').textContent).toBe('Browser');
+  });
+
+  it('applies the server limits to the selects in server mode', () => {
+    useAnalysisStore.setState({
+      settings: { depth: 0, multipv: 5, threads: 16, backend: 'remote' },
+      remoteLimits: {
+        maxDepth: 22,
+        maxMultipv: 3,
+        maxThreads: 4,
+        maxHash: 256,
+        maxMovetimeMs: 1000,
+        maxSessionsPerConnection: 1,
+      },
+    });
+    render(<AnalysisPanel />);
+    expect(screen.getByTestId('backend-badge').textContent).toBe('Server');
+    const opts = (label: string) =>
+      Array.from(screen.getByLabelText(label).querySelectorAll('option')).map((o) => o.value);
+    expect(opts('Depth')).toEqual(['10', '14', '18', '22', '0']);
+    expect(opts('Lines')).toEqual(['1', '2', '3']);
+    expect(opts('Threads')).toEqual(['1', '2', '3', '4']);
+    expect((screen.getByLabelText('Lines') as HTMLSelectElement).value).toBe('3');
+    expect((screen.getByLabelText('Threads') as HTMLSelectElement).value).toBe('4');
   });
 });

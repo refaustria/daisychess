@@ -5,16 +5,25 @@ export function engineStatusText(
   s: Pick<
     AnalysisState,
     'enabled' | 'status' | 'error' | 'engineName' | 'capabilities' | 'lines' | 'terminal'
-  >,
+  > &
+    Partial<Pick<AnalysisState, 'settings' | 'backendStatus' | 'backendError'>>,
 ): string {
-  if (s.status === 'error') return `Error: ${s.error ?? 'engine failed'}`;
+  const remote = s.settings?.backend === 'remote';
+  if (s.status === 'error') {
+    if (remote) return s.backendError ?? s.error ?? 'Server error';
+    return `Error: ${s.error ?? 'engine failed'}`;
+  }
   if (!s.enabled) return 'Off';
-  if (s.status === 'loading' || s.status === 'idle') return 'Loading engine…';
+  if (remote && s.backendStatus === 'closed') return 'Connection lost';
+  if (s.status === 'loading' || s.status === 'idle') {
+    return remote ? 'Connecting to server…' : 'Loading engine…';
+  }
   // UCI names can be long ("Stockfish 19 Lite WASM Multithreaded …"); keep name + version.
   const full = s.engineName ?? 'Stockfish';
   const name = /^Stockfish \S+/.exec(full)?.[0] ?? full;
   const n = s.capabilities?.threadCount;
   const parts = [name];
+  if (remote) parts.push('server');
   if (n !== undefined) parts.push(`${n} thread${n === 1 ? '' : 's'}`);
   const depth = s.lines[0]?.depth;
   if (s.terminal) parts.push('game over');
@@ -51,6 +60,15 @@ export function EngineToggle() {
       {s.status === 'error' && s.enabled && (
         <button type="button" className={styles.retry} onClick={s.retry}>
           Retry
+        </button>
+      )}
+      {s.status === 'error' && s.enabled && s.settings.backend === 'remote' && (
+        <button
+          type="button"
+          className={styles.retry}
+          onClick={() => s.setSettings({ backend: 'wasm' })}
+        >
+          Use browser engine
         </button>
       )}
     </div>

@@ -34,7 +34,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M3-1 | WebSocket protocol schema (Zod) in `engine-core`; ADR-006 | architect | done |
 | M3-2 | `apps/server`: UCI process wrapper, engine pool, session leasing, limits | senior | done |
 | M3-3 | `scripts/fetch-engines.sh` (host CPU: sse41-popcnt, no AVX2 on this VM) + `engines.json` + registry loader | worker | done |
-| M3-4 | `RemoteEngineClient` + backend switch in UI | senior | todo |
+| M3-4 | `RemoteEngineClient` + backend switch in UI | senior | done |
 | M3-5 | systemd unit + deploy of server on this host | worker | done |
 
 ## M4 — Game review
@@ -47,7 +47,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M5 — Engines & themes
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M5-1 | Engine registry (browser + server), enable/disable, multi-engine comparison tabs | senior | todo |
+| M5-1 | Engine registry (browser + server), enable/disable, multi-engine comparison tabs | senior | in-progress |
 | M5-2 | Theming UI: board colors, piece sets, coordinates, sounds, persisted in localStorage | worker | done |
 
 ## M6 — Polish & deploy

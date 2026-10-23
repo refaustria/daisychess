@@ -1,7 +1,12 @@
 import { formatScore, type Score } from '@chesslab/engine-core';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { convertPv } from '../../engine/pvToSan';
-import { MAX_MULTIPV, useAnalysisStore, type AnalysisLine } from '../../store/analysisStore';
+import {
+  MAX_MULTIPV,
+  useAnalysisStore,
+  type AnalysisLine,
+  type Backend,
+} from '../../store/analysisStore';
 import { usePreviewStore } from '../../store/previewStore';
 import styles from './AnalysisPanel.module.css';
 
@@ -30,6 +35,11 @@ function range(a: number, b: number): number[] {
 function withCurrent(options: number[], current: number): number[] {
   return options.includes(current) ? options : [...options, current].sort((x, y) => x - y);
 }
+
+const BACKENDS: { value: Backend; label: string }[] = [
+  { value: 'wasm', label: 'Browser' },
+  { value: 'remote', label: 'Server' },
+];
 
 interface LineRowProps {
   line: AnalysisLine;
@@ -80,6 +90,7 @@ export function AnalysisPanel() {
   const terminal = useAnalysisStore((s) => s.terminal);
   const liveLines = useAnalysisStore((s) => s.lines);
   const setSettings = useAnalysisStore((s) => s.setSettings);
+  const limits = useAnalysisStore((s) => s.remoteLimits);
   const lines = useDeferredValue(liveLines);
   const [open, setOpen] = useState(true);
 
@@ -94,9 +105,17 @@ export function AnalysisPanel() {
 
   if (!enabled) return null;
 
+  const remote = settings.backend === 'remote';
   const hw = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 2 : 2;
-  const maxThreads = Math.max(1, hw - 1);
-  const threads = settings.threads ?? caps?.threadCount ?? 1;
+  const maxThreads = remote && limits ? limits.maxThreads : Math.max(1, hw - 1);
+  const maxLines = remote && limits ? Math.min(MAX_MULTIPV, limits.maxMultipv) : MAX_MULTIPV;
+  const maxDepth = remote && limits ? limits.maxDepth : Infinity;
+  // The server clamps to its limits; show what will actually run.
+  const threads = Math.min(settings.threads ?? caps?.threadCount ?? 1, maxThreads);
+  const multipv = Math.min(settings.multipv, maxLines);
+  const depthOptions = remote
+    ? DEPTH_OPTIONS.filter((d) => d === 0 || d <= maxDepth)
+    : withCurrent(DEPTH_OPTIONS, settings.depth);
   const threadsOk = caps?.threads ?? false;
   const name = engineName ? (/^Stockfish \S+/.exec(engineName)?.[0] ?? engineName) : 'Engine';
   const n = caps?.threadCount;
@@ -112,6 +131,9 @@ export function AnalysisPanel() {
         onClick={() => setOpen((o) => !o)}
       >
         <span className={styles.name}>{name}</span>
+        <span className={styles.badge} data-testid="backend-badge">
+          {remote ? 'Server' : 'Browser'}
+        </span>
         <span className={styles.meta}>
           {[
             n !== undefined ? `${n} thread${n === 1 ? '' : 's'}` : null,
@@ -129,13 +151,33 @@ export function AnalysisPanel() {
       {open && (
         <>
           <div className={styles.settings}>
+            <div className={styles.segmented} role="radiogroup" aria-label="Engine location">
+              {BACKENDS.map((b) => (
+                <button
+                  key={b.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.backend === b.value}
+                  className={
+                    settings.backend === b.value
+                      ? `${styles.segment} ${styles.segmentOn}`
+                      : styles.segment
+                  }
+                  onClick={() => {
+                    if (settings.backend !== b.value) setSettings({ backend: b.value });
+                  }}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
             <label className={styles.setting}>
               Depth
               <select
                 value={settings.depth}
                 onChange={(e) => setSettings({ depth: Number(e.currentTarget.value) })}
               >
-                {withCurrent(DEPTH_OPTIONS, settings.depth).map((d) => (
+                {depthOptions.map((d) => (
                   <option key={d} value={d}>
                     {d === 0 ? '∞' : d}
                   </option>
@@ -145,10 +187,10 @@ export function AnalysisPanel() {
             <label className={styles.setting}>
               Lines
               <select
-                value={settings.multipv}
+                value={multipv}
                 onChange={(e) => setSettings({ multipv: Number(e.currentTarget.value) })}
               >
-                {range(1, MAX_MULTIPV).map((m) => (
+                {range(1, maxLines).map((m) => (
                   <option key={m} value={m}>
                     {m}
                   </option>
@@ -167,11 +209,13 @@ export function AnalysisPanel() {
                 disabled={!threadsOk}
                 onChange={(e) => setSettings({ threads: Number(e.currentTarget.value) })}
               >
-                {withCurrent(range(1, maxThreads), threads).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+                {(remote ? range(1, maxThreads) : withCurrent(range(1, maxThreads), threads)).map(
+                  (t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ),
+                )}
               </select>
             </label>
           </div>

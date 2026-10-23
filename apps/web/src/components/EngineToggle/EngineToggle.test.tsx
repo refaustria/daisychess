@@ -25,4 +25,39 @@ describe('engineStatusText', () => {
       }),
     ).toBe('SF · 1 thread');
   });
+
+  it('describes the server backend', () => {
+    const remote = { ...base, settings: { depth: 22, multipv: 1, backend: 'remote' as const } };
+    expect(engineStatusText({ ...remote, status: 'loading', backendStatus: 'connecting' })).toBe(
+      'Connecting to server…',
+    );
+    expect(
+      engineStatusText({
+        ...remote,
+        engineName: 'Stockfish 19 (native)',
+        capabilities: { threads: true, build: 'x', threadCount: 4 },
+        backendStatus: 'ready',
+      }),
+    ).toBe('Stockfish 19 · server · 4 threads');
+    expect(
+      engineStatusText({
+        ...remote,
+        status: 'error',
+        error: 'raw',
+        backendError: 'Server unreachable',
+      }),
+    ).toBe('Server unreachable');
+    expect(
+      engineStatusText({
+        ...remote,
+        status: 'error',
+        error: 'raw',
+        backendError: 'Connection lost',
+      }),
+    ).toBe('Connection lost');
+    expect(engineStatusText({ ...remote, status: 'analysing', backendStatus: 'closed' })).toBe(
+      'Connection lost',
+    );
+    expect(engineStatusText({ ...remote, status: 'error', error: 'boom' })).toBe('boom');
+  });
 });

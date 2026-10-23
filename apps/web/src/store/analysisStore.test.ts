@@ -56,17 +56,41 @@ describe('mergeLine', () => {
 describe('sanitizeSettings', () => {
   it('clamps depth and multipv, keeps base values for missing fields', () => {
     expect(sanitizeSettings({})).toEqual(DEFAULT_SETTINGS);
-    expect(sanitizeSettings({ depth: 99, multipv: 9 })).toEqual({ depth: 40, multipv: 5 });
-    expect(sanitizeSettings({ depth: -3, multipv: 0 })).toEqual({ depth: 0, multipv: 1 });
-    expect(sanitizeSettings({ multipv: 3 }, { depth: 12, multipv: 1 })).toEqual({
+    expect(sanitizeSettings({ depth: 99, multipv: 9 })).toEqual({
+      depth: 40,
+      multipv: 5,
+      backend: 'wasm',
+    });
+    expect(sanitizeSettings({ depth: -3, multipv: 0 })).toEqual({
+      depth: 0,
+      multipv: 1,
+      backend: 'wasm',
+    });
+    expect(sanitizeSettings({ multipv: 3 }, { depth: 12, multipv: 1, backend: 'wasm' })).toEqual({
       depth: 12,
       multipv: 3,
+      backend: 'wasm',
     });
     expect(sanitizeSettings({ threads: 2 })).toEqual({ ...DEFAULT_SETTINGS, threads: 2 });
-    expect(sanitizeSettings({ threads: undefined }, { depth: 1, multipv: 1, threads: 4 })).toEqual({
+    expect(
+      sanitizeSettings(
+        { threads: undefined },
+        { depth: 1, multipv: 1, threads: 4, backend: 'wasm' },
+      ),
+    ).toEqual({
       depth: 1,
       multipv: 1,
+      backend: 'wasm',
     });
+    expect(sanitizeSettings({ backend: 'remote' }).backend).toBe('remote');
+    expect(sanitizeSettings({ backend: 'bogus' as never }).backend).toBe('wasm');
+    expect(
+      sanitizeSettings({ backend: 'remote' }, { ...DEFAULT_SETTINGS, backend: 'remote' }).backend,
+    ).toBe('remote');
+    expect(sanitizeSettings({ remoteUrl: 'ws://127.0.0.1:1/ws' }).remoteUrl).toBe(
+      'ws://127.0.0.1:1/ws',
+    );
+    expect(sanitizeSettings({ remoteUrl: 'http://evil' }).remoteUrl).toBeUndefined();
     expect(sanitizeSettings({ depth: Number.NaN })).toEqual(DEFAULT_SETTINGS);
   });
 });
@@ -207,13 +231,218 @@ describe('analysis store + controller', () => {
     useAnalysisStore.getState().setEnabled(true);
     await vi.advanceTimersByTimeAsync(0);
     useAnalysisStore.getState().setSettings({ multipv: 3, depth: 50 });
-    expect(useAnalysisStore.getState().settings).toEqual({ depth: 40, multipv: 3 });
-    expect(JSON.parse(storage.get(STORAGE_KEY)!).settings).toEqual({ depth: 40, multipv: 3 });
+    expect(useAnalysisStore.getState().settings).toEqual({
+      depth: 40,
+      multipv: 3,
+      backend: 'wasm',
+    });
+    expect(JSON.parse(storage.get(STORAGE_KEY)!).settings).toEqual({
+      depth: 40,
+      multipv: 3,
+      backend: 'wasm',
+    });
     await vi.advanceTimersByTimeAsync(0);
     expect(engine.options).toEqual([{ MultiPV: 3 }]);
     engine.searches.at(-1)!.emit(info(3, 2));
     engine.searches.at(-1)!.emit(info(1, 2));
     await vi.advanceTimersByTimeAsync(0);
     expect(useAnalysisStore.getState().lines.map((l) => l.multipv)).toEqual([1, 3]);
+  });
+});
+
+type StatusCb = (status: string, error?: string) => void;
+
+/** Remote-like fake: a scripted engine with status events and limits. */
+class FakeRemote extends ScriptedEngine {
+  listeners = new Set<StatusCb>();
+  disposedCount = 0;
+  loadError: (Error & { code?: string }) | null = null;
+  limits = {
+    maxDepth: 30,
+    maxMultipv: 3,
+    maxThreads: 4,
+    maxHash: 256,
+    maxMovetimeMs: 1000,
+    maxSessionsPerConnection: 1,
+  };
+  onStatus(cb: StatusCb) {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  emit(status: string, error?: string) {
+    for (const cb of [...this.listeners]) cb(status, error);
+  }
+  override async load() {
+    this.emit('connecting');
+    if (this.loadError) {
+      this.emit('error', this.loadError.message);
+      throw this.loadError;
+    }
+    this.emit('ready');
+  }
+  override async dispose() {
+    this.disposedCount++;
+    this.emit('closed');
+  }
+}
+
+describe('analysis store backends', () => {
+  let stop: () => void = () => undefined;
+  let created: { backend: string; engine: ScriptedEngine }[];
+  let remotes: FakeRemote[];
+  let nextLoadError: (Error & { code?: string }) | null;
+  const storage = new Map<string, string>();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    storage.clear();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => void storage.set(k, v),
+      removeItem: (k: string) => void storage.delete(k),
+    });
+    useGameStore.getState().reset();
+    useAnalysisStore.setState({
+      enabled: false,
+      settings: { ...DEFAULT_SETTINGS },
+      status: 'idle',
+      lines: [],
+      backendStatus: undefined,
+      backendError: undefined,
+      remoteLimits: undefined,
+    });
+    created = [];
+    remotes = [];
+    nextLoadError = null;
+    stop = startAnalysisController({
+      debounceMs: 80,
+      createEngine: (backend) => {
+        if (backend === 'remote') {
+          const r = new FakeRemote();
+          r.loadError = nextLoadError;
+          remotes.push(r);
+          created.push({ backend, engine: r });
+          return r;
+        }
+        const e = new ScriptedEngine();
+        created.push({ backend, engine: e });
+        return e;
+      },
+    });
+  });
+  afterEach(() => {
+    stop();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const settle = () => vi.advanceTimersByTimeAsync(0);
+
+  it('persists the backend and selects the factory by it', async () => {
+    const s = useAnalysisStore.getState();
+    s.setEnabled(true);
+    await settle();
+    expect(created.map((c) => c.backend)).toEqual(['wasm']);
+    expect(useAnalysisStore.getState().backendStatus).toBeUndefined();
+
+    useAnalysisStore.getState().setSettings({ backend: 'remote' });
+    expect(JSON.parse(storage.get(STORAGE_KEY)!).settings.backend).toBe('remote');
+    await settle();
+    expect(created.map((c) => c.backend)).toEqual(['wasm', 'remote']);
+    expect(useAnalysisStore.getState()).toMatchObject({
+      status: 'analysing',
+      backendStatus: 'ready',
+      remoteLimits: { maxDepth: 30, maxMultipv: 3 },
+    });
+
+    useAnalysisStore.getState().setSettings({ backend: 'wasm' });
+    await settle();
+    expect(created.map((c) => c.backend)).toEqual(['wasm', 'remote', 'wasm']);
+    expect(remotes[0]!.disposedCount).toBe(1);
+    expect(useAnalysisStore.getState()).toMatchObject({
+      backendStatus: undefined,
+      remoteLimits: undefined,
+      status: 'analysing',
+    });
+  });
+
+  it('maps load failures to friendly errors and does not reconnect initially', async () => {
+    useAnalysisStore.getState().setSettings({ backend: 'remote' });
+    nextLoadError = Object.assign(new Error('Cannot connect'), { code: 'closed' });
+    useAnalysisStore.getState().setEnabled(true);
+    await settle();
+    expect(useAnalysisStore.getState()).toMatchObject({
+      status: 'error',
+      backendStatus: 'error',
+      backendError: 'Server unreachable',
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(remotes).toHaveLength(1);
+  });
+
+  it('maps no_capacity to "Server busy, try again"', async () => {
+    useAnalysisStore.getState().setSettings({ backend: 'remote' });
+    nextLoadError = Object.assign(new Error('full'), { code: 'no_capacity' });
+    useAnalysisStore.getState().setEnabled(true);
+    await settle();
+    expect(useAnalysisStore.getState().backendError).toBe('Server busy, try again');
+  });
+
+  it('reconnects with 1 s, 2 s, 4 s backoff after losing the session, then gives up', async () => {
+    useAnalysisStore.getState().setSettings({ backend: 'remote' });
+    useAnalysisStore.getState().setEnabled(true);
+    await settle();
+    expect(remotes).toHaveLength(1);
+
+    // Connection drops; every further server attempt fails.
+    nextLoadError = Object.assign(new Error('nope'), { code: 'closed' });
+    remotes[0]!.emit('closed', 'Connection to engine server closed');
+    expect(useAnalysisStore.getState().backendStatus).toBe('closed');
+    await vi.advanceTimersByTimeAsync(999);
+    expect(remotes).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(remotes).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(remotes).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(remotes).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(remotes).toHaveLength(4);
+    expect(useAnalysisStore.getState()).toMatchObject({
+      status: 'error',
+      backendError: 'Connection lost',
+    });
+  });
+
+  it('a successful reconnect resumes analysis and resets the attempt counter', async () => {
+    useAnalysisStore.getState().setSettings({ backend: 'remote' });
+    useAnalysisStore.getState().setEnabled(true);
+    await settle();
+    remotes[0]!.emit('closed', 'lost');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(remotes).toHaveLength(2);
+    expect(useAnalysisStore.getState()).toMatchObject({
+      status: 'analysing',
+      backendStatus: 'ready',
+      backendError: undefined,
+    });
+    // A later loss starts again at 1 s.
+    remotes[1]!.emit('closed', 'lost again');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(remotes).toHaveLength(3);
+  });
+
+  it('does not reconnect when the engine is switched off or the backend changed', async () => {
+    useAnalysisStore.getState().setSettings({ backend: 'remote' });
+    useAnalysisStore.getState().setEnabled(true);
+    await settle();
+    remotes[0]!.emit('closed', 'lost');
+    useAnalysisStore.getState().setEnabled(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(remotes).toHaveLength(1);
   });
 });
