@@ -1,4 +1,12 @@
-import { useState, type ChangeEvent, type DragEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import {
+  OnlineImportError,
+  SITE_LABEL,
+  fetchOnlineGamePgn,
+  fetchOnlineGames,
+  type OnlineGame,
+  type OnlineSite,
+} from '../../import';
 import { splitPgnGames } from '../../store/pgn';
 import { useGameStore } from '../../store/gameStore';
 import styles from './ImportPanel.module.css';
@@ -20,6 +28,47 @@ export function gameLabel(game: string, i: number): string {
   return `${w ?? '?'} – ${b ?? '?'}${r ? ` (${r})` : ''}`;
 }
 
+const STORAGE_KEY = 'chesslab.import.online';
+const SITES: OnlineSite[] = ['lichess', 'chesscom'];
+
+interface Saved {
+  site: OnlineSite;
+  users: Partial<Record<OnlineSite, string>>;
+}
+
+function readSaved(): Saved {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    if (raw && typeof raw === 'object') {
+      const r = raw as { site?: unknown; users?: Record<string, unknown> };
+      const users: Saved['users'] = {};
+      for (const k of SITES) if (typeof r.users?.[k] === 'string') users[k] = r.users[k] as string;
+      return { site: r.site === 'chesscom' ? 'chesscom' : 'lichess', users };
+    }
+  } catch {
+    /* storage unavailable or corrupt: start fresh */
+  }
+  return { site: 'lichess', users: {} };
+}
+
+function writeSaved(v: Saved): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
+}
+
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+function playerLabel(p: { name: string; rating?: number }): string {
+  return p.rating !== undefined ? `${p.name} (${p.rating})` : p.name;
+}
+
+function errorText(e: unknown): string {
+  return e instanceof OnlineImportError ? e.message : 'Something went wrong – please try again';
+}
+
 export function ImportPanel({ onLoaded }: Props) {
   const loadFen = useGameStore((s) => s.loadFen);
   const loadPgn = useGameStore((s) => s.loadPgn);
@@ -30,6 +79,70 @@ export function ImportPanel({ onLoaded }: Props) {
   const [games, setGames] = useState<string[]>([]);
   const [selected, setSelected] = useState(0);
   const [dragging, setDragging] = useState(false);
+
+  const [saved] = useState(readSaved);
+  const [site, setSite] = useState<OnlineSite>(saved.site);
+  const [users, setUsers] = useState(saved.users);
+  const [online, setOnline] = useState<OnlineGame[] | null>(null);
+  const [fetchedFor, setFetchedFor] = useState('');
+  const [fetching, setFetching] = useState(false);
+  const [loadingId, setLoadingId] = useState('');
+  const [onlineError, setOnlineError] = useState('');
+  const [onlineOk, setOnlineOk] = useState('');
+  const seq = useRef(0);
+  const username = users[site] ?? '';
+
+  const chooseSite = (next: OnlineSite) => {
+    seq.current++;
+    setSite(next);
+    setOnline(null);
+    setOnlineError('');
+    setOnlineOk('');
+    setFetching(false);
+    setLoadingId('');
+    writeSaved({ site: next, users });
+  };
+
+  const fetchGames = async () => {
+    const id = ++seq.current;
+    setFetching(true);
+    setOnlineError('');
+    setOnlineOk('');
+    setOnline(null);
+    setLoadingId('');
+    const name = username.trim();
+    try {
+      const list = await fetchOnlineGames(site, name);
+      if (id !== seq.current) return;
+      setOnline(list);
+      setFetchedFor(name);
+      writeSaved({ site, users: { ...users, [site]: name } });
+    } catch (e) {
+      if (id === seq.current) setOnlineError(errorText(e));
+    } finally {
+      if (id === seq.current) setFetching(false);
+    }
+  };
+
+  const openOnline = async (game: OnlineGame) => {
+    const id = ++seq.current;
+    setLoadingId(game.id);
+    setOnlineError('');
+    setOnlineOk('');
+    try {
+      const text = await fetchOnlineGamePgn(game);
+      if (id !== seq.current) return;
+      if (loadPgn(text)) {
+        useGameStore.getState().goTo(0);
+        setOnlineOk(`Loaded: ${game.white.name} – ${game.black.name}`);
+        onLoaded?.();
+      } else setOnlineError('Could not read the game (invalid PGN)');
+    } catch (e) {
+      if (id === seq.current) setOnlineError(errorText(e));
+    } finally {
+      if (id === seq.current) setLoadingId('');
+    }
+  };
 
   const submitFen = () => {
     if (loadFen(fen)) {
@@ -157,6 +270,94 @@ export function ImportPanel({ onLoaded }: Props) {
           </p>
         )}
       </div>
+
+      <section className={styles.group} aria-labelledby="online-heading">
+        <h3 id="online-heading" className={styles.heading}>
+          Online games
+        </h3>
+        <div role="radiogroup" aria-label="Site" className={styles.sites}>
+          {SITES.map((s) => (
+            <label key={s} className={styles.site}>
+              <input
+                type="radio"
+                name="online-site"
+                className={styles.siteInput}
+                checked={site === s}
+                onChange={() => chooseSite(s)}
+              />
+              <span>{SITE_LABEL[s]}</span>
+            </label>
+          ))}
+        </div>
+        <div className={styles.row}>
+          <input
+            className={styles.input}
+            aria-label="Username"
+            placeholder={`${SITE_LABEL[site]} username`}
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={username}
+            onChange={(e) => setUsers({ ...users, [site]: e.target.value })}
+            onKeyDown={(e) => e.key === 'Enter' && !fetching && void fetchGames()}
+          />
+          <button type="button" disabled={fetching} onClick={() => void fetchGames()}>
+            Fetch games
+          </button>
+        </div>
+        {fetching && (
+          <p className={styles.status} role="status">
+            Loading games…
+          </p>
+        )}
+        {onlineError && (
+          <p className={styles.error} role="alert">
+            {onlineError}
+          </p>
+        )}
+        {onlineOk && (
+          <p className={styles.status} role="status">
+            {onlineOk}
+          </p>
+        )}
+        {online && online.length === 0 && <p className={styles.status}>No games found.</p>}
+        {online && online.length > 0 && (
+          <ul className={styles.games} aria-label="Recent games">
+            {online.map((g) => {
+              const meWhite = same(g.white.name, fetchedFor);
+              const meBlack = same(g.black.name, fetchedFor);
+              return (
+                <li key={g.id}>
+                  <button
+                    type="button"
+                    className={styles.game}
+                    disabled={loadingId !== ''}
+                    aria-busy={loadingId === g.id}
+                    onClick={() => void openOnline(g)}
+                  >
+                    <span className={styles.players}>
+                      <span className={meWhite ? styles.me : undefined}>
+                        {playerLabel(g.white)}
+                        {meWhite && <span className={styles.sr}> (you, White)</span>}
+                      </span>
+                      {' – '}
+                      <span className={meBlack ? styles.me : undefined}>
+                        {playerLabel(g.black)}
+                        {meBlack && <span className={styles.sr}> (you, Black)</span>}
+                      </span>
+                    </span>
+                    <span className={styles.meta}>
+                      {[g.result, g.date.slice(0, 10), g.timeControl ?? g.speed, g.opening]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
