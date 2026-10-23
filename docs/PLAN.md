@@ -56,3 +56,27 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M6-1 | Docker image + compose for server mode | worker | done |
 | M6-2 | Performance pass, accessibility, docs | worker | done |
 | M6-3 | Security review of server + hosting — `docs/SECURITY.md`, ADR-008 (Origin check), Stockfish-safe FEN validation, verified engine downloads, systemd/nginx/docker hardening; P1–P3 follow-ups listed in SECURITY.md | architect | done |
+
+## M7 — Online game import (lichess, chess.com)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M7-1 | Fetch a user's recent games from lichess and chess.com public APIs, pick a game, load PGN into the app, run review | worker | in-progress |
+
+## M8 — Play against the engine
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M8-1 | Play mode: colour, strength (Elo/skill), time per move, engine moves via WASM, promotion dialog, resign/takeback, game-over handling | senior | in-progress |
+
+## M9 — Product follow-ups (decided 2026-10-23)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M9-1 | Per-engine analysis settings (depth, MultiPV, threads per enabled engine) | senior | in-progress |
+| M9-2 | Server access token (`ACCESS_TOKEN`, `hello.token`, Settings field) | senior | in-progress (same run as M9-1) |
+| M9-3 | Full-NNUE WASM build as opt-in "maximum strength" engine | senior | in-progress (same run as M9-1) |
+| M9-4 | CI: deterministic tests (hardwareConcurrency), Stockfish fetch + cache in the e2e job | worker | in-progress (split across M9-1 and M10-1 runs) |
+
+## M10 — Security backlog P2/P3
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M10-1 | CSP for the SPA, HSTS, Docker base-image digests, GitHub Actions pinned by SHA, abuse logging | senior | in-progress |
+| M10-2 | Hash-change throttling, IP-log hashing (deferred) | senior | todo |
