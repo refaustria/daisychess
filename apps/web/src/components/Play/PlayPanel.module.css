@@ -1,0 +1,168 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.6rem 0.25rem;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.panel p {
+  margin: 0;
+}
+
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segment {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+
+.segment + .segment {
+  border-left: 1px solid var(--border);
+}
+
+/* Visually hidden native radio: keeps arrow-key navigation and the radio semantics. */
+.segment input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.segment span {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  text-align: center;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.segment input:checked + span {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.segment input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+  box-shadow: inset 0 0 0 4px var(--surface);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 600;
+}
+
+.field select {
+  min-width: 10rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.note,
+.meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.panel button {
+  min-height: 36px;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.panel button:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.panel .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.status {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.statusYou {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.result {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.score {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.error {
+  color: var(--danger);
+}

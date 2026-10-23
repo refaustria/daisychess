@@ -4,6 +4,7 @@ import {
   currentFen,
   gameStatus,
   isCheck,
+  isPromotionMove,
   lastMove,
   legalDests,
   turn,
@@ -150,5 +151,14 @@ describe('actions', () => {
     st().loadFen('8/P6k/8/8/8/8/7K/8 w - - 0 1');
     st().makeMove('a7', 'a8', 'n');
     expect(st().moves[0]?.promotion).toBe('n');
+  });
+
+  it('isPromotionMove: only legal pawn moves to the last rank', () => {
+    st().loadFen('1n5k/P7/8/8/8/8/8/K7 w - - 0 1');
+    expect(isPromotionMove(st(), 'a7', 'a8')).toBe(true);
+    expect(isPromotionMove(st(), 'a7', 'b8')).toBe(true);
+    expect(isPromotionMove(st(), 'a1', 'a2')).toBe(false);
+    st().loadFen('n6k/P7/8/8/8/8/8/K7 w - - 0 1');
+    expect(isPromotionMove(st(), 'a7', 'a8')).toBe(false); // blocked
   });
 });

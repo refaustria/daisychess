@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const set = vi.fn();
@@ -57,4 +57,90 @@ describe('Board', () => {
     expect(lastSet().movable?.dests.size).toBe(0);
   });
 });
+
+type MoveEvent = (from: string, to: string) => void;
+const moveHandler = (): MoveEvent =>
+  (
+    set.mock.calls.filter((c) => (c[0] as { events?: unknown }).events).at(-1)?.[0] as {
+      events: { move: MoveEvent };
+    }
+  ).events.move;
+
+describe('Board promotion dialog', () => {
+  const WHITE_PROMO = '7k/P7/8/8/8/8/8/K7 w - - 0 1';
+  const BLACK_PROMO = '7k/8/8/8/8/8/p7/7K b - - 0 1';
+  beforeEach(() => useGameStore.setState({ orientation: 'white' }));
+
+  it('asks for the piece (keyboard R) instead of defaulting to a queen', () => {
+    useGameStore.getState().loadFen(WHITE_PROMO);
+    render(<Board />);
+    act(() => moveHandler()('a7', 'a8'));
+    const dialog = screen.getByRole('dialog', { name: 'Choose promotion piece' });
+    expect(useGameStore.getState().moves).toHaveLength(0);
+    const buttons = dialog.querySelectorAll('button');
+    expect([...buttons].map((b) => b.dataset.piece)).toEqual(['q', 'n', 'r', 'b']);
+    // Queen on a8 (top-left for White), stacked downwards; white pieces; queen focused.
+    expect((buttons[0] as HTMLElement).style.left).toBe('0%');
+    expect((buttons[0] as HTMLElement).style.top).toBe('0%');
+    expect((buttons[3] as HTMLElement).style.top).toBe('37.5%');
+    expect(dialog.querySelector('piece')?.className).toBe('queen white');
+    expect(document.activeElement).toBe(buttons[0]);
+    fireEvent.keyDown(window, { key: 'r' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(useGameStore.getState().moves[0]?.san).toBe('a8=R+');
+  });
+
+  it('black promotion by mouse, positioned from the bottom when White is at the bottom', () => {
+    useGameStore.getState().loadFen(BLACK_PROMO);
+    render(<Board />);
+    act(() => moveHandler()('a2', 'a1'));
+    const knight = screen.getByRole('button', { name: /knight/ });
+    expect(knight.style.top).toBe('75%'); // a1 is row 7; knight is second from the edge
+    expect(knight.querySelector('piece')?.className).toBe('knight black');
+    fireEvent.click(knight);
+    expect(useGameStore.getState().moves[0]?.san).toBe('a1=N');
+  });
+
+  it('orientation black: top edge for Black, file mirrored', () => {
+    useGameStore.getState().loadFen(BLACK_PROMO);
+    act(() => useGameStore.setState({ orientation: 'black' }));
+    render(<Board />);
+    act(() => moveHandler()('a2', 'a1'));
+    const queen = screen.getByRole('button', { name: /queen/ });
+    expect(queen.style.left).toBe('87.5%');
+    expect(queen.style.top).toBe('0%');
+  });
+
+  it('Escape cancels and restores the position on the board', () => {
+    useGameStore.getState().loadFen(WHITE_PROMO);
+    render(<Board />);
+    const before = set.mock.calls.length;
+    act(() => moveHandler()('a7', 'a8'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(useGameStore.getState().moves).toHaveLength(0);
+    const resynced = set.mock.calls.slice(before).some((c) => (c[0] as SetArg).fen);
+    expect(resynced).toBe(true);
+  });
+
+  it('non-promotion moves go straight to the store', () => {
+    render(<Board />);
+    act(() => moveHandler()('e2', 'e4'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(useGameStore.getState().moves).toHaveLength(1);
+  });
+});
+
+describe('Board movableColor', () => {
+  it('only lets the given colour move, on its turn; null locks the board', () => {
+    const { rerender } = render(<Board movableColor="white" />);
+    expect(lastSet().movable?.color).toBe('white');
+    rerender(<Board movableColor="black" />);
+    expect(lastSet().movable?.color).toBeUndefined();
+    expect(lastSet().movable?.dests.size).toBe(0);
+    rerender(<Board movableColor={null} />);
+    expect(lastSet().movable?.color).toBeUndefined();
+  });
+});
+
 afterEach(cleanup);

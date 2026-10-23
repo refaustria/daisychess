@@ -2,18 +2,21 @@ import { Chessground } from 'chessground';
 import type { Api } from 'chessground/api';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { startMoveSounds } from '../../sound/sounds';
 import { useSettingsStore } from '../../store/settingsStore';
 import { loadPieceSet } from './pieceCss';
 import {
   currentFen,
   isCheck,
+  isPromotionMove,
   lastMove,
   legalDests,
   turn,
   useGameStore,
+  type Orientation,
 } from '../../store/gameStore';
+import { PromotionDialog, type PromotionPiece } from './PromotionDialog';
 import 'chessground/assets/chessground.base.css';
 import styles from './Board.module.css';
 
@@ -22,11 +25,22 @@ export interface BoardProps {
   shapes?: DrawShape[];
   /** When set, this position is shown read-only instead of the game position. */
   previewFen?: string | null;
+  /**
+   * Restricts who may move: `undefined` = the side to move (analysis board), a colour = only that
+   * colour and only on its turn (play mode), `null` = nobody.
+   */
+  movableColor?: Orientation | null;
+}
+
+interface PendingPromotion {
+  from: string;
+  to: string;
+  color: Orientation;
 }
 
 const NO_SHAPES: DrawShape[] = [];
 
-export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}) {
+export function Board({ shapes = NO_SHAPES, previewFen = null, movableColor }: BoardProps = {}) {
   const ref = useRef<HTMLDivElement>(null);
   const api = useRef<Api | null>(null);
   const state = useGameStore();
@@ -35,6 +49,9 @@ export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}
   const highlightStyle = useSettingsStore((s) => s.highlightStyle);
   const pieceSet = useSettingsStore((s) => s.pieceSet);
   const [readySet, setReadySet] = useState<string | null>(null);
+  const [promotion, setPromotion] = useState<PendingPromotion | null>(null);
+  /** Bumped to push the game position to chessground again (after a cancelled promotion). */
+  const [resync, setResync] = useState(0);
 
   useEffect(() => startMoveSounds(), []);
 
@@ -66,6 +83,7 @@ export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}
     if (!ref.current) return;
     api.current = Chessground(ref.current, {
       movable: { free: false },
+      premovable: { enabled: false },
       draggable: { showGhost: true },
       highlight: { lastMove: true, check: true },
       coordinates: useSettingsStore.getState().coordinates,
@@ -81,7 +99,10 @@ export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}
     api.current?.set({
       events: {
         move: (from, to) => {
-          makeMove(from, to);
+          const game = useGameStore.getState();
+          // Pawn to the last rank: ask for the piece; chessground already shows the pawn there.
+          if (isPromotionMove(game, from, to)) setPromotion({ from, to, color: turn(game) });
+          else makeMove(from, to);
         },
       },
     });
@@ -96,6 +117,29 @@ export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}
   const last = lastMove(state);
   const check = !previewing && isCheck(state);
   const { orientation } = state;
+  const canMove = !previewing && (movableColor === undefined || movableColor === side);
+
+  // A pending promotion belongs to the position it was started in.
+  useEffect(() => {
+    setPromotion(null);
+  }, [gameFen, previewing]);
+
+  const promotionRef = useRef<PendingPromotion | null>(null);
+  promotionRef.current = promotion;
+  const choosePromotion = useCallback(
+    (piece: PromotionPiece) => {
+      const p = promotionRef.current;
+      promotionRef.current = null;
+      setPromotion(null);
+      if (p) makeMove(p.from, p.to, piece);
+    },
+    [makeMove],
+  );
+  const cancelPromotion = useCallback(() => {
+    setPromotion(null);
+    setResync((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     api.current?.set({
       fen,
@@ -103,12 +147,12 @@ export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}
       orientation,
       check,
       lastMove: previewing ? undefined : (last as Key[] | undefined),
-      movable: previewing
-        ? { free: false, color: undefined, dests: new Map<Key, Key[]>() }
-        : { free: false, color: side, dests: legalDests(state) as Map<Key, Key[]> },
+      movable: canMove
+        ? { free: false, color: side, dests: legalDests(state) as Map<Key, Key[]> }
+        : { free: false, color: undefined, dests: new Map<Key, Key[]>() },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- state is derived from fen/ply
-  }, [fen, side, orientation, check, previewing, state.ply, state.startFen, state.moves]);
+  }, [fen, side, orientation, check, canMove, resync, state.ply, state.startFen, state.moves]);
 
   useEffect(() => {
     // Coordinates are part of the wrap markup, so a redraw is needed after changing the option.
@@ -121,15 +165,27 @@ export function Board({ shapes = NO_SHAPES, previewFen = null }: BoardProps = {}
   }, [shapes]);
 
   return (
-    <div
-      className={styles.board}
-      data-testid="board"
-      role="group"
-      aria-label="Chess board"
-      aria-describedby="board-note"
-      data-preview={previewing || undefined}
-      data-pieces-ready={readySet === pieceSet || undefined}
-      ref={ref}
-    />
+    <div className={styles.root}>
+      <div
+        className={styles.board}
+        data-testid="board"
+        role="group"
+        aria-label="Chess board"
+        aria-describedby="board-note"
+        data-preview={previewing || undefined}
+        data-pieces-ready={readySet === pieceSet || undefined}
+        ref={ref}
+      />
+      {promotion && (
+        <PromotionDialog
+          to={promotion.to}
+          color={promotion.color}
+          orientation={orientation}
+          pieceSet={pieceSet}
+          onSelect={choosePromotion}
+          onCancel={cancelPromotion}
+        />
+      )}
+    </div>
   );
 }

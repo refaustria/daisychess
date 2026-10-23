@@ -62,6 +62,16 @@ export function isCheck(s: GameState): boolean {
   return chessAt(s).isCheck();
 }
 
+/**
+ * True when moving the piece on `from` to `to` is a legal pawn promotion in the viewed position
+ * (the UI then asks for the piece before calling {@link GameActions.makeMove}).
+ */
+export function isPromotionMove(s: GameState, from: string, to: string): boolean {
+  return chessAt(s)
+    .moves({ verbose: true })
+    .some((m) => m.from === from && m.to === to && m.promotion !== undefined);
+}
+
 export function gameStatus(s: GameState): GameStatus {
   const c = chessAt(s);
   if (c.isCheckmate()) return 'checkmate';
@@ -75,6 +85,9 @@ interface GameActions {
    * Plays a move. If the viewed position is not the tip of the game, the
    * future moves are truncated first (the usual "overwrite line" behaviour).
    * Returns false for illegal moves.
+   *
+   * `promotion` (q/r/b/n) selects the piece for a pawn reaching the last rank. The board asks the
+   * user (promotion dialog) and always passes it; programmatic callers that omit it get a queen.
    */
   makeMove: (from: string, to: string, promotion?: string) => boolean;
   undo: () => void;
@@ -99,8 +112,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const chess = chessAt(s);
     const piece = chess.get(from as Parameters<Chess['get']>[0]);
     const isPromo = piece?.type === 'p' && (to[1] === '8' || to[1] === '1');
-    // TODO: show a promotion dialog (later task); default to queen for now.
-    const promo = isPromo ? (promotion ?? 'q') : undefined;
+    // The board always passes the chosen piece; the queen default is for programmatic callers.
+    const promo = isPromo ? (promotion ?? 'q').toLowerCase() : undefined;
     let result;
     try {
       result = chess.move({ from, to, promotion: promo as PieceSymbol | undefined });

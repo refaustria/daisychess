@@ -73,13 +73,14 @@
 
 .tabs {
   display: flex;
-  gap: 0.25rem;
+  flex-wrap: wrap;
+  gap: 0.15rem;
   border-bottom: 1px solid var(--border);
 }
 
 .tab,
 .tabActive {
-  padding: 0.4rem 0.9rem;
+  padding: 0.4rem 0.5rem;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;

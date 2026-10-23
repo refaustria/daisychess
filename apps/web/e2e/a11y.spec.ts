@@ -85,8 +85,8 @@ test('tabs follow the WAI-ARIA pattern', async ({ page }) => {
   const moves = page.getByRole('tab', { name: 'Moves' });
   await moves.focus();
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: 'Import' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tab', { name: 'Import' })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Play' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Play' })).toBeFocused();
   await page.keyboard.press('End');
   await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute(
     'aria-selected',

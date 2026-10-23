@@ -1,0 +1,49 @@
+/* Doubled class: wins over chessground's `.cg-wrap { position: relative }`. */
+.overlay.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border-radius: var(--radius);
+}
+
+.choice {
+  position: absolute;
+  width: 12.5%;
+  height: 12.5%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition:
+    border-radius 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.choice:hover,
+.choice:focus-visible {
+  border-radius: 0;
+  background: var(--accent);
+}
+
+.choice:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: -3px;
+}
+
+.icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Overrides `.cg-wrap piece` (absolute, 12.5 %, no pointer events) for the icons. */
+.choice .icon :global(piece) {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: scale(0.85);
+}

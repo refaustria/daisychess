@@ -1,5 +1,5 @@
 import '@chesslab/ui-theme/base.css';
-import { lazy, Suspense, useMemo, useState, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useMemo, type KeyboardEvent } from 'react';
 import { AnalysisPanel } from './components/Analysis/AnalysisPanel';
 import { PreviewBanner } from './components/Analysis/PreviewBanner';
 import { analysisShapes } from './components/Analysis/shapes';
@@ -10,8 +10,11 @@ import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
+import { PlayIndicator } from './components/Play/PlayIndicator';
+import { usePlayMovableColor } from './components/Play/usePlayBoard';
 import { selectPrimary, useAnalysisStore } from './store/analysisStore';
 import { usePreviewStore } from './store/previewStore';
+import { useUiStore, type TabId } from './store/uiStore';
 import {
   currentFen,
   gameStatus,
@@ -22,6 +25,9 @@ import {
 } from './store/gameStore';
 import styles from './App.module.css';
 
+const PlayPanel = lazy(() =>
+  import('./components/Play/PlayPanel').then((m) => ({ default: m.PlayPanel })),
+);
 const ReviewPanel = lazy(() =>
   import('./components/Review/ReviewPanel').then((m) => ({ default: m.ReviewPanel })),
 );
@@ -29,9 +35,9 @@ const SettingsPanel = lazy(() =>
   import('./components/Settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })),
 );
 
-type TabId = 'moves' | 'import' | 'review' | 'settings';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'moves', label: 'Moves' },
+  { id: 'play', label: 'Play' },
   { id: 'import', label: 'Import' },
   { id: 'review', label: 'Review' },
   { id: 'settings', label: 'Settings' },
@@ -100,12 +106,14 @@ function ConnectedBoard() {
       }),
     [enabled, terminal, previewFen, analysisFen, gameFen, best, hover],
   );
-  return <Board shapes={shapes} previewFen={previewFen} />;
+  const movableColor = usePlayMovableColor();
+  return <Board shapes={shapes} previewFen={previewFen} movableColor={movableColor} />;
 }
 
 export function App() {
   const state = useGameStore();
-  const [tab, setTab] = useState<'moves' | 'import' | 'review' | 'settings'>('moves');
+  const tab = useUiStore((s) => s.activeTab);
+  const setTab = useUiStore((s) => s.setActiveTab);
   const alert = gameStatus(state) === 'checkmate' || isCheck(state);
   return (
     <div className={styles.app}>
@@ -123,6 +131,7 @@ export function App() {
             </p>
             <ConnectedBoard />
             <PreviewBanner />
+            <PlayIndicator />
           </div>
         </div>
         <section className={styles.side}>
@@ -164,6 +173,7 @@ export function App() {
             {tab === 'moves' && <MoveList />}
             {tab === 'import' && <ImportPanel onLoaded={() => setTab('moves')} />}
             <Suspense fallback={<p className={styles.loading}>Loading…</p>}>
+              {tab === 'play' && <PlayPanel />}
               {tab === 'review' && <ReviewPanel />}
               {tab === 'settings' && <SettingsPanel />}
             </Suspense>

@@ -1,7 +1,12 @@
-.board {
+.root {
+  position: relative;
   width: var(--board-size, min(90vw, 70vh));
-  aspect-ratio: 1;
   max-width: 100%;
+}
+
+.board {
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
