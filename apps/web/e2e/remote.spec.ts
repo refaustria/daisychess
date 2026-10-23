@@ -61,38 +61,29 @@ async function stopServer(): Promise<void> {
   clearTimeout(timer);
 }
 
-/** Creates a RemoteEngineClient in the page and runs `script` against it. */
+/**
+ * Creates a RemoteEngineClient in the page and runs `script` against it (`engine`, `collect` in scope).
+ * The whole thing is sent as one expression string: Playwright evaluates it over the DevTools
+ * protocol, which the page's CSP does not govern, whereas `new Function` inside the page would
+ * need 'unsafe-eval' (the preview server enforces the production CSP, docs/SECURITY.md).
+ * Page-side API: src/engine/devHook.ts (`window.__chesslab.createRemoteEngine`).
+ */
 function inPage<T>(page: Page, script: string): Promise<T> {
-  return page.evaluate(
-    async ({ url, script }) => {
-      // Page-side types: the hook is declared in src/engine/devHook.ts.
-      type Handle = AsyncIterable<Info> & { bestMove: Promise<{ move: string } | null> };
-      interface Client {
-        load(): Promise<void>;
-        analyze(fen: string, o: object): Handle;
-        dispose(): Promise<void>;
-      }
-      const hook = (window as unknown as { __chesslab: { createRemoteEngine(o: object): Promise<Client> } })
-        .__chesslab;
-      const engine = await hook.createRemoteEngine({ url });
-      await engine.load();
-      const collect = async (h: Handle) => {
-        const infos: Info[] = [];
-        for await (const i of h) infos.push(i);
-        return { infos, bestMove: await h.bestMove };
-      };
-      try {
-        const fn = new Function('engine', 'collect', `return (async () => { ${script} })();`) as (
-          e: Client,
-          c: typeof collect,
-        ) => Promise<unknown>;
-        return await fn(engine, collect);
-      } finally {
-        await engine.dispose();
-      }
-    },
-    { url: WS_URL, script },
-  ) as Promise<T>;
+  const expression = `(async () => {
+    const engine = await window.__chesslab.createRemoteEngine({ url: ${JSON.stringify(WS_URL)} });
+    await engine.load();
+    const collect = async (h) => {
+      const infos = [];
+      for await (const i of h) infos.push(i);
+      return { infos, bestMove: await h.bestMove };
+    };
+    try {
+      return await (async () => { ${script} })();
+    } finally {
+      await engine.dispose();
+    }
+  })()`;
+  return page.evaluate(expression) as Promise<T>;
 }
 
 test.describe('remote engine (server mode)', () => {

@@ -4,6 +4,13 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege for GITHUB_TOKEN (docs/SECURITY.md, supply chain).
+permissions:
+  contents: read
+
+# Third-party actions are pinned by full commit SHA (tags are mutable); the release tag is in the
+# trailing comment. Bump SHA and comment together (`git ls-remote https://github.com/<repo> <tag>`).
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -11,9 +18,9 @@ jobs:
       matrix:
         node: [20, 22]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -22,17 +29,49 @@ jobs:
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm test
+      # nginx configs must carry the CSP built from apps/web/csp.config.mjs (inline script hash)
+      - run: node scripts/check-csp.mjs
 
   e2e:
     runs-on: ubuntu-latest
+    env:
+      # Same pin as docker/server.Dockerfile; also the engine cache key.
+      STOCKFISH_VERSION: sf_19
+      STOCKFISH_SHA256: 9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @chesslab/web exec playwright install --with-deps chromium
+
+      # Native Stockfish for the server-mode specs (apps/server/engines.json ->
+      # engines/stockfish/stockfish). fetch-engines verifies the sha256 and is a no-op on a hit.
+      - name: Cache Stockfish
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: engines/stockfish
+          key: stockfish-${{ runner.os }}-${{ env.STOCKFISH_VERSION }}-${{ env.STOCKFISH_SHA256 }}
+      - run: pnpm fetch-engines
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('./apps/web/node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @chesslab/web exec playwright install --with-deps chromium
+      # System libraries are not in the cache.
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @chesslab/web exec playwright install-deps chromium
+
       - run: pnpm build
       - run: pnpm e2e

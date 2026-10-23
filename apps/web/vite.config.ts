@@ -1,16 +1,54 @@
 /// <reference types="vitest/config" />
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { buildCsp, CSP_REPORT_FILE } from './csp.config.mjs';
 import { stockfishEngines } from './vite-plugin-stockfish';
 
-const headers = {
+const isolation = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'require-corp',
 };
 
+const CSP_REPORT_PATH = '/__csp-report';
+
+/** Preview-only sink for `report-uri`: one JSON line per violation, so e2e can assert none. */
+function cspReportCollector(): Plugin {
+  return {
+    name: 'chesslab:csp-report-collector',
+    configurePreviewServer(server) {
+      server.middlewares.use(CSP_REPORT_PATH, (req, res) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8').slice(0, 16_384);
+          mkdirSync(dirname(CSP_REPORT_FILE), { recursive: true });
+          appendFileSync(CSP_REPORT_FILE, `${JSON.stringify({ at: new Date().toISOString(), body })}\n`);
+          console.error(`[csp-violation] ${body}`);
+          res.statusCode = 204;
+          res.end();
+        });
+      });
+    },
+  };
+}
+
+// `vite preview` serves the production build with the production policy (csp.config.mjs). The
+// single addition is loopback WebSockets: the e2e specs start engine servers on 127.0.0.1:858x.
+// The dev server gets no CSP: Vite injects inline scripts/styles for HMR and React Refresh.
+const previewHeaders = {
+  ...isolation,
+  // 'report-sample' puts the first 40 characters of a blocked script into the report.
+  'Content-Security-Policy': `${buildCsp(['ws://127.0.0.1:*', 'ws://localhost:*']).replace(
+    "script-src 'self'",
+    "script-src 'self' 'report-sample'",
+  )}; report-uri ${CSP_REPORT_PATH}`,
+};
+
 export default defineConfig({
-  plugins: [react(), stockfishEngines()],
+  plugins: [react(), stockfishEngines(), cspReportCollector()],
   resolve: {
     alias: {
       '@chesslab/engine-core': fileURLToPath(
@@ -18,7 +56,7 @@ export default defineConfig({
       ),
     },
   },
-  server: { port: 5180, strictPort: true, headers },
-  preview: { headers },
+  server: { port: 5180, strictPort: true, headers: isolation },
+  preview: { headers: previewHeaders },
   test: { environment: 'jsdom', globals: false, exclude: ['**/node_modules/**', 'e2e/**'] },
 });

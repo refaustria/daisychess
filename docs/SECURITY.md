@@ -66,9 +66,36 @@ Public `/health` exposed per-engine busy/idle counts and the session count (tell
 - **nginx**: `limit_req` on `/ws`; `Content-Security-Policy: frame-ancestors 'none'` (clickjacking) on every response, repeated in the locations that declare their own `add_header` (nginx inheritance rule); all security headers use `always`. The repo copy `deploy/nginx/c.referee.at.conf` had been committed **empty** (47cffbf); it is restored from the live file (pre-certbot form) so the repo is the source of truth again.
 - **Docker**: `server` runs `read_only` with a 64 MB `/tmp` tmpfs, `cap_drop: ALL`, `no-new-privileges`; `web` keeps only `CHOWN/SETGID/SETUID/NET_BIND_SERVICE` (nginx master) and `no-new-privileges`; `docker/nginx.web.conf` mirrors the production limits and headers.
 
-### 2.8 Client side — no change
+### 2.8 Client side — Content-Security-Policy, fixed (M10-1)
 
-COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for threaded WASM and also isolate the page from cross-origin windows (no `window.opener` access, Spectre mitigation). `window.__chesslab` (`apps/web/src/engine/devHook.ts`) only exposes factories for code the page already ships; it grants nothing that an XSS would not already have, so it is harmless in production. `localStorage` holds theme, board/piece settings and analysis settings — no secrets, no personal data. The engine files are same-origin (ADR-005), so CSP work later (§4) can use `'self'` plus `'wasm-unsafe-eval'` and `blob:` for workers.
+COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for threaded WASM and also isolate the page from cross-origin windows (no `window.opener` access, Spectre mitigation). `window.__chesslab` (`apps/web/src/engine/devHook.ts`) only exposes factories for code the page already ships; it grants nothing that an XSS would not already have. `localStorage` holds theme, board/piece settings and analysis settings — no secrets, no personal data.
+
+**CSP (enforced since 2026-10-23).** Single source: `apps/web/csp.config.mjs` (`PRODUCTION_CSP`). nginx (`deploy/nginx/c.referee.at.conf`, `docker/nginx.web.conf`) holds a copy in `map $host $chesslab_csp` and sends it on every response (including `/assets/`, so the engine Workers get the same policy); `node scripts/check-csp.mjs [live conf]` fails on drift and runs in CI. `vite preview` sends the same policy (plus loopback `ws:` for the e2e engine servers, `'report-sample'` and a `report-uri`), so every Playwright spec runs under it.
+
+```
+default-src 'self'; script-src 'self' 'sha256-YOswKRJVs+FwLZbQstA9GmeqiOLqFnNMWa/1cEzxiD0=' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://lichess.org https://api.chess.com wss://c.referee.at; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+```
+
+| Directive | Why |
+|---|---|
+| `script-src 'self' 'sha256-…'` | The only inline script is the static theme bootstrap in `apps/web/index.html`; its hash is computed from the file. **Editing that script changes the hash** — `check-csp.mjs` (CI) then fails and prints the new nginx line. No `'unsafe-inline'`, no `'unsafe-eval'`. |
+| `'wasm-unsafe-eval'` | `WebAssembly.instantiate` in the Stockfish worker. |
+| `worker-src 'self'` | The engine worker is `new Worker(<same-origin URL>)`; Emscripten pthread workers are spawned from the worker's own script URL (`mainScriptUrlOrBlob` unset), verified live: 6 pthread workers from `/assets/engine/…/stockfish-19-lite.js`. No `blob:` needed. |
+| `style-src 'self'` | CSS files only. React `style` props and chessground write through the CSSOM, which CSP does not govern; no `<style>`/`style=""` injection in the production build (dev server gets no CSP — Vite injects inline styles/scripts for HMR). |
+| `img-src 'self' data:` | Piece sets and chessground board SVGs are `data:` URIs. |
+| `connect-src` | Same-origin engine WebSocket (`wss://c.referee.at` listed explicitly for browsers without CSP3 `'self'`→`wss:` matching), lichess and chess.com APIs for the online import. The Docker image uses the same list. A different deployment host needs its own `wss://` origin. |
+| `object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'` | Plugin, `<base>` and form hijacking; clickjacking. |
+
+Rollout: Report-Only on the live site first (headless Chromium through the app: board, browser engine to depth, Import/Settings tabs → only the zod probe below), then enforcing; all e2e specs pass under the enforced policy with zero non-benign reports (`apps/web/e2e/csp-violations.ts` fails the run otherwise).
+
+*Known benign report:* zod v4 probes for JIT support with `new Function("")` in a try/catch and falls back to its interpreter; the probe is blocked and reported (`script-src`, `eval`, sample `(function anonymous(\n) {\n\n})`). Nothing breaks; the e2e check allow-lists exactly that sample. Removing it needs `z.config({ jitless: true })` at app start (open, §4).
+
+### 2.9 Transport, supply chain and abuse logging — fixed (M10-1)
+
+- **HSTS** on `c.referee.at`: `Strict-Transport-Security: max-age=31536000` on every response, without `includeSubDomains`/`preload` (other `referee.at` subdomains are not ours). The certbot setup is permanent (renewal timer), which was the condition in ADR-002. Undo requires serving `max-age=0` for a while — browsers remember for a year.
+- **Docker base images pinned by digest**: `node:22-bookworm-slim@sha256:de170b39…`, `debian:bookworm-slim@sha256:7ff6ba31…`, `nginx:alpine@sha256:a3554c0d…` (multi-arch index digests, 2026-10-23; tag kept in the `FROM`). Refresh command in the Dockerfile header. `STOCKFISH_VERSION=sf_19` + `STOCKFISH_SHA256` were already pinned (verified).
+- **GitHub Actions pinned by commit SHA**: `actions/checkout` v7.0.1, `pnpm/action-setup` v6.1.0 (pnpm 12 support), `actions/setup-node` v7.1.0, `actions/cache` v6.1.0; workflow `permissions: contents: read`. The `e2e` job fetches the pinned, digest-verified Stockfish (`STOCKFISH_VERSION`/`STOCKFISH_SHA256` as in the Dockerfile) into a cache keyed by version + digest, and caches Playwright browsers keyed by the Playwright version.
+- **Abuse logging**: nginx `log_format chesslab` → `/var/log/nginx/c.referee.at.access.log` (rotated by the stock `/etc/logrotate.d/nginx`): address, time, method, **path without query string** (tokens in URLs never hit the log), status, bytes, `rt=` request time, `urt=` upstream time, `Origin`, User-Agent. No bodies. Per-IP counting: `awk '$5 ~ /^\/ws/ && ($7==403||$7==429) {print $1}' … | sort | uniq -c | sort -rn` (field numbers per the format). `deploy/fail2ban/` ships a filter (403/429 on `/ws`) and a jail (30 in 60 s → 10 min ban); fail2ban is **not installed** on the host, so nothing is active — see `deploy/README.md`.
 
 ## 3. Controls in place (after this review)
 
@@ -76,25 +103,24 @@ COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for t
 |---|---|
 | Protocol | Zod schemas with hard bounds; Stockfish-equivalent FEN validation; no free-form UCI options; 16 KiB frames; outgoing validation |
 | Server | Origin policy (403); `hello` handshake + timeout; per-connection rate limits; per-connection/per-IP/global session caps; wall-clock cap; backpressure; `shell: false` spawns; allow-listed options; crash isolation per lease; exponential respawn backoff with `degraded` state; graceful shutdown kills the cgroup |
-| nginx | TLS (certbot), `limit_conn 10`, `limit_req 5r/s burst 20`, 429s, `/health` only, COOP/COEP/CORP, nosniff, Referrer-Policy, `frame-ancestors 'none'`, `server_tokens off` |
+| nginx | TLS (certbot), HSTS (1 year, no subdomains), `limit_conn 10`, `limit_req 5r/s burst 20`, 429s, `/health` only, COOP/COEP/CORP, nosniff, Referrer-Policy, full enforced CSP (§2.8), `server_tokens off`, per-vhost access log with timings (no query strings) |
 | systemd | unprivileged user, no capabilities, seccomp `@system-service`, no egress, read-only FS, private /tmp and /dev, `ProtectProc`, `MemoryMax`, `TasksMax`, `KillMode=control-group` |
-| Docker | non-root, read-only, `cap_drop ALL`, `no-new-privileges`, tini, pinned Stockfish release + digest |
-| Supply chain | lockfile integrity, frozen installs, pinned `stockfish@19.0.1`, verified engine download |
+| Docker | non-root, read-only, `cap_drop ALL`, `no-new-privileges`, tini, base images pinned by digest, pinned Stockfish release + digest, same CSP as production |
+| Supply chain | lockfile integrity, frozen installs, pinned `stockfish@19.0.1`, verified engine download, GitHub Actions pinned by SHA, least-privilege `GITHUB_TOKEN` |
+| Browser | enforced CSP (hash-allowed inline script only, `'wasm-unsafe-eval'`, no `unsafe-*`), checked in CI and under every e2e spec |
 
 `systemd-analyze security chesslab-server`: **6.4 MEDIUM → 1.4 OK** (2026-10-23). The remaining flagged items — `PrivateUsers`, `ProcSubset`, `MemoryDenyWriteExecute`, `SystemCallFilter=~@resources/@privileged`, `PrivateNetwork`, `RootDirectory` — are intentionally left open for Node/Stockfish and the loopback listener.
 
 ## 4. Residual risks and recommendations
 
-The two P1 items (per-IP session cap, engine respawn backoff) are done, see §2.4 and ADR-008 addendum.
+The two P1 items (per-IP session cap, engine respawn backoff) are done, see §2.4 and ADR-008 addendum. Done in M10-1 (2026-10-23): full CSP (§2.8), HSTS, Docker digests, Actions pinned by SHA, abuse logging + fail2ban example (§2.9).
 
 | Prio | Item | Effort | Notes |
 |---|---|---|---|
-| P2 | **Full Content-Security-Policy** for the SPA (`default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'`) | 0.5 d | Must be tested with the WASM worker and chessground inline styles; start in `Content-Security-Policy-Report-Only`. |
-| P2 | **Pin Docker base images by digest** (`node:22-bookworm-slim@sha256:…`, `nginx:alpine@sha256:…`, `debian:bookworm-slim@sha256:…`) and add a renovate/dependabot job | 0.25 d | Tags are mutable; digests make the image reproducible. |
 | P2 | **Hash change throttling**: ignore `hash` changes within N s per session (keep the last value) | 0.25 d | Removes the 512 MB re-allocation per `analyze`; bounded today by the analyze rate. |
-| P2 | **CI supply chain**: pin GitHub Actions by commit SHA, enable `pnpm audit` in CI, Dependabot for npm | 0.25 d | `actions/*@v4` tags are mutable. |
-| P3 | **HSTS** (`max-age=31536000`) once the certbot setup is considered permanent | 0.1 d | Deliberately off (ADR-002); revisit. |
-| P3 | **Structured abuse logging**: count 403/429/`rate_limited` per IP, feed fail2ban | 0.5 d | Only useful once there is traffic. |
+| P2 | **Dependency update automation**: Dependabot/Renovate for npm, Docker digests and Actions SHAs; `pnpm audit` in CI | 0.25 d | Pins now exist, so updates must be deliberate; without a bot they go stale. |
+| P3 | **zod jitless**: `z.config({ jitless: true })` at app start | 0.05 d | Silences the benign CSP report from zod's `new Function` probe (§2.8); then drop the allow-list in `apps/web/e2e/csp-violations.ts`. |
+| P3 | **fail2ban**: install and enable `deploy/fail2ban/` once there is traffic | 0.1 d | Files ready; not installed on the host. Engine-level refusals (`rate_limited`, `no_capacity`) are only in the journal, not the access log. |
 | P3 | **IP logging policy**: hash or drop `X-Real-IP` at `info` level if logs are retained long-term | 0.1 d | Privacy hygiene; journal retention on the host is the real knob. |
 | P3 | **Fairy-Stockfish** (when enabled): repeat §2.1 against its validator before exposing variants | 0.5 d | Different engine, different `Position::set`. |
 
@@ -111,4 +137,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Origin: https://evil.example' -H 'C
   https://c.referee.at/ws                    # 403
 sudo systemd-analyze security chesslab-server
 STOCKFISH_VERSION=sf_19 STOCKFISH_SHA256=0000…0000 bash scripts/fetch-engines.sh --force  # must abort
+curl -sI https://c.referee.at/ | grep -iE 'content-security|strict-transport|cross-origin'
+node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at   # repo + live nginx carry PRODUCTION_CSP
+pnpm e2e                                     # all specs under the enforced CSP; fails on any violation report
 ```

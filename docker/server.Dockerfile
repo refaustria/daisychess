@@ -1,9 +1,11 @@
 # syntax=docker/dockerfile:1
+# Base images are pinned by digest (docs/SECURITY.md, supply chain); the tag is kept for
+# readability. Refresh: docker pull <tag> && docker image inspect --format '{{index .RepoDigests 0}}' <tag>
 # ChessLab engine server. Build from the repo root:
 #   docker build -f docker/server.Dockerfile -t chesslab-server .
 
 # ---- build: compile TS and create a pruned production tree -------------------------
-FROM node:22-bookworm-slim AS build
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 WORKDIR /repo
 # Matches "packageManager" in the root package.json (pnpm@12.11.2).
@@ -27,7 +29,7 @@ RUN pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server 
 RUN pnpm --filter @chesslab/server deploy --prod --legacy /out
 
 # ---- engine: Stockfish release binary -----------------------------------------------
-FROM debian:bookworm-slim AS engine
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS engine
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates tar jq \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
@@ -46,7 +48,7 @@ ENV STOCKFISH_VERSION=${STOCKFISH_VERSION} STOCKFISH_SHA256=${STOCKFISH_SHA256} 
 RUN bash scripts/fetch-engines.sh
 
 # ---- runtime ------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS runtime
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS runtime
 # tini as PID 1: forwards SIGTERM to node (clean shutdown, engine children get killed)
 # and reaps zombie Stockfish processes. Compose also works with `init: true`.
 RUN apt-get update && apt-get install -y --no-install-recommends tini \
