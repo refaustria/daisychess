@@ -77,6 +77,7 @@ let pagehideBound = false;
 /** True while the live analysis is switched off by the play store. */
 let analysisSuspended = false;
 let unwatchAnalysis: (() => void) | null = null;
+let unwatchGame: (() => void) | null = null;
 
 function suspendAnalysis(): void {
   const analysis = useAnalysisStore.getState();
@@ -131,7 +132,22 @@ function getController(): PlayController {
   return controller;
 }
 
+/**
+ * Ends the game when the game store is reset or a position/PGN is loaded (New game, loadFen,
+ * loadPgn, Import): those replace `headers` and/or `startFen`, ordinary moves, takebacks and
+ * navigation do not.
+ */
+function watchGame(): void {
+  unwatchGame?.();
+  unwatchGame = useGameStore.subscribe((s, prev) => {
+    if (usePlayStore.getState().mode !== 'playing') return;
+    if (s.headers !== prev.headers || s.startFen !== prev.startFen) finish({ reason: 'aborted' });
+  });
+}
+
 function finish(outcome: Outcome, message?: string): void {
+  unwatchGame?.();
+  unwatchGame = null;
   controller?.stop();
   usePlayStore.setState({
     mode: 'finished',
@@ -151,6 +167,8 @@ export async function configurePlay(next: Partial<PlayHooks>): Promise<void> {
 
 /** Stops any game, disposes the engine and restores the defaults of the store (tests). */
 export async function resetPlay(): Promise<void> {
+  unwatchGame?.();
+  unwatchGame = null;
   const c = controller;
   controller = null;
   if (c) await c.dispose();
@@ -186,6 +204,7 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
     game.reset();
     useGameStore.setState({ orientation: playerColor });
     suspendAnalysis();
+    watchGame();
     set({
       mode: 'playing',
       playerColor,
@@ -217,6 +236,8 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
   },
 
   stop: () => {
+    unwatchGame?.();
+    unwatchGame = null;
     controller?.stop();
     set({
       mode: 'idle',

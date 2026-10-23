@@ -9,7 +9,8 @@ export type EndReason =
   | 'fifty_moves'
   | 'threefold_repetition'
   | 'resign'
-  | 'engine_error';
+  | 'engine_error'
+  | 'aborted';
 
 export interface Outcome {
   result?: GameResult;
@@ -52,4 +53,5 @@ export const REASON_TEXT: Record<EndReason, string> = {
   threefold_repetition: 'Threefold repetition',
   resign: 'Resignation',
   engine_error: 'Engine error',
+  aborted: 'Position changed',
 };

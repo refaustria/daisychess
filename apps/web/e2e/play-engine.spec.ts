@@ -104,6 +104,7 @@ test('play vs engine: reply, take back, resign, rematch; analysis paused and res
   const status = page.getByTestId('play-status');
   await expect(status).toHaveText('Your move');
   await expect(engineSwitch).not.toBeChecked();
+  await expect(engineSwitch).toBeDisabled();
   await expect(page.getByTestId('board')).toHaveClass(/orientation-white/);
 
   // The engine's pieces cannot be moved.
@@ -141,6 +142,7 @@ test('play vs engine: reply, take back, resign, rematch; analysis paused and res
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
   await expect(engineSwitch).toBeChecked();
+  await expect(engineSwitch).toBeEnabled();
   expect(errors).toEqual([]);
 });
 

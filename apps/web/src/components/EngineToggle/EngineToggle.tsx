@@ -1,3 +1,4 @@
+import { usePlayStore } from '../../play/playStore';
 import {
   isAuthError,
   isRemoteKey,
@@ -51,17 +52,22 @@ export function EngineToggle() {
   const setEnabled = useAnalysisStore((a) => a.setEnabled);
   const retry = useAnalysisStore((a) => a.retry);
   const fallBackToBrowser = useAnalysisStore((a) => a.fallBackToBrowser);
+  const playing = usePlayStore((p) => p.mode === 'playing');
   const primary = usePrimaryAnalysis();
   const s = { ...primary, enabled, terminal, remote };
   const text = engineStatusText(s);
   const auth = s.status === 'error' && remote && isAuthError(text);
   return (
     <div className={styles.engine}>
-      <label className={styles.switch}>
+      <label
+        className={styles.switch}
+        title={playing ? 'Paused while playing against the engine' : undefined}
+      >
         <input
           type="checkbox"
           role="switch"
           checked={enabled}
+          disabled={playing}
           onChange={(e) => setEnabled(e.currentTarget.checked)}
           aria-describedby="engine-status"
         />

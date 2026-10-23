@@ -6,17 +6,20 @@ Vite + React 18 + TypeScript frontend. Product overview: [`../../README.md`](../
 
 ```
 src/
-  App.tsx            layout, tabs (Moves / Import / Review / Settings; the last two are lazy)
+  App.tsx            layout, tabs (Moves / Play / Import / Review / Settings; Review and Settings are lazy)
   components/        Board (chessground), Controls (keys, FEN), MoveList, Import, Analysis
                      (engine panel, tabs, compare strip), EvalBar, EngineToggle, ThemeToggle,
                      Review, Settings; each with a CSS module and tests
   store/             Zustand stores: gameStore (chess.js, history, navigation), analysisStore
                      (engines, lines, default + per-engine settings, page `env`; localStorage key
-                     `chesslab.analysis`), previewStore (line preview), settingsStore (themes,
+                     `chesslab.analysis`), previewStore (line preview), uiStore (active tab), settingsStore (themes,
                      server access token; localStorage key `chesslab.settings`), pgn helpers
   engine/            EngineClient implementations and glue: WasmEngineClient (Web Worker),
                      RemoteEngineClient (WebSocket protocol), UciSession, AnalysisController
                      (drives the stores), registry (browser + server engines), devHook
+  play/              Play vs Engine: playStore (game lifecycle, pauses live analysis, aborts on
+                     position load), PlayController (engine side, own WASM engine), outcome, strength
+                     (Elo presets)
   review/            BatchAnalyzer (both backends), reviewStore, annotatePgn, format
   sound/             move sounds
 e2e/                 Playwright specs (see below)

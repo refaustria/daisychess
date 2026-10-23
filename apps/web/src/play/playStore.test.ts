@@ -41,6 +41,23 @@ describe('takeBackPlies', () => {
 });
 
 describe('playStore', () => {
+  it.each([
+    ['reset', () => g().reset()],
+    ['loadFen', () => g().loadFen('7k/8/8/8/8/8/8/K7 w - - 0 1')],
+    ['loadPgn', () => g().loadPgn('1. d4 d5')],
+  ])('%s while playing aborts the game and restores analysis', async (_n, load) => {
+    p().start({ color: 'white' });
+    await flush();
+    expect(useAnalysisStore.getState().enabled).toBe(false);
+    load();
+    expect(p().mode).toBe('finished');
+    expect(p().reason).toBe('aborted');
+    expect(p().result).toBeUndefined();
+    expect(useAnalysisStore.getState().enabled).toBe(true);
+    await flush();
+    expect(g().moves.length).toBeLessThanOrEqual(2); // the engine does not keep playing
+  });
+
   it('start resets the game, orients the board, pauses analysis; resign restores it', async () => {
     p().start({ color: 'black', strength: '1800', moveTime: 100 });
     expect(p().mode).toBe('playing');

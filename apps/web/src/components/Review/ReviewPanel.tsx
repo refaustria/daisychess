@@ -2,6 +2,7 @@ import { MOVE_CLASSES, type ReviewSummary } from '@chesslab/engine-core';
 import { useMemo, useState } from 'react';
 import { annotatePgn } from '../../review/annotatePgn';
 import { CLASS_INFO, bestMoveSan, moveNumberLabel } from '../../review/format';
+import { usePlayStore } from '../../play/playStore';
 import { REVIEW_PRESETS, useReviewStore } from '../../review/reviewStore';
 import { useGameStore } from '../../store/gameStore';
 import { EvalGraph } from './EvalGraph';
@@ -147,6 +148,7 @@ export function ReviewPanel() {
   const cancel = useReviewStore((s) => s.cancel);
   const reset = useReviewStore((s) => s.reset);
   const hasMoves = useGameStore((s) => s.moves.length > 0);
+  const playing = usePlayStore((p) => p.mode === 'playing');
   const [preset, setPreset] = useState<PresetKey>('deep');
 
   const run = () => void start({ ...REVIEW_PRESETS[preset] });
@@ -229,10 +231,16 @@ export function ReviewPanel() {
         ))}
       </div>
       <div className={styles.row}>
-        <button type="button" className={styles.btnPrimary} disabled={!hasMoves} onClick={run}>
+        <button type="button" className={styles.btnPrimary} disabled={!hasMoves || playing}
+          onClick={run}
+        >
           Start
         </button>
-        {!hasMoves && <span className={styles.muted}>Play or import a game first.</span>}
+        {playing ? (
+          <span className={styles.muted}>Finish or stop the game first</span>
+        ) : (
+          !hasMoves && <span className={styles.muted}>Play or import a game first.</span>
+        )}
       </div>
     </div>
   );

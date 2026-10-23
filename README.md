@@ -11,7 +11,7 @@ Two analysis backends are offered and can be switched at runtime:
 
 ## Status
 
-All milestones M0–M6 are implemented; the live site is https://c.referee.at. Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
+All milestones M0–M10 are implemented (play, browser and server analysis, game review, play vs engine, online import, theming, hardening); the live site is https://c.referee.at. Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
 
 | Area | State |
 |---|---|
@@ -22,7 +22,7 @@ All milestones M0–M6 are implemented; the live site is https://c.referee.at. T
 | Engine registry and multi-engine comparison | done (Stockfish only; other UCI engines are configurable on the server but none are shipped) |
 | Theming (board colours, piece sets Cburnett/Letters, coordinates, highlights, sounds, dark/light) | done |
 | Accessibility / performance pass | done (axe e2e checks, keyboard-operable tabs; the board itself is mouse/touch only) |
-| `full` big-NNUE WASM build, opening database, accounts, multiplayer | not built (non-goals for v1 or future work) |
+| Opening database, accounts, multiplayer | not built (non-goals for v1) |
 
 ---
 
@@ -68,10 +68,10 @@ chesslab/
 - **Engine access:** a single `EngineClient` interface with two implementations:
   - `WasmEngineClient` — loads a WASM engine inside a Web Worker.
   - `RemoteEngineClient` — talks to the server over WebSocket.
-- **Layout:** a single page (`/`): board + eval bar, engine panel, and tabs for Moves, Import, Review and Settings (Review and Settings are lazy-loaded). There is no router.
+- **Layout:** a single page (`/`): board + eval bar, engine panel, and tabs for Moves, Play, Import, Review and Settings (Review and Settings are lazy-loaded). There is no router.
 - Structure and dev hooks: [`apps/web/README.md`](./apps/web/README.md).
 
-Browser engine builds (from the `stockfish` npm package, Stockfish 19; only the two lite builds are shipped, the `full` build is not built):
+Browser engine builds (from the `stockfish` npm package, Stockfish 19; the two lite builds plus the `full` build as an opt-in download):
 
 | Build | Size | Needs COOP/COEP headers | Use |
 |---|---|---|---|
@@ -143,6 +143,15 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 ### PGN import & navigation
 - Drop a `.pgn` file or paste text; multi-game files show a picker.
 - Move list (main line, no variations yet); keyboard navigation (←/→/Home/End); FEN copy.
+
+### Play vs engine
+- Play tab: pick colour, strength (Elo presets) and thinking time; promotion dialog, takeback, resign, rematch, "Review this game". Live analysis and Review are paused during a game; loading a position or PGN aborts it.
+
+### Online import
+- Import tab: fetch recent games of a user from the lichess and chess.com public APIs.
+
+### Engine access
+- Settings tab: server access token (sent as `hello.token`; the server enforces it with `ACCESS_TOKEN`). Opt-in full-strength browser build (`wasm:full`, ~99 MB, one-time download confirmation).
 
 ### Game review
 - Batch-analyze every position at configurable depth (server mode recommended).

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { usePlayStore } from '../../play/playStore';
 import { useReviewStore } from '../../review/reviewStore';
 import { scholarSummary } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
@@ -34,6 +35,17 @@ describe('ReviewPanel', () => {
     expect((screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement).disabled).toBe(
       true,
     );
+  });
+
+  it('idle: Start is disabled with a hint while playing against the engine', () => {
+    act(() => useGameStore.getState().loadPgn(PGN));
+    act(() => usePlayStore.setState({ mode: 'playing' }));
+    render(<ReviewPanel />);
+    expect((screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByText('Finish or stop the game first')).toBeTruthy();
+    act(() => usePlayStore.setState({ mode: 'idle' }));
   });
 
   it('idle: Start uses the chosen preset', () => {

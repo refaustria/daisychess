@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { usePlayStore } from '../../play/playStore';
 import { UNAUTHORIZED_MESSAGE, useAnalysisStore } from '../../store/analysisStore';
 import { EngineToggle, engineStatusText } from './EngineToggle';
 
@@ -78,5 +79,23 @@ describe('engineStatusText', () => {
     const status = screen.getByTestId('engine-status');
     expect(status.textContent).toBe('Access token required or wrong (see Settings)');
     expect(status.getAttribute('title')).toMatch(/Settings tab/);
+  });
+});
+
+describe('EngineToggle while playing', () => {
+  it('disables the switch with a tooltip, and re-enables it afterwards', () => {
+    usePlayStore.setState({ mode: 'playing' });
+    const { container } = render(<EngineToggle />);
+    const sw = screen.getByRole('switch', { name: 'Engine' }) as HTMLInputElement;
+    expect(sw.disabled).toBe(true);
+    expect(container.querySelector('label')?.getAttribute('title')).toBe(
+      'Paused while playing against the engine',
+    );
+    cleanup();
+    usePlayStore.setState({ mode: 'idle' });
+    render(<EngineToggle />);
+    expect((screen.getByRole('switch', { name: 'Engine' }) as HTMLInputElement).disabled).toBe(
+      false,
+    );
   });
 });
