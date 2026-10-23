@@ -1,8 +1,10 @@
 node_modules
 dist
 coverage
-engines/
+/engines/
 .env
 *.log
 .DS_Store
 *.tsbuildinfo
+apps/web/test-results
+playwright-report

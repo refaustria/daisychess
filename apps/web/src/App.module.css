@@ -1,0 +1,21 @@
+.app {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 1rem;
+  align-items: flex-start;
+}
+
+.side {
+  flex: 1;
+  min-width: 260px;
+  max-width: 420px;
+}
+
+.side h1 {
+  margin-top: 0;
+}
+
+.status {
+  font-weight: 600;
+}

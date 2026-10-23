@@ -1,0 +1,42 @@
+.board {
+  width: min(90vw, 70vh);
+  height: min(90vw, 70vh);
+}
+
+.board :global(cg-board) {
+  /* Replaces chessground.brown.css so the squares follow the theme variables. */
+  background: conic-gradient(
+      var(--board-dark) 25%,
+      var(--board-light) 0 50%,
+      var(--board-dark) 0 75%,
+      var(--board-light) 0
+    )
+    0 0 / 25% 25%;
+}
+
+/* chessground.brown.css is not imported, so highlights are defined here. */
+.board :global(cg-board square.last-move) {
+  background-color: rgba(155, 199, 0, 0.41);
+}
+
+.board :global(cg-board square.check) {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 0, 0, 1) 0%,
+    rgba(231, 0, 0, 1) 25%,
+    rgba(169, 0, 0, 0) 89%
+  );
+}
+
+.board :global(cg-board square.move-dest) {
+  background: radial-gradient(
+    rgba(20, 85, 30, 0.5) 22%,
+    #208530 0,
+    rgba(0, 0, 0, 0.3) 0,
+    rgba(0, 0, 0, 0) 0
+  );
+}
+
+.board :global(cg-board square.selected) {
+  background-color: rgba(20, 85, 30, 0.5);
+}
