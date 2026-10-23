@@ -177,8 +177,8 @@ Sub-agent definitions live in `.claude/agents/` (one file per tier with its mode
 
 ```bash
 pnpm install
-pnpm dev:web        # http://localhost:5173
-pnpm dev:server     # ws://localhost:8080 (requires engines, see below)
+pnpm dev:web        # http://localhost:5180 (see docs/DECISIONS.md ADR-001)
+pnpm dev:server     # http://127.0.0.1:8580 (requires engines, see below)
 pnpm fetch-engines  # downloads native Stockfish 18 + NNUE into ./engines
 pnpm test
 pnpm build
