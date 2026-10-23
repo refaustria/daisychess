@@ -2,6 +2,8 @@ import '@chesslab/ui-theme/base.css';
 import { useState } from 'react';
 import { Board } from './components/Board/Board';
 import { Controls } from './components/Controls/Controls';
+import { EngineToggle } from './components/EngineToggle/EngineToggle';
+import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
@@ -35,9 +37,13 @@ export function App() {
       </header>
       <main className={styles.main}>
         <div className={styles.boardCol}>
-          <Board />
+          <ConnectedEvalBar />
+          <div className={styles.boardWrap}>
+            <Board />
+          </div>
         </div>
         <section className={styles.side}>
+          <EngineToggle />
           <p
             className={alert ? `${styles.status} ${styles.statusAlert}` : styles.status}
             data-testid="status"

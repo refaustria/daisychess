@@ -2,6 +2,8 @@
   --gap: 16px;
   --header-h: 52px;
   --board-size: 100%;
+  --eval-w: 30px;
+  --eval-gap: 6px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -35,6 +37,14 @@
 }
 
 .boardCol {
+  min-width: 0;
+  display: flex;
+  gap: var(--eval-gap);
+}
+
+/* Takes the remaining width beside the eval bar; the board (sized by --board-size) stays square. */
+.boardWrap {
+  flex: 1;
   min-width: 0;
 }
 
@@ -104,13 +114,16 @@
   .app {
     height: 100vh;
     min-height: 0;
-    --board-size: min(calc(100vh - var(--header-h) - 2 * var(--gap)), 60vw);
+    --board-size: min(
+      calc(100vh - var(--header-h) - 2 * var(--gap)),
+      calc(60vw - var(--eval-w) - var(--eval-gap))
+    );
   }
 
   .main {
     flex: 1;
     min-height: 0;
-    grid-template-columns: var(--board-size) minmax(0, 360px);
+    grid-template-columns: calc(var(--board-size) + var(--eval-w) + var(--eval-gap)) minmax(0, 360px);
     justify-content: center;
     align-items: start;
   }
