@@ -75,15 +75,21 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     serverVersion: SERVER_VERSION,
     logger: app.log.child({ component: 'ws' }),
     sessionIdleMs: config.sessionIdleMs,
+    allowedOrigins: config.allowedOrigins,
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
   });
   app.decorate('chesslab', { pool, ws, config });
 
-  app.get('/health', async () => ({
+  // Public liveness probe (nginx proxies exactly `/health`): no capacity details, which would
+  // tell anyone whether other people are analysing right now (docs/SECURITY.md).
+  app.get('/health', async () => ({ status: 'ok', version: SERVER_VERSION }));
+  // Operator view; only reachable on the loopback listener (not proxied).
+  app.get('/health/detail', async () => ({
     status: 'ok',
     version: SERVER_VERSION,
     engines: pool.stats(),
     sessions: pool.sessions,
+    connections: ws.connections.size,
   }));
 
   // Close WebSockets before the HTTP server stops, then kill every engine process.

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { DEFAULT_LIMITS, PROTOCOL_BOUNDS, type Limits } from '@chesslab/engine-core';
+import { parseAllowedOrigins, type OriginPolicy } from './ws/origin.js';
 
 /** apps/server (one level above src/ or dist/). */
 const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,6 +45,21 @@ export const EnvSchema = z.object({
   /** Path to engines.json; relative paths resolve against the working directory. */
   ENGINES_CONFIG: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  /**
+   * Browser origins allowed to open `/ws` (ADR-008): comma-separated `scheme://host[:port]`
+   * list, or `*` to disable the check. Unset: the origin must match the request's `Host`.
+   */
+  ALLOWED_ORIGINS: z
+    .string()
+    .transform((value, ctx) => {
+      try {
+        return parseAllowedOrigins(value);
+      } catch (err) {
+        ctx.addIssue({ code: 'custom', message: (err as Error).message });
+        return z.NEVER;
+      }
+    })
+    .optional(),
 });
 
 export interface ServerConfig {
@@ -55,6 +71,7 @@ export interface ServerConfig {
   sessionIdleMs: number;
   enginesConfig: string;
   logLevel: z.infer<typeof EnvSchema>['LOG_LEVEL'];
+  allowedOrigins: OriginPolicy;
 }
 
 /** Parses the environment; throws with a readable message on invalid values. */
@@ -87,5 +104,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       ? path.resolve(e.ENGINES_CONFIG)
       : path.join(PACKAGE_DIR, 'engines.json'),
     logLevel: e.LOG_LEVEL,
+    allowedOrigins: e.ALLOWED_ORIGINS ?? null,
   };
 }

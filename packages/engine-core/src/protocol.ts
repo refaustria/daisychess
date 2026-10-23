@@ -101,31 +101,135 @@ const FEN_PATTERN =
   /^([pnbrqkPNBRQK1-8]{1,8})(?:\/([pnbrqkPNBRQK1-8]{1,8})){7} [wb] (-|K?Q?k?q?|[A-Ha-h]{1,4}) (-|[a-h][36])(?: (\d{1,4}) (\d{1,4}))?$/;
 
 /**
- * Syntactic FEN check: 8 ranks that each add up to 8 squares, exactly one king per side, side to
- * move, castling rights (standard or Shredder/Chess960 letters), en-passant square, optional
- * half-move/full-move counters. Legality beyond that (checks, pawn ranks) is the engine's business.
+ * FEN check mirroring what Stockfish 19 (`Position::set`) rejects — and it rejects by
+ * terminating the process (`terminate_on_critical_error`), so every rule here keeps a
+ * client-supplied position from killing a native engine (docs/SECURITY.md):
+ *
+ * - 8 ranks of 8 squares, at most 32 pieces, exactly one king per side;
+ * - no pawns on the first or eighth rank, at most 8 pawns per side, and promoted pieces
+ *   (knights/bishops/rooks beyond 2, queens beyond 1) at most equal to the missing pawns;
+ * - side to move, castling rights (standard or Shredder/Chess960 letters; wrong ones are
+ *   sanitised by the engine, so they are accepted), optional half-move/full-move counters;
+ * - the en-passant square, when given, is on rank 6 with White to move / rank 3 with Black to
+ *   move (an ep square without a capturable pawn is dropped by the engine, not rejected);
+ * - the side **not** to move is not in check (that includes adjacent kings).
+ *
+ * Anything else (unreachable positions, both sides having no legal moves) is the engine's business.
  */
 export function isValidFen(fen: string): boolean {
   if (fen.length > PROTOCOL_BOUNDS.fenMaxLength) return false;
   const m = FEN_PATTERN.exec(fen);
   if (!m) return false;
   if (m[3] === '') return false; // empty castling field (the optional-letters branch matched nothing)
-  const placement = fen.slice(0, fen.indexOf(' '));
-  let whiteKings = 0;
-  let blackKings = 0;
-  for (const rank of placement.split('/')) {
-    let squares = 0;
-    for (const ch of rank) {
-      if (ch >= '1' && ch <= '8') squares += Number(ch);
-      else {
-        squares += 1;
-        if (ch === 'K') whiteKings++;
-        else if (ch === 'k') blackKings++;
+  const [placement, side, , ep] = fen.split(' ') as [string, 'w' | 'b', string, string];
+  const board = parseBoard(placement);
+  if (!board) return false;
+  const sideToMove = side;
+  if (ep !== '-' && ep[1] !== (sideToMove === 'w' ? '6' : '3')) return false;
+  const opponent = sideToMove === 'w' ? 'b' : 'w';
+  const king = board.kings[opponent];
+  return king !== undefined && !isAttacked(board.squares, king, sideToMove);
+}
+
+/**
+ * Board as 64 chars indexed by `rank * 8 + file` (rank 0 = rank 1, file 0 = a), '.' for empty.
+ * Returns null when a rank does not add up to 8 squares or a material rule is violated.
+ */
+interface Board {
+  squares: string[];
+  kings: { w?: number; b?: number };
+}
+
+function parseBoard(placement: string): Board | null {
+  const squares: string[] = new Array<string>(64).fill('.');
+  const kings: Board['kings'] = {};
+  const counts: Record<string, number> = {};
+  const ranks = placement.split('/');
+  if (ranks.length !== 8) return null;
+  let pieces = 0;
+  for (let r = 0; r < 8; r++) {
+    const rank = 7 - r;
+    let file = 0;
+    for (const ch of ranks[r]!) {
+      if (ch >= '1' && ch <= '8') {
+        file += Number(ch);
+        continue;
       }
+      if (file >= 8) return null;
+      if (++pieces > 32) return null;
+      if ((ch === 'p' || ch === 'P') && (rank === 0 || rank === 7)) return null;
+      squares[rank * 8 + file] = ch;
+      counts[ch] = (counts[ch] ?? 0) + 1;
+      if (ch === 'K') kings.w = rank * 8 + file;
+      else if (ch === 'k') kings.b = rank * 8 + file;
+      file++;
     }
-    if (squares !== 8) return false;
+    if (file !== 8) return null;
   }
-  return whiteKings === 1 && blackKings === 1;
+  if ((counts.K ?? 0) !== 1 || (counts.k ?? 0) !== 1) return null;
+  for (const side of ['w', 'b'] as const) {
+    const c = (piece: string) => counts[side === 'w' ? piece.toUpperCase() : piece] ?? 0;
+    const pawns = c('p');
+    if (pawns > 8) return null;
+    const promoted =
+      Math.max(c('n') - 2, 0) +
+      Math.max(c('b') - 2, 0) +
+      Math.max(c('r') - 2, 0) +
+      Math.max(c('q') - 1, 0);
+    if (promoted > 8 - pawns) return null;
+  }
+  return { squares, kings };
+}
+
+const KNIGHT_STEPS = [
+  [1, 2],
+  [2, 1],
+  [2, -1],
+  [1, -2],
+  [-1, -2],
+  [-2, -1],
+  [-2, 1],
+  [-1, 2],
+] as const;
+const KING_STEPS = [
+  [1, 0],
+  [1, 1],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+] as const;
+const ROOK_DIRS = KING_STEPS.filter(([df, dr]) => df === 0 || dr === 0);
+const BISHOP_DIRS = KING_STEPS.filter(([df, dr]) => df !== 0 && dr !== 0);
+
+/** Whether any piece of `by` attacks `square` (0..63) on `squares` (see {@link Board}). */
+function isAttacked(squares: string[], square: number, by: 'w' | 'b'): boolean {
+  const file = square % 8;
+  const rank = Math.floor(square / 8);
+  const own = (piece: string) => (by === 'w' ? piece.toUpperCase() : piece);
+  const at = (f: number, r: number): string | null =>
+    f < 0 || f > 7 || r < 0 || r > 7 ? null : squares[r * 8 + f]!;
+  // Pawns attack diagonally forward: a white pawn on rank-1 attacks `square`.
+  const pawnRank = by === 'w' ? rank - 1 : rank + 1;
+  if (at(file - 1, pawnRank) === own('p') || at(file + 1, pawnRank) === own('p')) return true;
+  for (const [df, dr] of KNIGHT_STEPS) if (at(file + df, rank + dr) === own('n')) return true;
+  for (const [df, dr] of KING_STEPS) if (at(file + df, rank + dr) === own('k')) return true;
+  const slides = (dirs: readonly (readonly [number, number])[], pieces: string[]): boolean => {
+    for (const [df, dr] of dirs) {
+      let f = file + df;
+      let r = rank + dr;
+      let p: string | null;
+      while ((p = at(f, r)) === '.') {
+        f += df;
+        r += dr;
+      }
+      if (p !== null && pieces.includes(p)) return true;
+    }
+    return false;
+  };
+  return slides(ROOK_DIRS, [own('r'), own('q')]) || slides(BISHOP_DIRS, [own('b'), own('q')]);
 }
 
 export const FenSchema = z

@@ -11,6 +11,8 @@ Group=bojan
 WorkingDirectory=/home/bojan/gitchess/apps/server
 ExecStart=/usr/bin/node dist/index.js
 Environment=PORT=8580 HOST=127.0.0.1 NODE_ENV=production
+# Browser origin allowed on /ws (ADR-008); .env.production may override.
+Environment=ALLOWED_ORIGINS=https://c.referee.at
 # Overrides (MAX_SESSIONS, MAX_THREADS, LOG_LEVEL, ...); git-ignored, optional.
 EnvironmentFile=-/home/bojan/gitchess/apps/server/.env.production
 Restart=on-failure
@@ -31,10 +33,32 @@ ProtectHome=read-only
 # Do NOT set MemoryDenyWriteExecute: V8 JIT needs W+X memory.
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+# Other users' processes are invisible in /proc (ProcSubset=pid is NOT set: Stockfish and
+# libuv read /proc/cpuinfo, /proc/stat and /proc/meminfo).
+ProtectProc=invisible
 RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RemoveIPC=true
 LockPersonality=true
+UMask=0077
+# No capabilities at all (runs as an unprivileged user and binds a high port).
+CapabilityBoundingSet=
+AmbientCapabilities=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# The server only ever talks to nginx on loopback and spawns local processes: no egress.
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Seccomp: the generic service profile (process management, networking, memory, timers).
+# Everything outside it (mount, reboot, module loading, raw I/O, ptrace, ...) fails with EPERM
+# instead of killing the process, so a rogue engine build degrades rather than crash-loops.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 LimitNOFILE=65536
 
 # Resource limits (shared 16-core host, ADR-003)

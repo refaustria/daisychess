@@ -451,6 +451,47 @@ describe('isValidFen', () => {
     expect(isValidFen('')).toBe(false);
     expect(isValidFen('4k3/8/8/8/8/8/8/4K3 w - - 0 1'.padEnd(101, ' '))).toBe(false);
   });
+  // Every FEN below was fed to the real Stockfish 19 binary (docs/SECURITY.md): the rejected ones
+  // make it exit(1) ("Unsupported position" / "Invalid FEN"), the accepted ones return a bestmove.
+  it('rejects positions that make Stockfish terminate: pawn ranks and material', () => {
+    expect(isValidFen('PPPPPPPP/pppppppp/8/8/8/8/8/Kk6 w - - 0 1')).toBe(false); // pawns on the 8th rank
+    expect(isValidFen('k7/8/8/8/8/8/8/K6P w - - 0 1')).toBe(false); // pawn on the 1st rank
+    expect(isValidFen('k7/pppppppp/7p/8/8/8/8/K7 w - - 0 1')).toBe(false); // 9 black pawns
+    expect(isValidFen('k7/pppppppp/8/8/8/8/8/K7 w - - 0 1')).toBe(true); // 8 pawns
+    expect(isValidFen('k7/8/8/8/8/1QQQQ3/1QQQQQ1Q/K7 w - - 0 1')).toBe(false); // 10 queens = 9 promotions > 8 missing pawns
+    expect(isValidFen('k7/8/8/8/8/1QQQ4/1QQQQQ1Q/K7 w - - 0 1')).toBe(true); // 9 queens = 8 promotions
+    expect(isValidFen('k7/8/8/8/8/8/8/KRRRRRRR w - - 0 1')).toBe(true); // 7 rooks = 5 promotions
+    expect(isValidFen('nnnnknnn/8/8/8/8/8/8/NNNNKNNN w - - 0 1')).toBe(true); // 7 knights = 5 promotions
+    expect(
+      isValidFen(
+        'qqqqqqqk/qqqqqqqq/qqqqqqqq/qqqqqqqq/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQQQQQK w - - 0 1',
+      ),
+    ).toBe(false); // > 32 pieces
+  });
+  it('rejects en-passant squares on the wrong rank for the side to move', () => {
+    expect(isValidFen('k7/8/8/8/8/8/8/K7 w - e3 0 1')).toBe(false);
+    expect(isValidFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1')).toBe(false);
+    expect(isValidFen('k7/8/8/8/8/8/8/K7 b - e6 0 1')).toBe(false);
+    // Right rank but no capturable pawn: Stockfish drops the square silently, so it is accepted.
+    expect(isValidFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq a6 0 1')).toBe(true);
+    expect(isValidFen('rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3')).toBe(true);
+  });
+  it('rejects positions where the side not to move is in check', () => {
+    expect(isValidFen('kK6/8/8/8/8/8/8/8 w - - 0 1')).toBe(false); // adjacent kings
+    expect(isValidFen('8/8/8/8/8/8/8/Kk6 w - - 0 1')).toBe(false);
+    expect(isValidFen('k6R/8/8/8/8/8/8/K7 w - - 0 1')).toBe(false); // rook gives check, White to move
+    expect(isValidFen('k7/8/8/8/8/8/8/K6r b - - 0 1')).toBe(false); // mirror
+    expect(isValidFen('k7/8/8/8/8/8/8/K6q w - - 0 1')).toBe(true); // White to move, White in check: legal
+    expect(isValidFen('k7/8/8/8/8/8/7q/K7 w - - 0 1')).toBe(true); // queen on h2 does not attack a8
+    expect(isValidFen('k7/1P6/8/8/8/8/8/K7 w - - 0 1')).toBe(false); // white pawn attacks a8
+    expect(isValidFen('k7/8/1N6/8/8/8/8/K7 w - - 0 1')).toBe(false); // knight check
+    expect(isValidFen('k7/8/2B5/8/8/8/8/K7 w - - 0 1')).toBe(false); // bishop check
+    expect(isValidFen('k7/1p6/2B5/8/8/8/8/K7 w - - 0 1')).toBe(true); // blocked bishop
+    expect(isValidFen('k7/8/8/8/8/8/8/K6R w - - 0 1')).toBe(true);
+    expect(isValidFen('K7/8/8/8/8/8/8/k7 w - - 0 1')).toBe(true);
+    expect(isValidFen('k7/8/8/8/8/8/8/K7 w KQkq - 0 1')).toBe(true); // bogus castling rights are sanitised, not fatal
+    expect(isValidFen('k7/8/8/8/8/8/8/K7 w - - 9999 9999')).toBe(true);
+  });
 });
 
 describe('checkAnalyzeLimits', () => {

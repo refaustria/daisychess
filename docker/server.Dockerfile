@@ -32,12 +32,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY scripts/fetch-engines.sh scripts/
-# Optional: pin a release (STOCKFISH_VERSION=sf_19) or an arch; sf_19+ universal builds
-# choose the instruction set at runtime, so no arch is needed by default.
-ARG STOCKFISH_VERSION=
+# Supply chain (docs/SECURITY.md): the release is pinned and the asset's sha256 is checked
+# against both the digest GitHub publishes and STOCKFISH_SHA256 below (the sf_19
+# stockfish-linux-x86-64-universal.tar.gz digest). Bump both together when upgrading; set
+# STOCKFISH_SHA256= (empty) to rely on GitHub's digest alone. sf_19+ universal builds choose
+# the instruction set at runtime, so no arch is needed by default.
+ARG STOCKFISH_VERSION=sf_19
+ARG STOCKFISH_SHA256=9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f
 ARG STOCKFISH_ARCH=
 ARG GITHUB_TOKEN=
-ENV STOCKFISH_VERSION=${STOCKFISH_VERSION} STOCKFISH_ARCH=${STOCKFISH_ARCH} GITHUB_TOKEN=${GITHUB_TOKEN}
+ENV STOCKFISH_VERSION=${STOCKFISH_VERSION} STOCKFISH_SHA256=${STOCKFISH_SHA256} \
+    STOCKFISH_ARCH=${STOCKFISH_ARCH} GITHUB_TOKEN=${GITHUB_TOKEN}
 RUN bash scripts/fetch-engines.sh
 
 # ---- runtime ------------------------------------------------------------------------

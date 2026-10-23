@@ -261,7 +261,7 @@ describe('WebSocket /ws', () => {
     await a.waitFor((m) => m.type === 'info');
     b.send(analyze('s', 1));
     expect(await b.terminal('s', 1)).toMatchObject({ type: 'error', code: 'no_capacity' });
-    const health = await app.inject({ method: 'GET', url: '/health' });
+    const health = await app.inject({ method: 'GET', url: '/health/detail' });
     expect(health.json()).toMatchObject({ sessions: 1 });
     // after a releases, b can analyze
     a.send({ type: 'release', sessionId: 's' });
@@ -365,7 +365,7 @@ describe('WebSocket /ws', () => {
     await c.close();
     await until(() => app.chesslab.pool.sessions === 0 && app.chesslab.ws.connections.size === 0);
     await until(() => app.chesslab.pool.stats().every((s) => s.busy === 0 && s.idle <= 1));
-    const health = (await app.inject({ method: 'GET', url: '/health' })).json() as {
+    const health = (await app.inject({ method: 'GET', url: '/health/detail' })).json() as {
       engines: { id: string; busy: number; idle: number }[];
       sessions: number;
     };
@@ -392,6 +392,49 @@ describe('WebSocket /ws', () => {
     const ws = new WebSocket(url.replace('/ws', '/other'));
     const err = await new Promise<Error>((resolve) => ws.once('error', resolve));
     expect(err.message).toMatch(/404/);
+  });
+
+  describe('Origin check (ADR-008)', () => {
+    const upgradeError = (ws: WebSocket) =>
+      new Promise<Error>((resolve) => ws.once('error', resolve));
+
+    it('default policy: rejects a foreign browser origin with 403, accepts same-host and no origin', async () => {
+      const { url } = await start();
+      const foreign = new WebSocket(url, { origin: 'https://evil.example' });
+      expect((await upgradeError(foreign)).message).toMatch(/403/);
+
+      // Host is 127.0.0.1:<port>; a loopback origin on another port is the dev-server case.
+      const sameHost = new WebSocket(url, { origin: 'http://localhost:5180' });
+      await new Promise<void>((resolve, reject) => {
+        sameHost.once('open', resolve);
+        sameHost.once('error', reject);
+      });
+      sameHost.terminate();
+    });
+
+    it('explicit list: only listed origins may connect', async () => {
+      const { url } = await start({ allowedOrigins: ['https://c.referee.at'] });
+      const listed = new WebSocket(url, { origin: 'https://c.referee.at' });
+      await new Promise<void>((resolve, reject) => {
+        listed.once('open', resolve);
+        listed.once('error', reject);
+      });
+      listed.terminate();
+      const loopback = new WebSocket(url, { origin: 'http://localhost:5180' });
+      expect((await upgradeError(loopback)).message).toMatch(/403/);
+      const c = await TestClient.connect(url); // no Origin header: allowed
+      clients.push(c);
+    });
+
+    it('wildcard disables the check', async () => {
+      const { url } = await start({ allowedOrigins: '*' });
+      const any = new WebSocket(url, { origin: 'https://evil.example' });
+      await new Promise<void>((resolve, reject) => {
+        any.once('open', resolve);
+        any.once('error', reject);
+      });
+      any.terminate();
+    });
   });
 
   it('closes connections that never say hello', async () => {

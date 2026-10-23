@@ -4,7 +4,7 @@ import { loadConfig } from './config.js';
 import { fakeSpawner, registry } from '../test/helpers.js';
 
 describe('GET /health', () => {
-  it('returns status, version, per-engine pool stats and sessions', async () => {
+  it('returns only status and version; /health/detail adds pool stats, sessions and connections', async () => {
     const app = await buildApp({
       config: loadConfig({}),
       registry: registry(
@@ -16,7 +16,10 @@ describe('GET /health', () => {
     });
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
+    expect(res.json()).toEqual({ status: 'ok', version: '0.0.0' });
+    const detail = await app.inject({ method: 'GET', url: '/health/detail' });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toEqual({
       status: 'ok',
       version: '0.0.0',
       engines: [
@@ -24,6 +27,7 @@ describe('GET /health', () => {
         { id: 'off', name: 'off', enabled: false, busy: 0, idle: 0 },
       ],
       sessions: 0,
+      connections: 0,
     });
     await app.close();
   });
@@ -34,7 +38,7 @@ describe('GET /health', () => {
       registry: registry({ id: 'ghost', binary: '/nonexistent/stockfish' }),
       logger: false,
     });
-    const res = await app.inject({ method: 'GET', url: '/health' });
+    const res = await app.inject({ method: 'GET', url: '/health/detail' });
     expect(res.json()).toMatchObject({ engines: [{ id: 'ghost', enabled: false }] });
     await app.close();
   });

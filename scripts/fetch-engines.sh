@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # Fetches a native Stockfish build into engines/stockfish/stockfish (engines/ is git-ignored).
 #
-# Usage: scripts/fetch-engines.sh [--force]
-# Env:   STOCKFISH_VERSION  release tag, e.g. sf_17.1 (default: latest stable release)
+# Usage: scripts/fetch-engines.sh [--force] [--no-verify]
+# Env:   STOCKFISH_VERSION  release tag, e.g. sf_19 (default: latest stable release)
 #        STOCKFISH_ARCH     build flavour override, e.g. x86-64-sse41-popcnt
+#        STOCKFISH_SHA256   expected sha256 of the asset; overrides the digest GitHub publishes
+#        GITHUB_TOKEN       optional, raises the API rate limit
+#
+# Supply chain (docs/SECURITY.md): the download is verified against the sha256 digest the GitHub
+# release API publishes for the asset (or STOCKFISH_SHA256). The script fails closed when the
+# digest cannot be obtained or checked; --no-verify downgrades that to a warning. Parsing the
+# release metadata needs jq or node (both fail closed otherwise, --no-verify falls back to sed).
 #
 # NNUE networks are embedded in the official Stockfish binaries, so no separate
 # NNUE download is needed.
@@ -22,13 +29,24 @@ DEST_DIR="$ENGINES_DIR/stockfish"
 DEST_BIN="$DEST_DIR/stockfish"
 
 FORCE=0
+VERIFY=1
 for arg in "$@"; do
   case "$arg" in
     --force|-f) FORCE=1 ;;
-    -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --no-verify) VERIFY=0 ;;
+    -h|--help) sed -n '2,22p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
+
+die() { echo "error: $*" >&2; exit 1; }
+# Verification failure: fatal unless --no-verify was given.
+unverified() {
+  if [[ $VERIFY -eq 1 ]]; then
+    die "$* (pass --no-verify to continue without checksum verification)"
+  fi
+  echo "warning: $* (continuing because of --no-verify)" >&2
+}
 
 banner() { (echo uci; sleep 0.3) | "$DEST_BIN" 2>/dev/null | head -1 || true; }
 
@@ -39,7 +57,7 @@ if [[ -x "$DEST_BIN" && $FORCE -eq 0 ]]; then
 fi
 
 for tool in curl tar; do
-  command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 1; }
+  command -v "$tool" >/dev/null || die "missing required tool: $tool"
 done
 
 # ---- CPU / platform detection -------------------------------------------------------
@@ -63,7 +81,7 @@ detect_arch() {
       if sysctl -n machdep.cpu.leaf7_features 2>/dev/null | grep -qw AVX2; then echo x86-64-avx2
       elif sysctl -n machdep.cpu.features 2>/dev/null | grep -qw SSE4.1; then echo x86-64-sse41-popcnt
       else echo x86-64; fi ;;
-    *) echo "unsupported platform: $os/$machine" >&2; exit 1 ;;
+    *) die "unsupported platform: $os/$machine" ;;
   esac
 }
 ARCH="$(detect_arch)"
@@ -79,15 +97,19 @@ curl_args=(-fsSL -H "Accept: application/vnd.github+json")
 [[ -n "${GITHUB_TOKEN:-}" ]] && curl_args+=(-H "Authorization: Bearer $GITHUB_TOKEN")
 release_json="$(curl "${curl_args[@]}" "$api")"
 
+# Lines of "<name>\t<url>\t<digest>" for every asset of the release (digest may be empty).
 if command -v jq >/dev/null; then
   TAG="$(jq -r '.tag_name' <<<"$release_json")"
   assets="$(jq -r '.assets[] | "\(.name)\t\(.browser_download_url)\t\(.digest // "")"' <<<"$release_json")"
+elif command -v node >/dev/null; then
+  TAG="$(node -e 'const r=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(r.tag_name??""))' <<<"$release_json")"
+  assets="$(node -e 'const r=JSON.parse(require("fs").readFileSync(0,"utf8"));for(const a of r.assets??[])console.log([a.name,a.browser_download_url,a.digest??""].join("\t"))' <<<"$release_json")"
 else
+  unverified "neither jq nor node is available to read the release metadata (digests unavailable)"
   TAG="$(sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' <<<"$release_json" | head -1)"
-  # Without jq: names and URLs only (no digest verification).
   assets="$(sed -n 's/.*"browser_download_url": *"\([^"]*\)".*/\1/p' <<<"$release_json" | awk -F/ '{print $NF "\t" $0 "\t"}')"
 fi
-[[ -n "$TAG" ]] || { echo "could not determine release tag" >&2; exit 1; }
+[[ -n "$TAG" ]] || die "could not determine release tag"
 echo "Release: $TAG"
 
 # ---- asset selection ----------------------------------------------------------------
@@ -95,7 +117,7 @@ case "$os" in
   Linux)  candidates=("stockfish-ubuntu-$ARCH.tar" "stockfish-linux-x86-64-universal.tar.gz") ;;
   Darwin) candidates=("stockfish-macos-$ARCH.tar" "stockfish-macos-universal.tar.gz") ;;
 esac
-[[ "$os/$machine" == "Linux/x86_64" ]] || [[ "$os" == Darwin ]] || { echo "unsupported platform" >&2; exit 1; }
+[[ "$os/$machine" == "Linux/x86_64" ]] || [[ "$os" == Darwin ]] || die "unsupported platform"
 
 asset="" url="" digest=""
 for c in "${candidates[@]}"; do
@@ -109,7 +131,30 @@ if [[ -z "$asset" ]]; then
   cut -f1 <<<"$assets" >&2
   exit 1
 fi
+[[ "$url" == https://github.com/* || "$url" == https://objects.githubusercontent.com/* ]] \
+  || die "refusing to download from unexpected host: $url"
 echo "Asset: $asset"
+
+# ---- expected checksum ----------------------------------------------------------------
+expected=""
+if [[ -n "${STOCKFISH_SHA256:-}" ]]; then
+  expected="$(tr 'A-F' 'a-f' <<<"${STOCKFISH_SHA256#sha256:}")"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || die "STOCKFISH_SHA256 is not a 64-digit hex sha256"
+  if [[ "$digest" == sha256:* && "${digest#sha256:}" != "$expected" ]]; then
+    die "STOCKFISH_SHA256 ($expected) differs from the digest GitHub publishes for $asset (${digest#sha256:})"
+  fi
+elif [[ "$digest" == sha256:* ]]; then
+  expected="${digest#sha256:}"
+else
+  unverified "GitHub publishes no sha256 digest for $asset and STOCKFISH_SHA256 is not set"
+fi
+
+sha256_of() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null; then shasum -a 256 "$1" | cut -d' ' -f1
+  elif command -v openssl >/dev/null; then openssl dgst -sha256 -r "$1" | cut -d' ' -f1
+  else echo ""; fi
+}
 
 # ---- download + extract (never executes archive content other than the final binary) -
 mkdir -p "$ENGINES_DIR/.tmp"
@@ -117,22 +162,28 @@ tmp="$(mktemp -d "$ENGINES_DIR/.tmp/stockfish.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 curl -fSL --progress-bar -o "$tmp/$asset" "$url"
 
-if [[ "$digest" == sha256:* ]] && command -v sha256sum >/dev/null; then
-  echo "${digest#sha256:}  $tmp/$asset" | sha256sum -c - >/dev/null || { echo "checksum mismatch" >&2; exit 1; }
-  echo "sha256 verified"
+if [[ -n "$expected" ]]; then
+  actual="$(sha256_of "$tmp/$asset")"
+  if [[ -z "$actual" ]]; then
+    unverified "no sha256 tool (sha256sum, shasum, openssl) found to verify $asset"
+  elif [[ "$actual" != "$expected" ]]; then
+    die "checksum mismatch for $asset: expected $expected, got $actual"
+  else
+    echo "sha256 verified ($expected)"
+  fi
 fi
 
 mkdir "$tmp/x"
 tar -xf "$tmp/$asset" -C "$tmp/x"
 # The engine is the only executable regular file named stockfish* (docs/scripts are not executable).
 mapfile -t bins < <(find "$tmp/x" -type f -name 'stockfish*' -perm -u+x ! -path '*/src/*' ! -path '*/scripts/*')
-[[ ${#bins[@]} -eq 1 ]] || { echo "expected exactly one stockfish binary in archive, found ${#bins[@]}" >&2; exit 1; }
+[[ ${#bins[@]} -eq 1 ]] || die "expected exactly one stockfish binary in archive, found ${#bins[@]}"
 
 mkdir -p "$DEST_DIR"
 install -m 0755 "${bins[0]}" "$DEST_BIN.new"
 mv -f "$DEST_BIN.new" "$DEST_BIN"
 [[ -f "$tmp/x/stockfish/Copying.txt" ]] && cp "$tmp/x/stockfish/Copying.txt" "$DEST_DIR/Copying.txt"
-printf '%s\n%s\n' "$TAG" "$asset" > "$DEST_DIR/VERSION"
+printf '%s\n%s\n%s\n' "$TAG" "$asset" "sha256:${expected:-unverified}" > "$DEST_DIR/VERSION"
 
 # ---- smoke test ---------------------------------------------------------------------
 out="$( (printf 'uci\nisready\nposition startpos\ngo depth 8\n'; sleep 3; echo quit) | "$DEST_BIN" 2>&1 )"

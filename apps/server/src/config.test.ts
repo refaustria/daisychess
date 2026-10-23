@@ -54,4 +54,14 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ PORT: 'abc' })).toThrow(/PORT/);
     expect(() => loadConfig({ LOG_LEVEL: 'loud' })).toThrow(/LOG_LEVEL/);
   });
+
+  it('parses ALLOWED_ORIGINS (ADR-008): unset = same host, list, wildcard; rejects garbage', () => {
+    expect(loadConfig({}).allowedOrigins).toBeNull();
+    expect(loadConfig({ ALLOWED_ORIGINS: '' }).allowedOrigins).toBeNull();
+    expect(loadConfig({ ALLOWED_ORIGINS: '*' }).allowedOrigins).toBe('*');
+    expect(
+      loadConfig({ ALLOWED_ORIGINS: 'https://c.referee.at, http://localhost:8080' }).allowedOrigins,
+    ).toEqual(['https://c.referee.at', 'http://localhost:8080']);
+    expect(() => loadConfig({ ALLOWED_ORIGINS: 'c.referee.at' })).toThrow(/ALLOWED_ORIGINS/);
+  });
 });

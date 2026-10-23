@@ -3,7 +3,8 @@
 # Usage: deploy/deploy-server.sh   (from anywhere inside the repo; needs sudo)
 set -euo pipefail
 
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8580/health}"
+# /health/detail (pool stats) is only served on the loopback listener; nginx proxies /health alone.
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8580/health/detail}"
 UNIT=chesslab-server
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

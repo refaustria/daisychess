@@ -1,7 +1,8 @@
 # Deployment: https://c.referee.at
 
 Single host (Debian 13), nginx + Let's Encrypt (certbot nginx plugin). See
-`docs/DECISIONS.md` ADR-001 (ports) and ADR-002 (hosting model).
+`docs/DECISIONS.md` ADR-001 (ports), ADR-002 (hosting model) and ADR-008 (security
+policies); the threat model and hardening checklist are in `docs/SECURITY.md`.
 
 | What | Where |
 |---|---|
@@ -9,7 +10,7 @@ Single host (Debian 13), nginx + Let's Encrypt (certbot nginx plugin). See
 | nginx site | `/etc/nginx/sites-available/c.referee.at` → symlink in `sites-enabled/` |
 | Repo copy (pre-certbot) | `deploy/nginx/c.referee.at.conf` |
 | TLS cert | `/etc/letsencrypt/live/c.referee.at/` |
-| Engine server | `127.0.0.1:8580`, proxied at `/ws` and `/health` |
+| Engine server | `127.0.0.1:8580`, proxied at `/ws` and `/health` (`/health/detail` is loopback-only) |
 | Server unit | `deploy/chesslab-server.service` (installed by `deploy/deploy-server.sh`) |
 
 The site sends `Cross-Origin-Opener-Policy: same-origin` and
@@ -60,20 +61,23 @@ deploy/deploy-server.sh
 Runs `pnpm install --frozen-lockfile`, builds `engine-core` and `server`, runs
 `pnpm fetch-engines` (idempotent), installs `deploy/chesslab-server.service` to
 `/etc/systemd/system/`, `daemon-reload`, `enable` + `restart`, then waits up to
-10 s for `http://127.0.0.1:8580/health` and prints it. Needs `sudo`.
+10 s for `http://127.0.0.1:8580/health/detail` and prints it. Needs `sudo`.
 
 Verify:
 
 ```bash
 systemctl status chesslab-server
-curl -s https://c.referee.at/health
+curl -s https://c.referee.at/health            # {status, version} only
+curl -s http://127.0.0.1:8580/health/detail   # pool stats, sessions, connections (loopback)
 node deploy/ws-smoke.mjs            # hello -> analyze depth 12 -> bestmove (Node 22+)
 ```
 
 **Limits and config.** The server does not read `.env` itself; the unit loads
 `apps/server/.env.production` via `EnvironmentFile=-` (optional file, not
 created by the script; copy from `apps/server/.env.example`; currently
-`MAX_SESSIONS=4`, `MAX_THREADS=4`, `LOG_LEVEL=info`). Edit it, then
+`MAX_SESSIONS=4`, `MAX_THREADS=4`, `LOG_LEVEL=info`). The unit itself sets
+`ALLOWED_ORIGINS=https://c.referee.at` (ADR-008: browser origins allowed on `/ws`;
+other origins get 403 at the upgrade). Edit it, then
 `sudo systemctl restart chesslab-server`. Per-engine defaults and
 `maxInstances` live in `apps/server/engines.json`. Resource caps (`MemoryMax`,
 `CPUWeight`, `TasksMax`) are in the unit; after editing it, rerun the script.
@@ -100,9 +104,13 @@ deploy/deploy-server.sh
 Stopping the service kills the whole cgroup (`KillMode=control-group`), so no
 orphaned `stockfish` processes remain.
 
-**nginx.** `/ws` has `limit_conn chesslab_ws 10` (per IP, excess gets 429); the
-`limit_conn_zone` line sits at the top of the site file (http context). It was
-merged by hand into the live certbot-managed file.
+**nginx.** `/ws` has `limit_conn chesslab_ws 10` (per IP) and
+`limit_req zone=chesslab_ws_req burst=20 nodelay` (5 handshakes/s per IP);
+excess gets 429. The two `*_zone` lines sit at the top of the site file (http
+context). All responses carry `Content-Security-Policy: frame-ancestors 'none'`.
+`deploy/nginx/c.referee.at.conf` is the source; the live file additionally has
+the certbot lines. Apply a change by merging it into the live file, then
+`sudo nginx -t && sudo systemctl reload nginx` (back the live file up first).
 
 ## Certificate renewal
 

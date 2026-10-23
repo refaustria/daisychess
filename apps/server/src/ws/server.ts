@@ -4,12 +4,15 @@ import type { FastifyInstance } from 'fastify';
 import { WebSocketServer } from 'ws';
 import { MAX_MESSAGE_BYTES } from '@chesslab/engine-core';
 import { Connection, type ConnectionOptions } from './connection.js';
+import { isOriginAllowed, type OriginPolicy } from './origin.js';
 
 export interface WsServerOptions extends ConnectionOptions {
   /** URL path that accepts upgrades. Default `/ws`. */
   path?: string;
   /** Interval of WebSocket pings; a connection that missed one pong is terminated. Default 30 s. */
   heartbeatMs?: number;
+  /** Browser `Origin` policy (ADR-008). Default: same host as the request. */
+  allowedOrigins?: OriginPolicy;
 }
 
 export interface WsServerHandle {
@@ -53,6 +56,15 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     }
     if (closing) {
       reject(socket, '503 Service Unavailable');
+      return;
+    }
+    const origin = headerValue(req.headers.origin);
+    if (!isOriginAllowed(origin, req.headers.host, opts.allowedOrigins ?? null)) {
+      opts.logger.warn(
+        { origin: origin?.slice(0, 200), host: req.headers.host?.slice(0, 200) },
+        'rejecting websocket upgrade: origin not allowed',
+      );
+      reject(socket, '403 Forbidden');
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
