@@ -30,6 +30,10 @@
  * reviews and position results on the server (SQLite), keyed by the game's hash (`reviewGameKey`),
  * so every device gets the same review for the same game. Reads are open; writes need the access
  * token. The record-carrying frames may be up to `MAX_LARGE_MESSAGE_BYTES`.
+ *
+ * Hub (ADR-020, additive in protocol 1): a hub answers `hello` on behalf of the routed engine
+ * node; `welcome.node` names that node and `welcome.analysisDenied` says why analysis is
+ * unavailable. The node ⇄ hub link is a separate contract (`link.ts`).
  */
 import { z } from 'zod';
 import { MOVE_CLASSES, type MoveClass, type ReviewSummary } from './review.js';
@@ -980,6 +984,40 @@ export const CapabilitiesSchema = z.object({
 });
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
 
+/**
+ * Why a hub (ADR-020) answered with a restricted `welcome` (`capabilities.analysis: false`,
+ * `engines: []`), so the client can say *why* instead of "token required or wrong".
+ * - `no_token`: `hello` carried no token and the server requires one.
+ * - `bad_token`: unknown id or wrong secret (also a legacy `ACCESS_TOKEN` mismatch).
+ * - `expired` / `revoked`: the token is known but no longer valid.
+ * - `node_offline`: every node the token lists is offline and it has no pool fallback.
+ * - `no_capacity`: no pool node has a free slot right now.
+ * - `budget_exhausted`: the token's daily pool engine-time budget is used up (owner answer 4).
+ */
+export const ANALYSIS_DENIED_REASONS = [
+  'no_token',
+  'bad_token',
+  'expired',
+  'revoked',
+  'node_offline',
+  'no_capacity',
+  'budget_exhausted',
+] as const;
+export type AnalysisDeniedReason = (typeof ANALYSIS_DENIED_REASONS)[number];
+
+/**
+ * Where this connection's engines run (ADR-020): the routed node's display name, its operator's
+ * public (lichess) name when the node is a community node, and whether the connection reached
+ * the node through the shared pool (`shared: true`, the UI shows a one-time privacy notice)
+ * rather than through a node the token lists.
+ */
+export const WelcomeNodeSchema = z.object({
+  name: z.string().min(1).max(32),
+  operator: z.string().min(1).max(32).optional(),
+  shared: z.boolean(),
+});
+export type WelcomeNode = z.infer<typeof WelcomeNodeSchema>;
+
 export const WelcomeMessageSchema = z.object({
   type: z.literal('welcome'),
   protocolVersion: z.number().int().min(1),
@@ -987,6 +1025,10 @@ export const WelcomeMessageSchema = z.object({
   limits: LimitsSchema,
   engines: z.array(EngineDescriptorSchema).max(64),
   capabilities: CapabilitiesSchema.optional(),
+  /** ADR-020, additive: the node serving this connection. Absent on a standalone server. */
+  node: WelcomeNodeSchema.optional(),
+  /** ADR-020, additive: only together with `capabilities.analysis: false`. */
+  analysisDenied: z.enum(ANALYSIS_DENIED_REASONS).optional(),
 });
 
 export const InfoMessageSchema = z.object({
