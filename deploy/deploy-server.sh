@@ -32,6 +32,8 @@ if [[ -f "/etc/systemd/system/${LEGACY_UNIT}.service" ]] || systemctl list-unit-
   sudo systemctl reset-failed "$LEGACY_UNIT" 2>/dev/null || true
 fi
 
+# ReadWritePaths needs the directory to exist before the unit's namespace is set up (ADR-017).
+install -d -m 700 apps/server/data
 sudo install -m 644 deploy/daisychess-server.service "/etc/systemd/system/${UNIT}.service"
 sudo systemctl daemon-reload
 sudo systemctl enable "$UNIT"
