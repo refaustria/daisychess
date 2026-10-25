@@ -19,6 +19,10 @@ import {
   type DrillState,
 } from '../../trainer/drillStore';
 import { DAY_MS, dueKeys, scheduleStats, type Schedule } from '../../trainer/schedule';
+import { humanAvailability, humanEngineReason } from '../../maia/opponentAvailability';
+import { useHumanProbe } from '../../maia/opponentHooks';
+import { HUMAN_PRESETS } from '../../play/strength';
+import type { DrillAfterBook } from '../../trainer/drillState';
 import styles from './OpeningsPanel.module.css';
 
 /** Results shown at most (the search ranks, so the best hits are on top). */
@@ -436,6 +440,59 @@ export function feedbackText(
   }
 }
 
+/**
+ * "After the book" (M23-2): stop (summary), continue vs Stockfish or vs a Maia level. Maia
+ * levels are disabled with the reason while the server/token does not allow them.
+ */
+function AfterBookField() {
+  const afterBook = useDrillStore((s) => s.afterBook);
+  const setAfterBook = useDrillStore((s) => s.setAfterBook);
+  const probe = useHumanProbe();
+  const human = humanAvailability(probe);
+  const id = useId();
+  const known = (engineId: string) =>
+    !human.ok && human.pending ? undefined : humanEngineReason(probe, engineId);
+  const selectedReason = afterBook.startsWith('maia-')
+    ? humanEngineReason(probe, afterBook)
+    : undefined;
+  const note = selectedReason ?? (!human.ok && !human.pending ? human.reason : undefined);
+  return (
+    <>
+      <label className={styles.field}>
+        <span>After the book</span>
+        <select
+          value={afterBook}
+          onChange={(e) => setAfterBook(e.target.value as DrillAfterBook)}
+          aria-describedby={note ? `${id}-after` : undefined}
+        >
+          <option value="stop">Stop (summary)</option>
+          <option value="stockfish">Continue vs Stockfish</option>
+          <optgroup label="Continue vs human-like (server)">
+            {HUMAN_PRESETS.map((p) => {
+              const reason = known(p.id);
+              return (
+                <option
+                  key={p.id}
+                  value={p.id}
+                  disabled={reason !== undefined && p.id !== afterBook}
+                  title={reason}
+                >
+                  {`Continue vs ${p.label}${reason ? ' (unavailable)' : ''}`}
+                </option>
+              );
+            })}
+          </optgroup>
+        </select>
+      </label>
+      {note && (
+        <p className={styles.note} id={`${id}-after`} data-testid="drill-maia-unavailable">
+          Human-like (Maia): {note}
+        </p>
+      )}
+    </>
+  );
+}
+
 function Drill({ opening }: { opening: BookOpening }) {
   const s = useDrillStore();
   const lock = useHumanGameLockReason();
@@ -468,6 +525,7 @@ function Drill({ opening }: { opening: BookOpening }) {
             ))}
           </div>
         </fieldset>
+        <AfterBookField />
         <button
           type="button"
           className={styles.primary}
@@ -560,6 +618,11 @@ function Summary() {
         {sum.userMoves === 1 ? '' : 's'} · Mistakes: <strong>{sum.mistakes}</strong>
       </p>
       {next && <p className={styles.meta}>{next}</p>}
+      {s.message && (
+        <p className={styles.message} role="alert">
+          {s.message}
+        </p>
+      )}
       <div className={styles.row}>
         <button
           type="button"

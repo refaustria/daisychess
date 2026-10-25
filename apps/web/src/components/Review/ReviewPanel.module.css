@@ -390,3 +390,25 @@ button:disabled {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* M23-3: human-like hints (Maia). */
+.maiaHint {
+  margin: 0.25rem 0 0;
+  padding-left: 0.5rem;
+  border-left: 3px solid var(--accent, var(--text-muted));
+  font-size: 0.85rem;
+}
+
+.maiaHint p {
+  margin: 0;
+}
+
+.maiaSummary {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.maiaSummary ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}

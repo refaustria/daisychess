@@ -251,3 +251,47 @@ describe('PlayController', () => {
     expect(currentFen(g())).toBe(START_FEN);
   });
 });
+
+describe('PlayController: engine per opponent (M23-2)', () => {
+  it('creates the engine for the config key and replaces it when the key changes', async () => {
+    const keys: string[] = [];
+    const engines: FakePlayEngine[] = [];
+    const delays: number[] = [];
+    const c = new PlayController({
+      game: useGameStore,
+      createEngine: (key) => {
+        keys.push(key);
+        const e = new FakePlayEngine();
+        engines.push(e);
+        return e;
+      },
+      extraDelayMs: () => {
+        delays.push(1);
+        return 0;
+      },
+      onThinking: () => undefined,
+      onGameOver: () => undefined,
+      onError: (m) => errors.push(m),
+    });
+    c.start(
+      config({ engineKey: 'maia-1500', selfPaced: true, strength: findStrength('maia-1500') }),
+    );
+    g().makeMove('e2', 'e4');
+    await flush();
+    expect(keys).toEqual(['maia-1500']);
+    expect(engines[0]!.options).toEqual([{}]);
+    expect(delays).toHaveLength(0); // self-paced: no extra reply delay
+    g().makeMove('d2', 'd4');
+    await flush();
+    expect(keys).toEqual(['maia-1500']); // reused within the game
+
+    c.start(config());
+    g().makeMove('g1', 'f3');
+    await flush();
+    expect(keys).toEqual(['maia-1500', 'default']);
+    expect(engines[0]!.disposed).toBe(true);
+    expect(delays).toHaveLength(1);
+    expect(errors).toEqual([]);
+    await c.dispose();
+  });
+});

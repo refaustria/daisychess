@@ -10,6 +10,8 @@ import { FakeReviewEngine } from '../../review/fakeEngine';
 import { useGameStore } from '../../store/gameStore';
 import { configureDrill, resetDrill, useDrillStore } from '../../trainer/drillStore';
 import { feedbackText, lineText, OpeningsPanel } from './OpeningsPanel';
+import { MAIA_WELCOME } from '../../maia/opponentTesting';
+import { useAnalysisStore } from '../../store/analysisStore';
 
 let engine: FakeReviewEngine;
 const fenAfter = (san: string) => {
@@ -295,5 +297,62 @@ describe('helpers', () => {
       'Not book, but fine (+0.20). Out of book.',
     );
     expect(feedbackText({ kind: 'checking', san: 'a3' }, s)).toMatch(/checking with the engine/);
+  });
+});
+
+describe('OpeningsPanel: after the book (M23-2)', () => {
+  afterEach(() => {
+    useAnalysisStore.setState({ serverProbe: { status: 'idle' } });
+  });
+
+  const afterBook = () => screen.getByLabelText('After the book') as HTMLSelectElement;
+  const option = (value: string) =>
+    [...afterBook().options].find((o) => o.value === value) as HTMLOptionElement;
+
+  it('offers stop (default), Stockfish and Maia 1100–1900; the choice is stored', () => {
+    act(() =>
+      useAnalysisStore.setState({
+        serverProbe: { status: 'ok', engines: MAIA_WELCOME.engines, lastProbe: 1 },
+      }),
+    );
+    render(<OpeningsPanel />);
+    pickItalian();
+    fireEvent.click(screen.getByRole('radio', { name: 'Drill' }));
+    expect(afterBook().value).toBe('stop');
+    expect([...afterBook().options].map((o) => o.value)).toEqual([
+      'stop',
+      'stockfish',
+      'maia-1100',
+      'maia-1200',
+      'maia-1300',
+      'maia-1400',
+      'maia-1500',
+      'maia-1600',
+      'maia-1700',
+      'maia-1800',
+      'maia-1900',
+    ]);
+    expect(option('maia-1500').textContent).toBe('Continue vs Maia 1500');
+    expect(option('maia-1500').disabled).toBe(false);
+    fireEvent.change(afterBook(), { target: { value: 'maia-1500' } });
+    expect(useDrillStore.getState().afterBook).toBe('maia-1500');
+    expect(screen.queryByTestId('drill-maia-unavailable')).toBeNull();
+  });
+
+  it('without the token the Maia entries are disabled with the reason', () => {
+    act(() =>
+      useAnalysisStore.setState({
+        serverProbe: { status: 'error', error: 'Access token required or wrong', lastProbe: 1 },
+      }),
+    );
+    render(<OpeningsPanel />);
+    pickItalian();
+    fireEvent.click(screen.getByRole('radio', { name: 'Drill' }));
+    expect(option('maia-1100').disabled).toBe(true);
+    expect(option('maia-1100').textContent).toBe('Continue vs Maia 1100 (unavailable)');
+    expect(option('stockfish').disabled).toBe(false);
+    expect(screen.getByTestId('drill-maia-unavailable').textContent).toBe(
+      'Human-like (Maia): Needs the server access token',
+    );
   });
 });

@@ -15,7 +15,14 @@ export interface PlayEngine {
   dispose(): Promise<void>;
 }
 
-export type CreatePlayEngine = () => PlayEngine | Promise<PlayEngine>;
+/**
+ * Creates the engine for `key` ({@link PlayConfig.engineKey}; `default` = the browser Stockfish).
+ * Factories that serve one engine only may ignore the argument.
+ */
+export type CreatePlayEngine = (key: string) => PlayEngine | Promise<PlayEngine>;
+
+/** Engine key of configs without {@link PlayConfig.engineKey}. */
+export const DEFAULT_ENGINE_KEY = 'default';
 
 /** The part of the zustand game store API the controller uses. */
 export interface GameStoreApi {
@@ -33,6 +40,13 @@ export interface PlayConfig {
    * replaces `moveTime`). The extra reply delay is skipped then, it would cost the engine's clock.
    */
   searchTime?: () => number;
+  /**
+   * Which engine plays (passed to `createEngine`); default {@link DEFAULT_ENGINE_KEY}. A game
+   * with another key than the current engine's disposes that engine and creates a new one.
+   */
+  engineKey?: string;
+  /** The engine paces its replies itself (human-like think time): no extra reply delay. */
+  selfPaced?: boolean;
 }
 
 export interface PlayControllerOptions {
@@ -89,6 +103,8 @@ export class PlayController {
   private engine: PlayEngine | null = null;
   private enginePromise: Promise<PlayEngine> | null = null;
   private engineEpoch = 0;
+  /** Key of {@link engine}/{@link enginePromise}. */
+  private engineKey: string | null = null;
   private appliedOptions: string | null = null;
   private disposeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -174,7 +190,7 @@ export class PlayController {
     this.setThinking(true);
     void (async () => {
       try {
-        const engine = await this.getEngine();
+        const engine = await this.getEngine(config.engineKey ?? DEFAULT_ENGINE_KEY);
         if (gen !== this.gen) return;
         await this.applyOptions(engine, strengthOptions(config.strength));
         if (gen !== this.gen) return;
@@ -195,7 +211,8 @@ export class PlayController {
         const best = (await handle.bestMove)?.move ?? pv0;
         if (gen !== this.gen) return;
         if (!best || !UCI_MOVE.test(best)) throw new Error('The engine returned no move');
-        const delay = config.searchTime ? 0 : (this.opts.extraDelayMs ?? defaultDelay)();
+        const delay =
+          config.searchTime || config.selfPaced ? 0 : (this.opts.extraDelayMs ?? defaultDelay)();
         if (delay > 0) {
           await sleep(delay);
           if (gen !== this.gen) return;
@@ -241,11 +258,16 @@ export class PlayController {
     this.opts.onThinking(v);
   }
 
-  private getEngine(): Promise<PlayEngine> {
+  private async getEngine(key: string): Promise<PlayEngine> {
+    if (this.enginePromise && this.engineKey !== key) {
+      // Another opponent (e.g. Maia instead of Stockfish): the old engine is not reused.
+      await this.disposeEngine();
+    }
     if (this.enginePromise) return this.enginePromise;
     const epoch = this.engineEpoch;
+    this.engineKey = key;
     const p = (async () => {
-      const e = await this.opts.createEngine();
+      const e = await this.opts.createEngine(key);
       if (epoch !== this.engineEpoch) {
         void e.dispose().catch(() => undefined);
         throw new Error('Engine has been disposed');
@@ -278,6 +300,7 @@ export class PlayController {
     const e = this.engine;
     this.engine = null;
     this.enginePromise = null;
+    this.engineKey = null;
     this.appliedOptions = null;
     this.searching = false;
     if (e) await e.dispose().catch(() => undefined);

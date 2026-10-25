@@ -9,8 +9,13 @@
 export interface StrengthPreset {
   id: string;
   label: string;
-  /** Target Elo; undefined = full strength. */
+  /** Target Elo; undefined = full strength (or a human-like engine, see `human`). */
   elo?: number;
+  /**
+   * A human-like engine of the server (Maia, ADR-019): the server engine id `maia-<rating>`
+   * plays the moves players of `rating` would play. Absent = Stockfish in the browser.
+   */
+  human?: { rating: number };
 }
 
 export const MIN_UCI_ELO = 1320;
@@ -26,14 +31,38 @@ export const STRENGTH_PRESETS: readonly StrengthPreset[] = [
   { id: 'full', label: 'Full strength' },
 ];
 
+/** Ratings of the Maia networks the server ships (ADR-019). */
+export const MAIA_RATINGS: readonly number[] = [
+  1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900,
+];
+
+/** Server engine id of a Maia level (`maia-1500`); also the preset id. */
+export const maiaEngineId = (rating: number): string => `maia-${rating}`;
+
+/** Human-like opponents (Maia on the engine server); their id is the server engine id. */
+export const HUMAN_PRESETS: readonly StrengthPreset[] = MAIA_RATINGS.map((rating) => ({
+  id: maiaEngineId(rating),
+  label: `Maia ${rating}`,
+  human: { rating },
+}));
+
 export const DEFAULT_STRENGTH = '1500';
+export const DEFAULT_MAIA = maiaEngineId(1500);
 
 export function findStrength(id: string): StrengthPreset {
-  return STRENGTH_PRESETS.find((p) => p.id === id) ?? (STRENGTH_PRESETS[1] as StrengthPreset);
+  return (
+    STRENGTH_PRESETS.find((p) => p.id === id) ??
+    HUMAN_PRESETS.find((p) => p.id === id) ??
+    (STRENGTH_PRESETS[1] as StrengthPreset)
+  );
 }
 
-/** UCI options for a preset; "Full strength" clears the limit. */
+/** True for a human-like (Maia) preset id. */
+export const isHumanStrength = (id: string): boolean => findStrength(id).human !== undefined;
+
+/** UCI options for a preset; "Full strength" clears the limit. Human-like engines take none. */
 export function strengthOptions(p: StrengthPreset): Record<string, string | number | boolean> {
+  if (p.human) return {};
   if (p.elo === undefined) return { UCI_LimitStrength: false };
   const elo = Math.round(Math.min(MAX_UCI_ELO, Math.max(MIN_UCI_ELO, p.elo)));
   return { UCI_LimitStrength: true, UCI_Elo: elo };

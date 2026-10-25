@@ -21,6 +21,11 @@ import { useUiStore } from '../../store/uiStore';
 import { PlayIndicator } from './PlayIndicator';
 import { PlayPanel } from './PlayPanel';
 import { PlayerBar, useBoardPlayers } from '../PlayerBar/PlayerBar';
+import { MaiaOpponent } from '../../maia/opponent';
+import { FakeMaiaServer, MAIA_WELCOME } from '../../maia/opponentTesting';
+import { setHumanProbe } from '../../maia/opponentProbe';
+import { useAnalysisStore } from '../../store/analysisStore';
+import type { ServerProbeState } from '../../engine/registry';
 
 /** The board's player bars (as in App), for the clocks that moved out of the panel. */
 function Bars() {
@@ -297,5 +302,155 @@ describe('PlayPanel play from the current position', () => {
         .map((m) => m.san),
     ).toEqual(['e4', 'e5']);
     expect(screen.getByRole('button', { name: 'Play from here' })).toBeTruthy();
+  });
+});
+
+describe('PlayPanel: human-like opponents (Maia, M23-2)', () => {
+  let server: FakeMaiaServer;
+  let probes = 0;
+  const setProbe = (serverProbe: ServerProbeState) =>
+    act(() => useAnalysisStore.setState({ serverProbe }));
+  const strength = () => screen.getByLabelText('Strength') as HTMLSelectElement;
+  const option = (label: RegExp) =>
+    [...strength().options].find((o) => label.test(o.textContent ?? '')) as HTMLOptionElement;
+
+  beforeEach(async () => {
+    server = new FakeMaiaServer();
+    probes = 0;
+    setHumanProbe(() => probes++);
+    await configurePlay({
+      createEngine: () => engine,
+      createHumanEngine: (ctx) =>
+        new MaiaOpponent({
+          engineId: ctx.engineId,
+          createClient: () => server.client(ctx.engineId),
+          varyMoves: ctx.varyMoves,
+          wait: () => Promise.resolve(),
+        }),
+      extraDelayMs: () => 0,
+      random: () => 0.1,
+    });
+  });
+
+  afterEach(() => {
+    setHumanProbe(() => undefined);
+    useAnalysisStore.setState({ serverProbe: { status: 'idle' } });
+  });
+
+  it('lists Maia 1100–1900 in a "Human-like (server)" group and probes the server', () => {
+    render(<PlayPanel />);
+    const groups = [...strength().querySelectorAll('optgroup')].map((g) => g.label);
+    expect(groups).toEqual(['Stockfish (browser)', 'Human-like (server)']);
+    const human = [...strength().querySelectorAll('optgroup')[1]!.querySelectorAll('option')];
+    expect(human.map((o) => o.value)).toEqual([
+      'maia-1100',
+      'maia-1200',
+      'maia-1300',
+      'maia-1400',
+      'maia-1500',
+      'maia-1600',
+      'maia-1700',
+      'maia-1800',
+      'maia-1900',
+    ]);
+    expect(probes).toBeGreaterThan(0);
+  });
+
+  it('without the token the Maia options are disabled with "Needs the server access token"', () => {
+    render(<PlayPanel />);
+    setProbe({ status: 'error', error: 'Access token required or wrong', lastProbe: 1 });
+    expect(option(/Maia 1500/).disabled).toBe(true);
+    expect(option(/Maia 1500/).title).toBe('Needs the server access token');
+    expect(screen.getByTestId('maia-unavailable').textContent).toBe(
+      'Human-like (Maia): Needs the server access token',
+    );
+    expect(option(/1500 Elo/).disabled).toBe(false);
+  });
+
+  it('a server that is not reachable gives "Server unavailable"', () => {
+    render(<PlayPanel />);
+    setProbe({ status: 'error', error: 'Server unreachable', lastProbe: 1 });
+    expect(option(/Maia 1900/).disabled).toBe(true);
+    expect(screen.getByTestId('maia-unavailable').textContent).toContain('Server unavailable');
+  });
+
+  it('while the probe runs nothing is disabled or shown; a reset probe is requested again', () => {
+    render(<PlayPanel />);
+    setProbe({ status: 'probing' });
+    expect(option(/Maia 1500/).disabled).toBe(false);
+    expect(screen.queryByTestId('maia-unavailable')).toBeNull();
+    const before = probes;
+    setProbe({ status: 'ok', engines: MAIA_WELCOME.engines, lastProbe: 1 });
+    setProbe({ status: 'idle' });
+    expect(probes).toBeGreaterThan(before);
+  });
+
+  it('selecting Maia persists it, shows "Vary moves" instead of the thinking time', () => {
+    render(<PlayPanel />);
+    setProbe({ status: 'ok', engines: MAIA_WELCOME.engines, lastProbe: 1 });
+    fireEvent.change(strength(), { target: { value: 'maia-1100' } });
+    expect(usePlayStore.getState().setup.strength).toBe('maia-1100');
+    expect(JSON.parse(localStorage.getItem('daisychess.play')!).strength).toBe('maia-1100');
+    expect(screen.queryByLabelText('Thinking time')).toBeNull();
+    const vary = screen.getByRole('checkbox', { name: 'Vary moves' }) as HTMLInputElement;
+    expect(vary.checked).toBe(true);
+    fireEvent.click(vary);
+    expect(usePlayStore.getState().setup.varyMoves).toBe(false);
+    // A level the server does not list is disabled.
+    expect(option(/Maia 1300/).disabled).toBe(true);
+    expect(option(/Maia 1300/).title).toBe('Not offered by the server');
+  });
+
+  it('a game vs Maia 1500: legal reply, bar "Maia 1500 · human-like"', async () => {
+    server.replies = [{ kind: 'move', best: 'e7e5', policy: [{ uci: 'e7e5', p: 0.7 }] }];
+    render(
+      <>
+        <PlayPanel />
+        <Bars />
+      </>,
+    );
+    setProbe({ status: 'ok', engines: MAIA_WELCOME.engines, lastProbe: 1 });
+    fireEvent.change(strength(), { target: { value: 'maia-1500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(screen.getByText(/White · Maia 1500 · No clock · human-like/)).toBeTruthy();
+    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe(
+      'Black: Maia 1500 · human-like',
+    );
+    act(() => {
+      useGameStore.getState().makeMove('e2', 'e4');
+    });
+    await waitFor(() => expect(useGameStore.getState().moves).toHaveLength(2));
+    expect(useGameStore.getState().moves[1]!.san).toBe('e5');
+    expect(engine.searches).toHaveLength(0);
+  });
+
+  it('Maia busy: the game ends with the message and offers "Continue vs Stockfish"', async () => {
+    server.replies = [{ kind: 'busy' }];
+    render(<PlayPanel />);
+    setProbe({ status: 'ok', engines: MAIA_WELCOME.engines, lastProbe: 1 });
+    fireEvent.change(strength(), { target: { value: 'maia-1500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    act(() => {
+      useGameStore.getState().makeMove('e2', 'e4');
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe('Maia is busy, try again'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Continue vs Stockfish' }));
+    expect(usePlayStore.getState()).toMatchObject({ mode: 'playing', setup: { strength: '1500' } });
+    await waitFor(() => expect(useGameStore.getState().moves).toHaveLength(2));
+    expect(engine.searches).toHaveLength(1);
+  });
+
+  it('a known missing token refuses Start with the reason', () => {
+    render(<PlayPanel />);
+    setProbe({ status: 'ok', engines: MAIA_WELCOME.engines, lastProbe: 1 });
+    fireEvent.change(strength(), { target: { value: 'maia-1500' } });
+    setProbe({ status: 'error', error: 'Access token required or wrong', lastProbe: 2 });
+    // The selected level stays selected (and shown) but the game does not start.
+    expect(strength().value).toBe('maia-1500');
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(usePlayStore.getState().mode).toBe('idle');
+    expect(screen.getByText('Maia 1500 cannot play: Needs the server access token.')).toBeTruthy();
   });
 });

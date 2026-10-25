@@ -7,16 +7,22 @@ import { FakeReviewEngine } from '../review/fakeEngine';
 import type { SearchEngineLease } from '../review/reviewStore';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
+import { useAnalysisStore } from '../store/analysisStore';
+import { MAIA_WELCOME } from '../maia/opponentTesting';
 import { DAY_MS, TRAINER_KEY, type KeyValueStorage } from './schedule';
 import {
+  AFTER_BOOK_KEY,
+  afterBookStrength,
   configureDrill,
   drillArrows,
   drillMovableColor,
   drillPlayers,
   dueCount,
   resetDrill,
+  sanitizeAfterBook,
   useDrillStore,
   type CreateDrillEngine,
+  type DrillAfterBook,
 } from './drillStore';
 
 const ROWS: OpeningRow[] = [
@@ -402,6 +408,153 @@ describe('line end, summary and schedule', () => {
     expect(useUiStore.getState().activeTab).toBe('openings');
     expect(drill().message).toBe('A live game is running.');
     expect(sans()).toEqual(['e4', 'c5']);
+  });
+});
+
+describe('after the book (M23-2)', () => {
+  const okProbe = () =>
+    useAnalysisStore.setState({
+      serverProbe: { status: 'ok', engines: MAIA_WELCOME.engines, lastProbe: Date.now() },
+    });
+
+  afterEach(() => {
+    useAnalysisStore.setState({ serverProbe: { status: 'idle' } });
+  });
+
+  it('defaults to stop; the choice is sanitized and persisted', async () => {
+    expect(drill().afterBook).toBe('stop');
+    drill().setAfterBook('maia-1500');
+    expect(drill().afterBook).toBe('maia-1500');
+    expect(storage.data[AFTER_BOOK_KEY]).toBe('maia-1500');
+    drill().setAfterBook('maia-9999' as DrillAfterBook);
+    expect(drill().afterBook).toBe('stop');
+    expect(sanitizeAfterBook('stockfish')).toBe('stockfish');
+    expect(sanitizeAfterBook(null)).toBe('stop');
+    // Loaded again with the storage.
+    storage.data[AFTER_BOOK_KEY] = 'maia-1900';
+    await configureDrill({ storage });
+    expect(drill().afterBook).toBe('maia-1900');
+  });
+
+  it('stop (default): the summary stays, no game starts', async () => {
+    drill().start(sicilian, 'white');
+    play('e4');
+    await vi.waitFor(() => expect(drill().status).toBe('done'));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(drill().summary?.reason).toBe('end');
+    expect(usePlayStore.getState().mode).toBe('idle');
+  });
+
+  it('continue vs Maia: the game against Maia 1500 starts at the end of the book', async () => {
+    okProbe();
+    const maiaEngine = new FakePlayEngine();
+    maiaEngine.manual = true;
+    const ids: string[] = [];
+    await configurePlay({
+      createEngine: () => new FakePlayEngine(),
+      createHumanEngine: (ctx) => {
+        ids.push(ctx.engineId);
+        return maiaEngine;
+      },
+      extraDelayMs: () => 0,
+    });
+    drill().setAfterBook('maia-1500');
+    useUiStore.getState().setActiveTab('openings');
+    drill().start(sicilian, 'white');
+    play('e4');
+    await vi.waitFor(() => expect(usePlayStore.getState().mode).toBe('playing'));
+    expect(usePlayStore.getState()).toMatchObject({
+      playerColor: 'white',
+      fromPly: 2,
+      setup: { from: 'current', strength: 'maia-1500' },
+    });
+    expect(useUiStore.getState().activeTab).toBe('play');
+    expect(drill().status).toBe('idle');
+    expect(sans()).toEqual(['e4', 'c5']);
+    // White to move: Maia's engine is created with its first move.
+    play('Nf3');
+    await vi.waitFor(() => expect(ids).toEqual(['maia-1500']));
+  });
+
+  it('continue vs Stockfish uses the last Stockfish preset (default after a Maia game)', async () => {
+    const playEngine = new FakePlayEngine();
+    playEngine.manual = true;
+    await configurePlay({ createEngine: () => playEngine, extraDelayMs: () => 0 });
+    usePlayStore.getState().setSetup({ strength: 'maia-1500' });
+    expect(afterBookStrength('stockfish')).toBe('1500');
+    usePlayStore.getState().setSetup({ strength: '2100' });
+    expect(afterBookStrength('stockfish')).toBe('2100');
+    expect(afterBookStrength('stop')).toBeUndefined();
+    expect(afterBookStrength('maia-1100')).toBe('maia-1100');
+    drill().setAfterBook('stockfish');
+    drill().start(sicilian, 'black');
+    await waitPhase('user');
+    play('c5');
+    await vi.waitFor(() => expect(usePlayStore.getState().mode).toBe('playing'));
+    expect(usePlayStore.getState()).toMatchObject({
+      playerColor: 'black',
+      setup: { strength: '2100', from: 'current' },
+    });
+  });
+
+  it('Maia unavailable (no token): the summary stays with the reason', async () => {
+    useAnalysisStore.setState({
+      serverProbe: { status: 'error', error: 'Access token required or wrong', lastProbe: 1 },
+    });
+    drill().setAfterBook('maia-1500');
+    useUiStore.getState().setActiveTab('openings');
+    drill().start(sicilian, 'white');
+    play('e4');
+    await vi.waitFor(() =>
+      expect(drill().message).toBe('Maia 1500 cannot play: Needs the server access token.'),
+    );
+    expect(drill().status).toBe('done');
+    expect(drill().summary?.reason).toBe('end');
+    expect(usePlayStore.getState().mode).toBe('idle');
+    expect(useUiStore.getState().activeTab).toBe('openings');
+  });
+
+  it('"Play on vs engine" uses the chosen opponent', async () => {
+    okProbe();
+    const maiaEngine = new FakePlayEngine();
+    maiaEngine.manual = true;
+    await configurePlay({
+      createEngine: () => new FakePlayEngine(),
+      createHumanEngine: () => maiaEngine,
+      extraDelayMs: () => 0,
+    });
+    drill().start(sicilian, 'white');
+    play('e4');
+    await vi.waitFor(() => expect(drill().status).toBe('done'));
+    drill().setAfterBook('maia-1900');
+    drill().playOn();
+    expect(usePlayStore.getState()).toMatchObject({
+      mode: 'playing',
+      setup: { strength: 'maia-1900' },
+    });
+  });
+
+  it('a new drill before the continuation fires cancels it', async () => {
+    okProbe();
+    await configurePlay({ createEngine: () => new FakePlayEngine(), extraDelayMs: () => 0 });
+    drill().setAfterBook('stockfish');
+    let restarted = false;
+    const off = useDrillStore.subscribe((st) => {
+      if (st.status !== 'done' || restarted) return;
+      // Same tick as the end of the book: before the continuation's timer fires.
+      restarted = true;
+      queueMicrotask(() => {
+        game().reset();
+        drill().start(italian, 'white');
+      });
+    });
+    drill().start(sicilian, 'white');
+    play('e4');
+    await vi.waitFor(() => expect(restarted).toBe(true));
+    off();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(usePlayStore.getState().mode).toBe('idle');
+    expect(drill().status).toBe('running');
   });
 });
 

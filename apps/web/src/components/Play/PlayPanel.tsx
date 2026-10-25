@@ -20,7 +20,15 @@ import {
   type PlayFrom,
   type PlaySetup,
 } from '../../play/playStore';
-import { findStrength, MOVE_TIMES, STRENGTH_PRESETS } from '../../play/strength';
+import {
+  DEFAULT_STRENGTH,
+  findStrength,
+  HUMAN_PRESETS,
+  MOVE_TIMES,
+  STRENGTH_PRESETS,
+} from '../../play/strength';
+import { humanAvailability, humanEngineReason } from '../../maia/opponentAvailability';
+import { useHumanProbe } from '../../maia/opponentHooks';
 import { START_FEN, useGameStore, type Orientation } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
 import styles from './PlayPanel.module.css';
@@ -182,13 +190,17 @@ export function TimeControlField({
   );
 }
 
-const summaryOf = (playerColor: Orientation, setup: PlaySetup): string =>
-  [
+const summaryOf = (playerColor: Orientation, setup: PlaySetup): string => {
+  const opponent = findStrength(setup.strength);
+  return [
     colorName(playerColor),
-    findStrength(setup.strength).label,
+    opponent.label,
     setup.timeControl ? timeControlLabel(setup.timeControl) : 'No clock',
-    `${setup.timeControl ? 'up to ' : ''}${MOVE_TIMES.find((t) => t.ms === setup.moveTime)?.label ?? ''}`,
+    opponent.human
+      ? 'human-like'
+      : `${setup.timeControl ? 'up to ' : ''}${MOVE_TIMES.find((t) => t.ms === setup.moveTime)?.label ?? ''}`,
   ].join(' · ');
+};
 
 /** "Play vs Engine": setup, running game controls and the result. */
 export function PlayPanel() {
@@ -204,6 +216,16 @@ export function PlayPanel() {
   const lock = useHumanGameLockReason();
   const { setup } = play;
   const summary = summaryOf(play.playerColor, setup);
+  const probe = useHumanProbe(play.mode === 'idle');
+  const human = humanAvailability(probe);
+  const opponent = findStrength(setup.strength);
+  const humanReason = opponent.human ? humanEngineReason(probe, opponent.id) : undefined;
+  /** Known reason why Maia levels cannot be chosen (not while the probe is still running). */
+  const levelReason = (engineId: string): string | undefined =>
+    !human.ok && human.pending ? undefined : humanEngineReason(probe, engineId);
+  const humanNote = humanReason ?? (!human.ok && !human.pending ? human.reason : undefined);
+  // The browser engine's support only matters for Stockfish.
+  const blocked = opponent.human ? undefined : unavailable;
 
   if (play.mode === 'idle') {
     return (
@@ -260,34 +282,80 @@ export function PlayPanel() {
           <select
             value={setup.strength}
             onChange={(e) => play.setSetup({ strength: e.target.value })}
+            aria-describedby={humanNote ? `${id}-human` : undefined}
           >
-            {STRENGTH_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
+            <optgroup label="Stockfish (browser)">
+              {STRENGTH_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Human-like (server)">
+              {HUMAN_PRESETS.map((p) => {
+                const reason = levelReason(p.id);
+                return (
+                  <option
+                    key={p.id}
+                    value={p.id}
+                    // The selected (persisted) level stays selectable so the select shows it.
+                    disabled={reason !== undefined && p.id !== setup.strength}
+                    title={reason}
+                  >
+                    {reason ? `${p.label} (unavailable)` : p.label}
+                  </option>
+                );
+              })}
+            </optgroup>
           </select>
         </label>
-        <label className={styles.field}>
-          <span>Thinking time</span>
-          <select
-            value={setup.moveTime}
-            onChange={(e) => play.setSetup({ moveTime: Number(e.target.value) })}
+        {humanNote && (
+          <p
+            className={opponent.human ? styles.error : styles.note}
+            id={`${id}-human`}
+            data-testid="maia-unavailable"
           >
-            {MOVE_TIMES.map((t) => (
-              <option key={t.ms} value={t.ms}>
-                {t.label} per move
-              </option>
-            ))}
-          </select>
-        </label>
+            Human-like (Maia): {humanNote}
+          </p>
+        )}
+        {opponent.human ? (
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              checked={setup.varyMoves !== false}
+              onChange={(e) => play.setSetup({ varyMoves: e.target.checked })}
+            />
+            <span>Vary moves</span>
+          </label>
+        ) : (
+          <label className={styles.field}>
+            <span>Thinking time</span>
+            <select
+              value={setup.moveTime}
+              onChange={(e) => play.setSetup({ moveTime: Number(e.target.value) })}
+            >
+              {MOVE_TIMES.map((t) => (
+                <option key={t.ms} value={t.ms}>
+                  {t.label} per move
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <TimeControlField
           value={setup.timeControl ?? null}
           onChange={(timeControl) => play.setSetup({ timeControl })}
         />
+        {opponent.human && (
+          <p className={styles.note}>
+            {opponent.label} plays the moves lichess players of that rating typically play (Maia, on
+            the engine server). With &quot;Vary moves&quot; it does not always pick its most likely
+            move.
+          </p>
+        )}
         <p className={styles.note}>
           Live analysis is paused during the game and resumes afterwards.
-          {setup.timeControl
+          {setup.timeControl && !opponent.human
             ? ' With a clock the engine thinks at most the chosen time, less when its time runs low.'
             : ''}
         </p>
@@ -297,16 +365,16 @@ export function PlayPanel() {
             {lockText(lock)}
           </p>
         )}
-        {unavailable && !play.message && (
+        {blocked && !play.message && (
           <p className={styles.error} data-testid="play-engine-unavailable">
-            The engine cannot play in this browser: {unavailable}.
+            The engine cannot play in this browser: {blocked}.
           </p>
         )}
         {play.message && <p className={styles.error}>{play.message}</p>}
         <button
           type="submit"
           className={styles.primary}
-          disabled={lock === 'live' || lock === 'room' || unavailable !== undefined}
+          disabled={lock === 'live' || lock === 'room' || blocked !== undefined}
           aria-describedby={lock === 'live' || lock === 'room' ? `${id}-locked` : undefined}
         >
           Start
@@ -314,7 +382,7 @@ export function PlayPanel() {
         {hasMoves && (
           <button
             type="button"
-            disabled={lock === 'live' || lock === 'room' || unavailable !== undefined}
+            disabled={lock === 'live' || lock === 'room' || blocked !== undefined}
             onClick={() => play.start({ from: 'current' })}
           >
             Play from here
@@ -326,7 +394,9 @@ export function PlayPanel() {
 
   if (play.mode === 'playing') {
     const status = play.thinking
-      ? 'Engine thinking…'
+      ? opponent.human
+        ? `${opponent.label} thinking…`
+        : 'Engine thinking…'
       : atTip
         ? 'Your move'
         : 'Your move (go to the last move to play)';
@@ -374,6 +444,19 @@ export function PlayPanel() {
         <p className={styles.error} role="alert">
           {play.message}
         </p>
+      )}
+      {opponent.human && play.reason === 'engine_error' && (
+        <div className={styles.row}>
+          <button
+            type="button"
+            className={styles.primary}
+            data-testid="play-switch-stockfish"
+            disabled={unavailable !== undefined}
+            onClick={() => play.start({ from: 'current', strength: DEFAULT_STRENGTH })}
+          >
+            Continue vs Stockfish
+          </button>
+        </div>
       )}
       <div className={styles.row}>
         <button type="button" className={styles.primary} onClick={play.rematch}>

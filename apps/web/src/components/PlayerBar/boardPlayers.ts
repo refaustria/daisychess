@@ -132,9 +132,11 @@ function playPlayers(input: BoardPlayersInput): BoardPlayers {
   };
   const engineColor = other(play.playerColor);
   const you: PlayerInfo = { name: 'You', clock: clockOf(play.playerColor, 'you') };
+  const preset = findStrength(play.setup.strength);
   const engine: PlayerInfo = {
-    name: 'Stockfish',
-    subtitle: findStrength(play.setup.strength).label,
+    // A human-like opponent (Maia, M23-2) is named by its level: "Maia 1500", "human-like".
+    name: preset.human ? preset.label : 'Stockfish',
+    subtitle: preset.human ? 'human-like' : preset.label,
     clock: clockOf(engineColor, 'engine'),
   };
   return play.playerColor === 'white'
@@ -171,7 +173,10 @@ function pgnPlayers(game: BoardPlayersInput['game']): BoardPlayers {
     const elo = header(headers, `${side}Elo`);
     const title = header(headers, `${side}Title`);
     const subtitle = [title, elo].filter(Boolean).join(' ');
-    const info: PlayerInfo = { name: header(headers, side) ?? side, subtitle: subtitle || undefined };
+    const info: PlayerInfo = {
+      name: header(headers, side) ?? side,
+      subtitle: subtitle || undefined,
+    };
     const clock = pgnClock(game, side === 'White' ? 'white' : 'black');
     return clock ? { ...info, clock } : info;
   };

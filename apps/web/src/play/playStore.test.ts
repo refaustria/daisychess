@@ -192,6 +192,7 @@ describe('playStore', () => {
       moveTime: 500,
       timeControl: null,
       from: 'start',
+      varyMoves: true,
     });
   });
 });
@@ -341,6 +342,7 @@ describe('playStore clock', () => {
       moveTime: 1000,
       timeControl: { initialMs: 180_000, incrementMs: 2000 },
       from: 'start',
+      varyMoves: true,
     });
     expect(readPlaySetup().timeControl).toEqual({ initialMs: 180_000, incrementMs: 2000 });
     p().setSetup({ timeControl: null });
@@ -352,6 +354,7 @@ describe('playStore clock', () => {
       moveTime: 500,
       timeControl: null,
       from: 'start',
+      varyMoves: true,
     });
     localStorage.setItem(
       PLAY_STORAGE_KEY,

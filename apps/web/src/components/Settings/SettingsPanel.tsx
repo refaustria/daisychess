@@ -13,6 +13,7 @@ import {
   type ReviewEnginePreference,
 } from '../../store/settingsStore';
 import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
+import { MaiaHintsField } from './MaiaHintsField';
 import { ReviewCacheField } from './ReviewCacheField';
 import styles from './SettingsPanel.module.css';
 
@@ -267,6 +268,7 @@ export function SettingsPanel() {
 
       <ServerTokenField />
       <ReviewEngineField />
+      <MaiaHintsField />
       <ReviewCacheField />
     </div>
   );

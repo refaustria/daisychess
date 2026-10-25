@@ -4,6 +4,8 @@ import { CLASS_INFO } from '../../review/format';
 import { alternativesText } from '../../review/openingFocus';
 import { useOpeningFocus } from '../../review/useOpeningFocus';
 import { isTimeTrouble, moveTime, timeUsedText } from '../../review/timeUsage';
+import { hintLines, levelSource } from '../../maia/hintText';
+import { useMaiaHint } from '../../maia/hintStore';
 import { useGameStore } from '../../store/gameStore';
 import { usePreviewStore } from '../../store/previewStore';
 import styles from './ReviewPanel.module.css';
@@ -29,6 +31,30 @@ function useMoveTime(detail: MoveDetail): { text?: string; trouble: boolean } {
     ...(text !== undefined ? { text } : {}),
     trouble: isTimeTrouble(game, detail),
   };
+}
+
+/** Human-like hint (Maia, M23-3): what players at the mover's level play here. */
+export function MaiaHintLine({ detail, timeTrouble }: { detail: MoveDetail; timeTrouble: boolean }) {
+  const found = useMaiaHint(detail.ply, detail.mover);
+  if (!found) return null;
+  const lines = hintLines(
+    found.hint,
+    {
+      playedSan: detail.playedSan,
+      classification: detail.classification,
+      ...(detail.bestSan ? { bestSan: detail.bestSan } : {}),
+    },
+    found.level,
+    { timeTrouble },
+  );
+  if (lines.length === 0) return null;
+  return (
+    <div className={styles.maiaHint} data-testid="move-card-maia" title={levelSource(found.level)}>
+      {lines.map((l) => (
+        <p key={l}>{l}</p>
+      ))}
+    </div>
+  );
 }
 
 function Body({ detail }: { detail: MoveDetail }) {
@@ -79,6 +105,7 @@ function Body({ detail }: { detail: MoveDetail }) {
         {detail.swing} for {detail.mover === 'white' ? 'White' : 'Black'})
       </p>
       <p data-testid="move-card-text">{explainMove(detail)}</p>
+      <MaiaHintLine detail={detail} timeTrouble={time.trouble} />
     </>
   );
 }

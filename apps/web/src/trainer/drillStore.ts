@@ -5,6 +5,7 @@ import { useLiveStore } from '../live/liveStore';
 import { getBook, type Book, type BookOpening } from '../openings';
 import { openingKey, pickWeighted } from '../openings/book';
 import { usePlayStore } from '../play/playStore';
+import { DEFAULT_STRENGTH, findStrength, HUMAN_PRESETS } from '../play/strength';
 import { isRetryableEngineError, wasmHealth } from '../engine/wasmHealth';
 import {
   openSearchEngine,
@@ -21,6 +22,7 @@ import { formatEval, judgeDeviation, resolveSan, sideToMove, terminalScore } fro
 import {
   useDrillStore,
   type DrillActions,
+  type DrillAfterBook,
   type DrillEndReason,
   type DrillSummary,
 } from './drillState';
@@ -112,6 +114,41 @@ let deadline: { pause(): void; resume(): void } | null = null;
 let serverTried = false;
 /** Engine notice before the "waiting" text replaced it. */
 let noticeBeforeWait: string | undefined;
+/** Pending automatic continuation after the book ({@link DrillAfterBook}). */
+let continueTimer: ReturnType<typeof setTimeout> | null = null;
+
+export const AFTER_BOOK_KEY = 'daisychess.drillAfterBook';
+
+/** A stored/selected "after the book" value, or `stop` for anything unknown. */
+export function sanitizeAfterBook(v: unknown): DrillAfterBook {
+  if (v === 'stockfish') return 'stockfish';
+  if (typeof v === 'string' && HUMAN_PRESETS.some((p) => p.id === v)) return v as DrillAfterBook;
+  return 'stop';
+}
+
+function loadAfterBook(storage: KeyValueStorage | undefined): DrillAfterBook {
+  try {
+    return sanitizeAfterBook(storage?.getItem(AFTER_BOOK_KEY));
+  } catch {
+    return 'stop';
+  }
+}
+
+/** The Play tab strength id for an "after the book" choice (undefined: the last setup). */
+export function afterBookStrength(after: DrillAfterBook): string | undefined {
+  if (after === 'stop') return undefined;
+  if (after === 'stockfish') {
+    // The Play tab's last Stockfish preset, unless the last game was against Maia.
+    const last = usePlayStore.getState().setup.strength;
+    return findStrength(last).human ? DEFAULT_STRENGTH : last;
+  }
+  return after;
+}
+
+function clearContinue(): void {
+  if (continueTimer !== null) clearTimeout(continueTimer);
+  continueTimer = null;
+}
 
 interface SearchResult {
   score: Score;
@@ -527,6 +564,14 @@ function finish(reason: DrillEndReason): void {
     saveSchedule(hooks.storage, schedule);
   }
   useDrillStore.setState({ status: 'done', phase: 'none', summary, schedule });
+  if (s.afterBook !== 'stop') {
+    // Continue against the chosen opponent (outside the game store's notification).
+    clearContinue();
+    continueTimer = setTimeout(() => {
+      continueTimer = null;
+      if (get().status === 'done' && get().summary === summary) get().playOn();
+    }, 0);
+  }
 }
 
 /** Reacts to game store changes while a drill runs (the user's moves, takebacks, loads). */
@@ -604,6 +649,7 @@ const get = useDrillStore.getState;
 /** The drill's actions; installed into {@link useDrillStore} when this module loads. */
 const actions: DrillActions = {
   start: (opening, color) => {
+    clearContinue();
     const lock = humanGameLockReason();
     if (lock) {
       set({ message: `The drill uses the engine: ${lockText(lock) ?? 'a game runs'}.` });
@@ -647,6 +693,16 @@ const actions: DrillActions = {
   },
 
   setColorChoice: (colorChoice) => set({ colorChoice }),
+
+  setAfterBook: (after) => {
+    const afterBook = sanitizeAfterBook(after);
+    set({ afterBook });
+    try {
+      hooks.storage?.setItem(AFTER_BOOK_KEY, afterBook);
+    } catch {
+      // Storage full or blocked: the choice is just not remembered.
+    }
+  },
 
   retry: () => {
     const s = get();
@@ -694,21 +750,30 @@ const actions: DrillActions = {
   playOn: () => {
     // M18-3: the engine game starts at once from the drill's position (the moves so far stay in
     // the game, so the review covers the opening too), with the user's drill colour.
+    // The opponent is the "after the book" choice (M23-2; `stop`: the Play tab's last setup).
+    clearContinue();
     const color = get().userColor;
-    get().stop();
+    const strength = afterBookStrength(get().afterBook);
+    if (get().status === 'running') get().stop();
     const play = usePlayStore.getState();
-    play.start({ from: 'current', color });
+    play.start({ from: 'current', color, ...(strength ? { strength } : {}) });
     const after = usePlayStore.getState();
     if (after.mode !== 'playing') {
-      // A live/room game runs or the position is over: stay here and say why.
+      // A live/room game runs, Maia is unavailable or the position is over: say why (the
+      // summary stays).
       set({ message: after.message ?? 'The game against the engine could not start.' });
       return;
     }
+    get().stop();
     useUiStore.getState().setActiveTab('play');
   },
 };
 
-useDrillStore.setState({ ...actions, schedule: loadSchedule(DEFAULT_HOOKS.storage) });
+useDrillStore.setState({
+  ...actions,
+  schedule: loadSchedule(DEFAULT_HOOKS.storage),
+  afterBook: loadAfterBook(DEFAULT_HOOKS.storage),
+});
 
 /** Number of due variations (badge of the picker). */
 export function dueCount(schedule: Schedule, now: number): number {
@@ -719,12 +784,16 @@ export function dueCount(schedule: Schedule, now: number): number {
 export async function configureDrill(next: Partial<DrillHooks>): Promise<void> {
   await resetDrill();
   hooks = { ...hooks, ...next };
-  useDrillStore.setState({ schedule: loadSchedule(hooks.storage) });
+  useDrillStore.setState({
+    schedule: loadSchedule(hooks.storage),
+    afterBook: loadAfterBook(hooks.storage),
+  });
 }
 
 /** Ends any drill, releases the engine and restores the default hooks' state (tests). */
 export async function resetDrill(): Promise<void> {
   cancelPending();
+  clearContinue();
   unwatchGame?.();
   unwatchGame = null;
   unwatchLocks?.();
@@ -754,5 +823,6 @@ export async function resetDrill(): Promise<void> {
     message: undefined,
     runsOn: undefined,
     engineNotice: undefined,
+    afterBook: 'stop',
   });
 }

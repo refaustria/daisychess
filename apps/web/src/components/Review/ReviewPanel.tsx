@@ -1,5 +1,5 @@
 import { MOVE_CLASSES, type ReviewedMove, type ReviewSummary } from '@daisychess/engine-core';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { annotatePgn } from '../../review/annotatePgn';
 import { reviewHighlights } from '../../review/details';
 import { CLASS_INFO, bestMoveSan, moveNumberLabel } from '../../review/format';
@@ -9,6 +9,9 @@ import { REVIEW_PRESETS, useReviewStore, type ReviewEngineInfo } from '../../rev
 import { hasClockData } from '../../clock/gameTimes';
 import { formatDuration, isTimeTrouble, sideTimeStats } from '../../review/timeUsage';
 import { useGameStore } from '../../store/gameStore';
+import { useSettingsStore } from '../../store/settingsStore';
+import { requestMaiaHints, useGameHints } from '../../maia/hintStore';
+import { levelSource, levelText, typicalMistakes } from '../../maia/hintText';
 import { EvalGraph } from './EvalGraph';
 import { TimeGraph } from './TimeGraph';
 import { TimeTroubleBadge } from './TimeTroubleBadge';
@@ -196,6 +199,85 @@ function TimeSummary({ summary }: { summary: ReviewSummary }) {
   );
 }
 
+export const MAIA_TOKEN_NOTE = 'Human-like hints need the server access token';
+
+/**
+ * Requests the Maia hints (M23-3) once the review of the game on the board is done (computed or
+ * loaded from a cache); again when the level setting, the toggle or the token change.
+ */
+function useMaiaHintRequest(): void {
+  const status = useReviewStore((s) => s.status);
+  const summary = useReviewStore((s) => s.summary);
+  const details = useReviewStore((s) => s.moveDetails);
+  const reviewed = useReviewStore((s) => s.reviewed);
+  const startFen = useGameStore((s) => s.startFen);
+  const moves = useGameStore((s) => s.moves);
+  const headers = useGameStore((s) => s.headers);
+  const enabled = useSettingsStore((s) => s.maiaHints);
+  const rating = useSettingsStore((s) => s.maiaRating);
+  const token = useSettingsStore((s) => s.serverToken);
+  useEffect(() => {
+    if (status !== 'done' || !summary || reviewed !== moves) return;
+    if (moves.length === 0 || summary.moves.length !== moves.length) return;
+    void requestMaiaHints({
+      startFen,
+      moves,
+      headers,
+      details,
+      enabled,
+      fallbackRating: rating,
+    });
+  }, [status, summary, details, reviewed, startFen, moves, headers, enabled, rating, token]);
+}
+
+/**
+ * "Typical mistakes (Maia predicted)" per player: mistakes/blunders that were Maia's most likely
+ * move at the player's level vs. unusual ones; or the one muted line when the token is missing.
+ */
+function MaiaSummary({ summary }: { summary: ReviewSummary }) {
+  const headers = useGameStore((s) => s.headers);
+  const state = useGameHints();
+  const counts = useMemo(
+    () => (state ? typicalMistakes(summary, state.hints) : undefined),
+    [summary, state],
+  );
+  if (!state) return null;
+  if (state.status === 'unauthorized') {
+    return (
+      <p className={styles.muted} data-testid="maia-token-note">
+        {MAIA_TOKEN_NOTE}
+      </p>
+    );
+  }
+  if (!counts || !state.levels || state.status === 'off') return null;
+  const levels = state.levels;
+  const sides = (['white', 'black'] as const).filter(
+    (c) => counts[c].typical + counts[c].unusual > 0,
+  );
+  if (sides.length === 0) return null;
+  return (
+    <section className={styles.maiaSummary} data-testid="maia-summary" aria-label="Typical mistakes">
+      <h3 className={styles.h3}>Typical mistakes (Maia predicted)</h3>
+      <ul>
+        {sides.map((c) => {
+          const n = counts[c];
+          return (
+            <li key={c} data-testid={`maia-summary-${c}`} title={levelSource(levels[c])}>
+              {playerName(headers, c)} at {levelText(levels[c])}: {n.typical} typical,{' '}
+              {n.unusual} unusual
+              {n.pending > 0
+                ? state.status === 'running'
+                  ? ' …'
+                  : ` (${n.pending} without a hint)`
+                : ''}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function Done({ summary }: { summary: ReviewSummary }) {
   const headers = useGameStore((s) => s.headers);
   const startFen = useGameStore((s) => s.startFen);
@@ -258,6 +340,7 @@ function Done({ summary }: { summary: ReviewSummary }) {
           ))}
         </tbody>
       </table>
+      <MaiaSummary summary={summary} />
       <EvalGraph summary={summary} ply={ply} onSeek={goTo} />
       {timed && (
         <>
@@ -298,6 +381,7 @@ export function ReviewPanel() {
   const ofThisGame = useReviewStore((s) => s.reviewed) === useGameStore((s) => s.moves);
   const lock = useHumanGameLockReason();
   const playing = lock !== null;
+  useMaiaHintRequest();
   const [preset, setPreset] = useState<PresetKey>('deep');
   const alreadyReviewed =
     status === 'done' && ofThisGame && stored && covers(stored.preset, preset)

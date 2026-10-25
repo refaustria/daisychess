@@ -13,6 +13,8 @@ import {
   type TourTimer,
 } from './tour';
 import { timeTroublePlies } from './timeUsage';
+import { maiaHintAt } from '../maia/hintStore';
+import { hintShortText } from '../maia/hintText';
 
 /** Identity of the game on the board (start position + moves). */
 export function gameKey(s: Pick<GameState, 'startFen' | 'moves'>): string {
@@ -69,7 +71,10 @@ export const useTourStore = create<TourStore>()((set, get) => ({
         onStep: (step: TourStep, i: number) => {
           tourPly = step.ply;
           useGameStore.getState().goTo(step.ply);
-          set({ reached: reachedAt(i), text: step.kind ? highlightText(moveDetails, step, trouble) : '' });
+          const text = step.kind ? highlightText(moveDetails, step, trouble) : '';
+          // Human-like hint (M23-3), when it has arrived by now: "… — common at 1500".
+          const short = step.kind && step.kind !== 'great' ? hintShortText(maiaHintAt(step.ply)) : undefined;
+          set({ reached: reachedAt(i), text: short ? `${text} — ${short}` : text });
         },
         onStatus: (status) => {
           if (status === 'playing' || status === 'paused') {

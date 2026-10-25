@@ -47,6 +47,13 @@ export type DrillFeedback =
 
 export type DrillEndReason = 'end' | 'outOfBook';
 
+/**
+ * What follows the end of the book (M23-2): `stop` shows the summary (default); `stockfish` or a
+ * Maia level (`maia-1500`, the server engine id) continues at once with a game against it from
+ * the drill's position. "Play on vs engine" uses the same opponent.
+ */
+export type DrillAfterBook = 'stop' | 'stockfish' | `maia-${number}`;
+
 export interface DrillSummary {
   reason: DrillEndReason;
   /** User moves accepted. */
@@ -81,12 +88,16 @@ export interface DrillState {
   engineNotice?: string;
   /** Spaced repetition per variation (localStorage `daisychess.trainer`). */
   schedule: Schedule;
+  /** After the book (localStorage `daisychess.drillAfterBook`). */
+  afterBook: DrillAfterBook;
 }
 
 export interface DrillActions {
   /** Starts a drill of `opening` (resets the board). Refused during live, room or engine games. */
   start(opening: BookOpening, color?: DrillColorChoice): void;
   setColorChoice(color: DrillColorChoice): void;
+  /** Chooses what follows the end of the book (persisted). */
+  setAfterBook(after: DrillAfterBook): void;
   /** Takes back the rejected move (phase `retry`). */
   retry(): void;
   /** Ends the drill without recording a result; the board keeps the position. */
@@ -97,7 +108,10 @@ export interface DrillActions {
   next(): void;
   /** Starts the earliest-due variation; false when none is due. */
   trainDue(): boolean;
-  /** Hand-off to the Play tab with the drill's game on the board (M18-2). */
+  /**
+   * Hand-off to the Play tab with the drill's game on the board (M18-2), against the
+   * {@link DrillState.afterBook} opponent (`stop`: the Play tab's last setup).
+   */
   playOn(): void;
 }
 
@@ -115,8 +129,10 @@ export const useDrillStore = create<DrillStore>()(() => ({
   firstTry: 0,
   mistakes: 0,
   schedule: {},
+  afterBook: 'stop',
   start: noop,
   setColorChoice: noop,
+  setAfterBook: noop,
   retry: noop,
   stop: noop,
   repeat: noop,

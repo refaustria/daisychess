@@ -45,7 +45,14 @@ export interface Settings {
    * that needs protection from this browser's user.
    */
   serverToken: string;
+  /** Human-like hints (Maia, server only) for the mistakes of a review (M23-3). */
+  maiaHints: boolean;
+  /** Maia level (1100…1900) for a side without a PGN rating (M23-3). */
+  maiaRating: number;
 }
+
+/** Maia levels offered for {@link Settings.maiaRating} (ADR-019). */
+export const MAIA_RATINGS: readonly number[] = [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900];
 
 /** Same bound as the protocol's `hello.token`. */
 export const MAX_SERVER_TOKEN_LENGTH = 256;
@@ -68,6 +75,8 @@ export const DEFAULT_SETTINGS: Settings = {
   premoves: 'single',
   reviewEngine: 'auto',
   serverToken: '',
+  maiaHints: true,
+  maiaRating: 1500,
 };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -119,6 +128,10 @@ export function parseSettings(raw: string | null): Settings {
     out.reviewEngine = o.reviewEngine as ReviewEnginePreference;
   }
   if (typeof o.serverToken === 'string') out.serverToken = normalizeToken(o.serverToken);
+  if (typeof o.maiaHints === 'boolean') out.maiaHints = o.maiaHints;
+  if (typeof o.maiaRating === 'number' && MAIA_RATINGS.includes(o.maiaRating)) {
+    out.maiaRating = o.maiaRating;
+  }
   return out;
 }
 
@@ -162,6 +175,8 @@ function pick(s: Settings): Settings {
     premoves: s.premoves,
     reviewEngine: s.reviewEngine,
     serverToken: s.serverToken,
+    maiaHints: s.maiaHints,
+    maiaRating: s.maiaRating,
   };
   if (s.customBoard) out.customBoard = s.customBoard;
   return out;

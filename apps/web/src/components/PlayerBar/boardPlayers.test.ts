@@ -57,10 +57,17 @@ describe('selectBoardPlayers: PGN clocks (M22-1)', () => {
   ];
   const timeControl = { initialMs: 300_000, incrementMs: 0 };
   const at = (ply: number, over: Partial<BoardPlayersInput['game']> = {}) =>
-    selectBoardPlayers(input({ game: { headers: {}, startFen: START_FEN, moves, ply, timeControl, ...over } }));
+    selectBoardPlayers(
+      input({ game: { headers: {}, startFen: START_FEN, moves, ply, timeControl, ...over } }),
+    );
 
   it('initial time before the first move, then the value after the side’s latest move', () => {
-    expect(at(0).white.clock).toEqual({ ms: 300_000, state: 'idle', initialMs: 300_000, testId: 'pgn-clock-white' });
+    expect(at(0).white.clock).toEqual({
+      ms: 300_000,
+      state: 'idle',
+      initialMs: 300_000,
+      testId: 'pgn-clock-white',
+    });
     expect(at(0).black.clock?.ms).toBe(300_000);
     expect(at(1).black.clock?.ms).toBe(300_000);
     expect(at(2).black.clock?.ms).toBe(295_000);
@@ -146,6 +153,22 @@ describe('selectBoardPlayers', () => {
       initialMs: 180_000,
       testId: 'play-clock-engine',
     });
+  });
+
+  it('game vs Maia: the opponent is "Maia 1500", human-like (M23-2)', () => {
+    const p = selectBoardPlayers(
+      input({
+        play: {
+          mode: 'playing',
+          playerColor: 'white',
+          setup: { strength: 'maia-1500' },
+          clock: null,
+        },
+        game: { headers: {}, startFen: START_FEN, moves: [] },
+      }),
+    );
+    expect(p.black).toEqual({ name: 'Maia 1500', subtitle: 'human-like', clock: undefined });
+    expect(p.white.name).toBe('You');
   });
 
   it('engine game as Black: the side to move is active before its clock runs', () => {

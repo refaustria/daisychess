@@ -30,7 +30,14 @@ import {
   type GameResult,
   type Outcome,
 } from './outcome';
-import { PlayController, type CreatePlayEngine, type PlayConfig } from './PlayController';
+import { humanStartRefusal } from '../maia/opponentAvailability';
+import {
+  DEFAULT_ENGINE_KEY,
+  PlayController,
+  type CreatePlayEngine,
+  type PlayConfig,
+  type PlayEngine,
+} from './PlayController';
 import { DEFAULT_MOVE_TIME, DEFAULT_STRENGTH, findStrength, MOVE_TIMES } from './strength';
 
 export type PlayMode = 'idle' | 'playing' | 'finished';
@@ -38,8 +45,13 @@ export type ColorChoice = Orientation | 'random';
 
 export interface PlaySetup {
   color: ColorChoice;
-  /** Id of a {@link STRENGTH_PRESETS} entry. */
+  /**
+   * The opponent: id of a {@link STRENGTH_PRESETS} entry (Stockfish in the browser) or of a
+   * {@link HUMAN_PRESETS} entry (`maia-<rating>`, Maia on the engine server; M23-2).
+   */
   strength: string;
+  /** Human-like opponents: sample from Maia's policy instead of always its top move (default on). */
+  varyMoves?: boolean;
   /** Engine thinking time per move (ms); with a clock the upper bound (see `engineMoveTime`). */
   moveTime: number;
   /** Clock of both sides; null (or missing) = no clock. */
@@ -136,8 +148,50 @@ export function takeBackPlies(
 const createWasmPlayEngine: CreatePlayEngine = () =>
   new PooledEngine(browserEnginePool, { purpose: 'play', restore: { UCI_LimitStrength: false } });
 
+/** What the factory of a human-like (server) opponent gets. */
+export interface HumanEngineContext {
+  /** Server engine id, e.g. `maia-1500`. */
+  engineId: string;
+  /** The setup's "Vary moves" (read per move). */
+  varyMoves: () => boolean;
+  /** The opponent's remaining clock time (ms); undefined without a clock. */
+  remainingMs: () => number | undefined;
+}
+
+export type CreateHumanEngine = (ctx: HumanEngineContext) => PlayEngine | Promise<PlayEngine>;
+
+/** Handshake budget of the opponent's server connection. */
+export const HUMAN_HANDSHAKE_TIMEOUT_MS = 5_000;
+
+/**
+ * Maia on the engine server (ADR-019): one dedicated connection and session per game engine,
+ * same URL and token as the analysis' server engines. Loaded lazily (own chunk).
+ */
+const createServerHumanEngine: CreateHumanEngine = async (ctx) => {
+  const { MaiaOpponent } = await import('../maia/opponent');
+  return new MaiaOpponent({
+    engineId: ctx.engineId,
+    createClient: async () => {
+      const { RemoteEngineClient } = await import('../engine/RemoteEngineClient');
+      const url = useAnalysisStore.getState().settings.remoteUrl;
+      const token = useSettingsStore.getState().serverToken;
+      return new RemoteEngineClient({
+        ...(url ? { url } : {}),
+        ...(token ? { token } : {}),
+        engineId: ctx.engineId,
+        handshakeTimeoutMs: HUMAN_HANDSHAKE_TIMEOUT_MS,
+        clientInfo: { name: 'daisychess-web-play' },
+      });
+    },
+    varyMoves: ctx.varyMoves,
+    remainingMs: ctx.remainingMs,
+  });
+};
+
 interface PlayHooks {
   createEngine: CreatePlayEngine;
+  /** Factory of the human-like opponents (Maia); default: {@link MaiaOpponent} on the server. */
+  createHumanEngine: CreateHumanEngine;
   extraDelayMs?: () => number;
   idleDisposeMs?: number;
   random: () => number;
@@ -186,6 +240,7 @@ const monotonicNow = (): number =>
 
 let hooks: PlayHooks = {
   createEngine: createWasmPlayEngine,
+  createHumanEngine: createServerHumanEngine,
   random: Math.random,
   now: monotonicNow,
 };
@@ -253,10 +308,13 @@ function engineMoveReady(): void {
 
 /** Controller config for the current setup; with a clock the search time follows it. */
 function playConfig(playerColor: Orientation, setup: PlaySetup): PlayConfig {
+  const strength = findStrength(setup.strength);
   const config: PlayConfig = {
     playerColor,
-    strength: findStrength(setup.strength),
+    strength,
     moveTime: setup.moveTime,
+    // A human-like opponent runs on its own server engine and paces its replies itself.
+    ...(strength.human ? { engineKey: strength.id, selfPaced: true } : {}),
   };
   if (setup.timeControl) {
     const engineSide: ClockSide = playerColor === 'white' ? 'b' : 'w';
@@ -268,6 +326,13 @@ function playConfig(playerColor: Orientation, setup: PlaySetup): PlayConfig {
     };
   }
   return config;
+}
+
+/** The engine side's remaining clock time now (ms), undefined without a clock. */
+function engineRemainingMs(): number | undefined {
+  const s = usePlayStore.getState();
+  if (!s.clock) return undefined;
+  return tick(s.clock, hooks.now())[engineSideOf(s)];
 }
 
 function startPremoves(): void {
@@ -314,7 +379,14 @@ function getController(): PlayController {
   if (!controller) {
     controller = new PlayController({
       game: useGameStore,
-      createEngine: hooks.createEngine,
+      createEngine: (key) =>
+        key === DEFAULT_ENGINE_KEY
+          ? hooks.createEngine(key)
+          : hooks.createHumanEngine({
+              engineId: key,
+              varyMoves: () => usePlayStore.getState().setup.varyMoves !== false,
+              remainingMs: engineRemainingMs,
+            }),
       extraDelayMs: hooks.extraDelayMs,
       idleDisposeMs: hooks.idleDisposeMs,
       onThinking: (thinking) => usePlayStore.setState({ thinking }),
@@ -421,6 +493,7 @@ const sanitizeSetup = (s: PlaySetup): PlaySetup => ({
   moveTime: MOVE_TIMES.some((t) => t.ms === s.moveTime) ? s.moveTime : DEFAULT_MOVE_TIME,
   timeControl: sanitizeSetting(s.timeControl),
   from: s.from === 'current' ? 'current' : 'start',
+  varyMoves: s.varyMoves !== false,
 });
 
 const DEFAULT_SETUP: PlaySetup = {
@@ -429,6 +502,7 @@ const DEFAULT_SETUP: PlaySetup = {
   moveTime: DEFAULT_MOVE_TIME,
   timeControl: null,
   from: 'start',
+  varyMoves: true,
 };
 
 /** The last setup from localStorage `daisychess.play` (defaults when missing or invalid). */
@@ -468,12 +542,23 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
       set({ message: blocked });
       return;
     }
-    const unavailable = playEngineUnavailableReason();
-    if (unavailable) {
-      set({ message: `The engine cannot play in this browser: ${unavailable}.` });
-      return;
-    }
     const setup = sanitizeSetup({ ...get().setup, ...partial });
+    const opponent = findStrength(setup.strength);
+    if (opponent.human) {
+      // Maia runs on the server (no browser engine needed), with the access token.
+      const refused = humanStartRefusal(useAnalysisStore.getState().serverProbe, opponent.id);
+      if (refused) {
+        set({ setup, message: `${opponent.label} cannot play: ${refused}.` });
+        writePlaySetup(setup);
+        return;
+      }
+    } else {
+      const unavailable = playEngineUnavailableReason();
+      if (unavailable) {
+        set({ message: `The engine cannot play in this browser: ${unavailable}.` });
+        return;
+      }
+    }
     writePlaySetup(setup);
     const playerColor: Orientation =
       setup.color === 'random' ? (hooks.random() < 0.5 ? 'white' : 'black') : setup.color;
