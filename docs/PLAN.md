@@ -79,7 +79,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M10-1 | CSP for the SPA, HSTS, Docker base-image digests, GitHub Actions pinned by SHA, abuse logging | senior | done |
-| M10-2 | Hash-change throttling, IP-log hashing (deferred) | senior | todo |
+| M10-2 | Hash-change throttling, IP-log hashing (deferred) | senior | done (hash-change throttling superseded; IP hashing via M24-15) |
 
 ## M11 — Automatic analysis with suggestions
 | ID | Task | Tier | Status |
@@ -196,7 +196,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | | *Acceptance:* `npx -y @daisychess/node --hub wss://… --token …` registers on a clean Linux and macOS machine (CI matrix) and serves a search; a tampered download aborts; package contains no secrets or test files | | |
 | M24-14 | Docs: README "Run a node" and "Hub" sections, `docs/PRIVACY.md` (players: positions go to the named node) and `docs/TERMS.md` (operators) linked from portal and app, SECURITY.md §6 reconciled with the implementation, `.env.example` for all three roles, deploy README (backup, retention, egress proxy) | worker | todo |
 | | *Acceptance:* every env var of ADR-020 documented; links resolve from the portal and the app's notice; `scripts/check-csp.mjs` still passes | | |
-| M24-15 | Logging hygiene: daily-salted IP hash at `info` across hub and standalone (raw only at `debug`; closes M10-2), `tokenId`/`nodeId`/`cid` fields, fail2ban filter for `/link` 1008s, log-line review for secrets (grep in tests on captured logs) | worker | todo |
+| M24-15 | Logging hygiene: daily-salted IP hash at `info` across hub and standalone (raw only at `debug`; closes M10-2), `tokenId`/`nodeId`/`cid` fields, fail2ban filter for `/link` 1008s, log-line review for secrets (grep in tests on captured logs) | worker | done |
 | | *Acceptance:* a test captures logs of a full handshake + relay and asserts no token/secret/raw IP at `info`; M10-2 marked done | | |
 
 ## M25 — Open source release (decided 2026-10-25: GPL-3.0, public repo)

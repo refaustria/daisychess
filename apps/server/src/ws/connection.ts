@@ -27,6 +27,8 @@ import {
 import { allowRate, type RateLimit } from '../sessions/rateLimit.js';
 import { tokenMatches } from './token.js';
 import type { BadTokenLimiter } from './badTokens.js';
+import { ipHash } from '../logging/ipHash.js';
+
 
 export { tokenMatches };
 export type { RateLimit };
@@ -283,7 +285,7 @@ export class Connection implements RoomClient {
   /** Too many bad tokens from this address (ADR-020 §4.1). */
   private refuseBadTokens(): void {
     this.pending = null;
-    this.log.warn({ conn: this.id }, 'too many invalid tokens from this address; closing');
+    this.log.warn({ conn: this.id, ipHash: ipHash(this.peer.ip) }, 'too many invalid tokens from this address; closing');
     this.sendError('rate_limited', 'too many invalid tokens; try again later');
     this.close(1008, 'rate limited');
   }

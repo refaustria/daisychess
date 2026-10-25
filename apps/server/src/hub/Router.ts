@@ -373,7 +373,7 @@ export class HubRouter implements AnalysisRouter {
     );
     this.routes[plan.kind]++;
     this.opts.logger.info(
-      { conn: peer.connId, tokenId: token.id, node: nodeId, kind: plan.kind, tier: token.tier },
+      { conn: peer.connId, tokenId: token.id, nodeId, kind: plan.kind, tier: token.tier },
       'connection routed',
     );
     const route: AnalysisRoute = {

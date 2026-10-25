@@ -17,6 +17,8 @@ import type {
 } from '../sessions/ClientSessions.js';
 import { allowRate, type RateLimit } from '../sessions/rateLimit.js';
 import { SessionTracker } from '../sessions/SessionTracker.js';
+import { ipHash } from '../logging/ipHash.js';
+
 
 /** Engine time left today for a token on a pool route (ms); null = no budget applies. */
 export interface BudgetSource {
@@ -309,7 +311,7 @@ export class AccountingChannel implements AnalysisChannel {
     }
     if (!slots.ip.tryReserve(keys.ip)) {
       this.opts.logger.info(
-        { conn: keys.connId, session: sessionId },
+        { conn: keys.connId, session: sessionId, ipHash: ipHash(keys.ip) },
         'per-address session cap reached',
       );
       this.reject(

@@ -227,7 +227,7 @@ export class HubNodeLink {
     this.unknownCid++;
     if (this.unknownCid % 100 === 1) {
       this.opts.logger.warn(
-        { node: this.opts.nodeId, cid, total: this.unknownCid },
+        { nodeId: this.opts.nodeId, cid, total: this.unknownCid },
         'link: frame for an unknown cid ignored',
       );
     }

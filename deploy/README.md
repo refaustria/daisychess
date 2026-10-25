@@ -266,16 +266,25 @@ sudo awk '$5 ~ /^\/ws/ && ($7 == 403 || $7 == 429) {print $7, $1}' \
 Engine-level refusals (`rate_limited`, `no_capacity`, `limit_exceeded`) happen
 inside an accepted socket and are only in the server journal.
 
-`deploy/fail2ban/` has a filter (403/429 on `/ws`) and a jail (30 within 60 s
-→ 10 min ban). fail2ban is **not installed** on this host (2026-10-23), so the
+**The application log holds no raw client addresses** (M24-15): at `info` every line
+carries `ipHash` = first 12 characters of `base64url(sha256(dailySalt + ip))`, where the salt is
+random per process and UTC day, kept in memory only. Raw addresses appear only at `LOG_LEVEL=debug`
+and in nginx's access log above, which is therefore the source for fail2ban (retention: the stock
+logrotate, 14 days). Refused `/link` handshakes are `101` + immediate `1008` close, visible in
+nginx as a 101 with `rt=0.xxx`.
+
+`deploy/fail2ban/` has two filter/jail pairs: `daisychess-ws` (403/429 on `/ws`; 30 within
+60 s → 10 min ban) and `daisychess-link` (429/403 and sub-second 101 on `/link`; 10 within
+10 min → 1 h ban). fail2ban is **not installed** on this host (2026-10-23), so the
 files are inactive. To enable:
 
 ```bash
 sudo apt install fail2ban
-sudo cp deploy/fail2ban/filter.d/daisychess-ws.conf /etc/fail2ban/filter.d/
-sudo cp deploy/fail2ban/jail.d/daisychess-ws.conf /etc/fail2ban/jail.d/
-sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log daisychess-ws   # dry run
-sudo systemctl restart fail2ban && sudo fail2ban-client status daisychess-ws
+sudo cp deploy/fail2ban/filter.d/daisychess-*.conf /etc/fail2ban/filter.d/
+sudo cp deploy/fail2ban/jail.d/daisychess-*.conf /etc/fail2ban/jail.d/
+sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log daisychess-ws     # dry run
+sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log daisychess-link   # dry run
+sudo systemctl restart fail2ban && sudo fail2ban-client status daisychess-ws && sudo fail2ban-client status daisychess-link
 ```
 
 ## Certificate renewal

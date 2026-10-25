@@ -226,7 +226,7 @@ export class RelaySessions implements AnalysisChannel {
     const t = setTimeout(() => {
       this.closeTimer = null;
       if (this.st !== 'closing') return;
-      this.log.debug({ cid: this.cid, node: this.link.nodeId }, 'relay: no client.closed in time');
+      this.log.debug({ cid: this.cid, nodeId: this.link.nodeId }, 'relay: no client.closed in time');
       this.completeClose();
     }, this.opts.closeTimeoutMs ?? 2_000);
     t.unref?.();
@@ -289,7 +289,7 @@ export class RelaySessions implements AnalysisChannel {
       return;
     }
     if (this.st !== 'open') return;
-    this.log.info({ cid: this.cid, node: this.link.nodeId }, 'relay: node refused the client');
+    this.log.info({ cid: this.cid, nodeId: this.link.nodeId }, 'relay: node refused the client');
     this.die();
   }
 

@@ -622,7 +622,7 @@ export async function registerPortalRoutes(
         links.closeNode(node.id, 'revoked', 'node deleted by its operator');
         tokens.deleteNode(node.id, { operatorId: ctx.operator.id });
         logger.info(
-          { component: 'portal', operator: ctx.operator.id, node: node.id },
+          { component: 'portal', operator: ctx.operator.id, nodeId: node.id },
           'node deleted',
         );
         return reply.code(204).send();
@@ -880,7 +880,7 @@ export async function registerPortalRoutes(
           {
             component: 'portal',
             admin: ctx.operator.id,
-            node: id,
+            nodeId: id,
             state: node.state,
             poolBanned: node.poolBannedAt !== null,
             evicted,

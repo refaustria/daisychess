@@ -1,4 +1,5 @@
 import { constants } from 'node:fs';
+import { requestSerializer } from './logging/ipHash.js';
 import { access, readFile } from 'node:fs/promises';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { EngineDescriptor, Limits } from '@daisychess/engine-core';
@@ -38,6 +39,8 @@ export interface BuildAppOptions {
   spawnEngine?: SpawnEngine;
   /** false disables logging regardless of `config.logLevel`. */
   logger?: boolean;
+  /** Tests: destination of the JSON log lines instead of stdout (capture for PII checks). */
+  logStream?: { write(line: string): void };
   /** Connection tuning (timeouts, rate limits) for tests. */
   connection?: Partial<
     Pick<
@@ -132,7 +135,15 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   const config = opts.config ?? loadConfig();
   const app = Fastify({
     logger:
-      opts.logger === false || config.logLevel === 'silent' ? false : { level: config.logLevel },
+      opts.logger === false || config.logLevel === 'silent'
+        ? false
+        : {
+            level: config.logLevel,
+            // Request lines carry a daily-salted address hash, never `remoteAddress` or the query
+            // string (M24-15, ADR-020 logging without PII).
+            serializers: { req: requestSerializer(config.trustedProxies) },
+            ...(opts.logStream ? { stream: opts.logStream } : {}),
+          },
   });
 
   const loaded = opts.registry ?? (await loadEngineRegistry(config.enginesConfig));
@@ -434,7 +445,7 @@ async function buildHub(
       apply: (node) => registry.applySettings(node.id, node),
       evictShared: (node) => {
         const n = link.evictShared(node.id, 'engine node removed from the pool');
-        if (n > 0) log.info({ node: node.id, evicted: n }, 'spot-check: pool players moved off');
+        if (n > 0) log.info({ nodeId: node.id, evicted: n }, 'spot-check: pool players moved off');
       },
     },
     app.log.child({ component: 'spotcheck' }),

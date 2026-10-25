@@ -17,6 +17,7 @@ import { LocalBackend } from '../sessions/LocalBackend.js';
 import type { RateLimit } from '../sessions/rateLimit.js';
 import { LocalRouter } from './LocalRouter.js';
 import { BadTokenLimiter } from './badTokens.js';
+import { ipHash } from '../logging/ipHash.js';
 
 export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'review' | 'router'> {
   /** This server's engine pool; analysis runs on it through a {@link LocalBackend}. */
@@ -200,7 +201,8 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     wss.handleUpgrade(req, socket, head, (ws) => {
       const conn = new Connection(ws, connOpts, { ip });
       connections.add(conn);
-      opts.logger.info({ conn: conn.id, ip }, 'websocket connected');
+      opts.logger.info({ conn: conn.id, ipHash: ipHash(ip) }, 'websocket connected');
+      opts.logger.debug({ conn: conn.id, ip }, 'websocket client address');
       void conn.whenClosed().then(() => {
         connections.delete(conn);
         opts.logger.info({ conn: conn.id }, 'websocket disconnected');

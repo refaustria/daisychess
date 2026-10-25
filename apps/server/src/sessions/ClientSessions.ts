@@ -19,6 +19,8 @@ import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
 import type { AnalysisBackend, BackendLease } from './AnalysisBackend.js';
 import type { AnalysisChannel } from './AnalysisChannel.js';
 import { allowRate, type RateLimit } from './rateLimit.js';
+import { ipHash } from '../logging/ipHash.js';
+
 
 /** Who the sessions belong to: the client address (per-IP cap) and an id for logs. */
 export interface SessionPeer {
@@ -383,7 +385,7 @@ export class ClientSessions implements AnalysisChannel {
       if (!session.ipSlot) {
         if (!this.opts.ledger.tryReserve(this.peer.ip)) {
           this.log.info(
-            { conn: this.peer.id, session: session.id, ip: this.peer.ip },
+            { conn: this.peer.id, session: session.id, ipHash: ipHash(this.peer.ip) },
             'per-address session cap reached',
           );
           this.sendError(

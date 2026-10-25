@@ -9,6 +9,8 @@ import type {
 } from '@daisychess/engine-core';
 import type { PoolLogger } from '../engines/EnginePool.js';
 import { Room } from './room.js';
+import { ipHash } from '../logging/ipHash.js';
+
 
 export interface RateLimit {
   max: number;
@@ -214,7 +216,7 @@ export class RoomManager {
   ): void {
     const now = this.now();
     if (!this.allowCreate(client.ip, now)) {
-      this.log.info({ conn: client.id, ip: client.ip }, 'room creation rate exceeded');
+      this.log.info({ conn: client.id, ipHash: ipHash(client.ip) }, 'room creation rate exceeded');
       this.error(client, 'too_many_rooms', 'too many rooms created from your address; try later');
       return;
     }

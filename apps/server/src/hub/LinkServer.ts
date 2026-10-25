@@ -20,6 +20,7 @@ import { resolveClientIp, type TrustedProxies } from '../ws/clientIp.js';
 import { HubNodeLink, type HubNodeLinkOptions } from './HubNodeLink.js';
 import type { NodeRegistry } from './NodeRegistry.js';
 import type { NodeVerifyResult } from './tokens.js';
+import { ipHash } from '../logging/ipHash.js';
 
 /** Verifies `node.hello.nodeToken` (`HubTokenService` satisfies it). */
 export interface NodeAuthenticator {
@@ -228,7 +229,10 @@ export class LinkServer {
     const held = this.perIp.get(ip) ?? 0;
     if (held >= this.maxPerIp) {
       this.counters.rejectedPerIp++;
-      this.log.warn({ ip, held }, 'link: too many links from this address; rejecting');
+      this.log.warn(
+        { ipHash: ipHash(ip), held },
+        'link: too many links from this address; rejecting',
+      );
       reject(socket, '429 Too Many Requests');
       return;
     }
@@ -355,7 +359,10 @@ export class LinkServer {
     });
     ws.on('error', (err) => {
       // e.g. a frame above maxPayload (ws closes 1009 itself) or an invalid frame.
-      this.log.warn({ node: conn.nodeId, ip, err: err.message }, 'link: socket error');
+      this.log.warn(
+        { nodeId: conn.nodeId, ipHash: ipHash(conn.ip), err: err.message },
+        'link: socket error',
+      );
     });
     ws.on('close', (code, reason) => this.onClose(conn, code, reason.toString()));
     if (this.closing) this.closeConn(conn, 1001, 'hub shutting down');
@@ -373,7 +380,7 @@ export class LinkServer {
     this.conns.delete(conn);
     if (wasOpen) {
       this.log.info(
-        { node: conn.nodeId, code, reason: reason.slice(0, 120) },
+        { nodeId: conn.nodeId, code, reason: reason.slice(0, 120) },
         'link: node offline',
       );
     }
@@ -436,7 +443,7 @@ export class LinkServer {
         this.markSeen(nodeId, { maxSessions: msg.maxSessions });
         return;
       case 'node.drain':
-        this.log.info({ node: nodeId, reason: msg.reason }, 'link: node draining');
+        this.log.info({ nodeId, reason: msg.reason }, 'link: node draining');
         this.opts.registry.setDraining(nodeId, hub, msg.reason);
         return;
       case 'client.msg':
@@ -457,7 +464,10 @@ export class LinkServer {
     try {
       verified = this.opts.auth.verifyNodeToken(hello.nodeToken, now);
     } catch (err) {
-      this.log.error({ ip: conn.ip, err: (err as Error).message }, 'link: token check failed');
+      this.log.error(
+        { ipHash: ipHash(conn.ip), err: (err as Error).message },
+        'link: token check failed',
+      );
       this.closeConn(conn, 1011, 'internal error');
       return;
     }
@@ -475,7 +485,7 @@ export class LinkServer {
     if (previous && previous !== conn) {
       this.counters.replaced++;
       this.log.warn(
-        { node: record.id, ip: conn.ip },
+        { nodeId: record.id, ipHash: ipHash(conn.ip) },
         'link: node connected again; the older link is replaced',
       );
       this.endLink(previous, 'replaced', 'another link connected with this node token');
@@ -487,7 +497,7 @@ export class LinkServer {
       send: (m) => this.send(conn, m),
       logger: this.log,
       onAbuse: (reason, message) => {
-        this.log.warn({ node: record.id, message }, 'link: node exceeded the unknown-cid limit');
+        this.log.warn({ nodeId: record.id, message }, 'link: node exceeded the unknown-cid limit');
         this.endLink(conn, reason, message);
       },
       now: this.now,
@@ -538,7 +548,7 @@ export class LinkServer {
     this.markSeen(record.id, { version: hello.node.version, maxSessions: hello.maxSessions });
     this.log.info(
       {
-        node: record.id,
+        nodeId: record.id,
         name: record.name,
         version: hello.node.version,
         platform: hello.node.platform,
@@ -546,7 +556,7 @@ export class LinkServer {
         engines: hello.engines.length,
         maxSessions: hello.maxSessions,
         pool,
-        ip: conn.ip,
+        ipHash: ipHash(conn.ip),
       },
       'link: node online',
     );
@@ -565,7 +575,7 @@ export class LinkServer {
     if (conn.frameCount <= this.maxPerSecond) return true;
     this.counters.rateLimited++;
     const message = `more than ${this.maxPerSecond} frames per second`;
-    this.log.warn({ node: conn.nodeId, ip: conn.ip }, `link: ${message}; closing`);
+    this.log.warn({ nodeId: conn.nodeId, ipHash: ipHash(conn.ip) }, `link: ${message}; closing`);
     if (conn.state === 'open') this.endLink(conn, 'rate_limited', message);
     else this.refuse(conn, 'rate_limited', message);
     return false;
@@ -575,7 +585,7 @@ export class LinkServer {
     this.counters.invalidFrames++;
     if (this.counters.invalidFrames % 100 === 1) {
       this.log.warn(
-        { node: conn.nodeId, error: error.slice(0, 200), total: this.counters.invalidFrames },
+        { nodeId: conn.nodeId, error: error.slice(0, 200), total: this.counters.invalidFrames },
         'link: invalid frame from a node ignored',
       );
     }
@@ -591,7 +601,7 @@ export class LinkServer {
       if (conn.awaitingPongs >= this.missedPongs) {
         this.counters.heartbeatDrops++;
         this.log.warn(
-          { node: conn.nodeId, missed: conn.awaitingPongs },
+          { nodeId: conn.nodeId, missed: conn.awaitingPongs },
           'link: node stopped answering pings; dropping',
         );
         this.detach(conn);
@@ -616,7 +626,10 @@ export class LinkServer {
   private refuse(conn: LinkConn, code: NodeErrorCode, message: string): void {
     if (conn.state !== 'hello') return;
     this.counters.refused[code] = (this.counters.refused[code] ?? 0) + 1;
-    this.log.warn({ ip: conn.ip, code, message: message.slice(0, 200) }, 'link: node refused');
+    this.log.warn(
+      { ipHash: ipHash(conn.ip), code, message: message.slice(0, 200) },
+      'link: node refused',
+    );
     this.send(conn, { type: 'node.error', code, message: message.slice(0, 1_000) });
     this.closeConn(conn, LINK_CLOSE_CODES.nodeError, code);
   }
@@ -652,14 +665,14 @@ export class LinkServer {
     if (conn.ws.readyState !== WebSocket.OPEN) return false;
     const out = serializeLinkMessage(msg);
     if (!out.ok) {
-      this.log.error({ node: conn.nodeId, error: out.error }, 'link: outgoing frame too large');
+      this.log.error({ nodeId: conn.nodeId, error: out.error }, 'link: outgoing frame too large');
       return false;
     }
     try {
       conn.ws.send(out.text);
       return true;
     } catch (err) {
-      this.log.warn({ node: conn.nodeId, err: (err as Error).message }, 'link: send failed');
+      this.log.warn({ nodeId: conn.nodeId, err: (err as Error).message }, 'link: send failed');
       return false;
     }
   }
@@ -669,7 +682,7 @@ export class LinkServer {
     try {
       this.opts.seen.markNodeSeen(nodeId, this.now(), info);
     } catch (err) {
-      this.log.warn({ node: nodeId, err: (err as Error).message }, 'link: markNodeSeen failed');
+      this.log.warn({ nodeId, err: (err as Error).message }, 'link: markNodeSeen failed');
     }
   }
 }

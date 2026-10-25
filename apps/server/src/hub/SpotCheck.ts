@@ -440,7 +440,7 @@ export class Reputation {
     if (!updated) return false;
     this.counters.restored++;
     this.log.info(
-      { component: 'spotcheck', node: node.id, episodes: node.suspectCount },
+      { component: 'spotcheck', nodeId: node.id, episodes: node.suspectCount },
       'spot-check: cool-down over, node back in the pool',
     );
     this.safely(() => this.moderation.apply(updated));
@@ -464,7 +464,7 @@ export class Reputation {
       updated = this.store.setPoolBan(node.id, { at: now, reason: POOL_BAN_SPOTCHECK });
     if (!updated) return null;
     const out = updated;
-    const ctx = { component: 'spotcheck', node: node.id, episodes, disagreements, checks };
+    const ctx = { component: 'spotcheck', nodeId: node.id, episodes, disagreements, checks };
     if (ban) {
       this.counters.poolBanned++;
       this.log.warn(

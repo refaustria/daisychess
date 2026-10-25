@@ -205,7 +205,7 @@ export class NodeRegistry {
         l(event);
       } catch (err) {
         this.log?.warn(
-          { node: event.node.nodeId, event: event.type, err: (err as Error).message },
+          { nodeId: event.node.nodeId, event: event.type, err: (err as Error).message },
           'node registry listener failed',
         );
       }
