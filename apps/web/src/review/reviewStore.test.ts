@@ -4,6 +4,7 @@ import { useAnalysisStore } from '../store/analysisStore';
 import { useGameStore } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { FakeReviewEngine } from './fakeEngine';
+import { clearReviewCache, configureReviewCache } from './reviewCache';
 import {
   REVIEW_PRESETS,
   disposeReviewEngine,
@@ -20,7 +21,9 @@ const SCHOLAR = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7#';
 let engine: FakeReviewEngine;
 let created = 0;
 
-beforeEach(() => {
+beforeEach(async () => {
+  configureReviewCache(null);
+  await clearReviewCache();
   engine = new FakeReviewEngine();
   created = 0;
   setReviewEngineFactory(() => {

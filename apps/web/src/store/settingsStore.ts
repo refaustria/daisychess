@@ -34,6 +34,8 @@ export interface Settings {
   sound: boolean;
   /** Start a fast review automatically after a game is loaded (PGN, file, online import). */
   autoReview: boolean;
+  /** Guided tour through the moves after a review completes (M20-2). */
+  reviewTour: boolean;
   premoves: PremoveMode;
   /** Engine for the game review (ADR-014). */
   reviewEngine: ReviewEnginePreference;
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   highlightStyle: 'classic',
   sound: true,
   autoReview: true,
+  reviewTour: true,
   premoves: 'single',
   reviewEngine: 'auto',
   serverToken: '',
@@ -105,6 +108,7 @@ export function parseSettings(raw: string | null): Settings {
   }
   if (typeof o.sound === 'boolean') out.sound = o.sound;
   if (typeof o.autoReview === 'boolean') out.autoReview = o.autoReview;
+  if (typeof o.reviewTour === 'boolean') out.reviewTour = o.reviewTour;
   if (typeof o.premoves === 'string' && (PREMOVE_MODES as readonly string[]).includes(o.premoves)) {
     out.premoves = o.premoves as PremoveMode;
   }
@@ -154,6 +158,7 @@ function pick(s: Settings): Settings {
     highlightStyle: s.highlightStyle,
     sound: s.sound,
     autoReview: s.autoReview,
+    reviewTour: s.reviewTour,
     premoves: s.premoves,
     reviewEngine: s.reviewEngine,
     serverToken: s.serverToken,

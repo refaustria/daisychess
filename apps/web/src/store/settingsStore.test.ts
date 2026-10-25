@@ -27,6 +27,8 @@ describe('settingsStore', () => {
     expect(s.highlightStyle).toBe('classic');
     expect(s.sound).toBe(true);
     expect(s.autoReview).toBe(true);
+    expect(s.reviewTour).toBe(true);
+    expect(parseSettings(JSON.stringify({ reviewTour: false })).reviewTour).toBe(false);
   });
 
   it('parses and persists autoReview', () => {

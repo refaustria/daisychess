@@ -5,6 +5,7 @@ import { isRoomLocked, useRoomStore } from '../room/roomStore';
 import { useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
+import { MIN_CACHED_PLIES, warmReviewCache } from './reviewCache';
 import { REVIEW_PRESETS, useReviewStore } from './reviewStore';
 
 /** Games shorter than this are not reviewed automatically. */
@@ -15,6 +16,36 @@ export const AUTO_REVIEW_MIN_MOVES = 2;
  * including an opening line it was started from, e.g. the drill's "Play on vs engine").
  */
 export const ENGINE_GAME_REVIEW_MIN_PLIES = 6;
+
+/** Delay between a change of the game's moves and the review cache lookup (ADR-016). */
+export const CACHE_LOOKUP_DEBOUNCE_MS = 100;
+
+/**
+ * Shows the stored review (ADR-016) of the game on the board whenever its moves change (a load, a
+ * finished game, moves entered by hand), debounced by {@link CACHE_LOOKUP_DEBOUNCE_MS}. Navigation
+ * leaves `moves` untouched and never triggers it; neither does a running review, a game under
+ * {@link MIN_CACHED_PLIES} plies or a running human game (fair play). Never starts an engine.
+ * Returns the unsubscribe function.
+ */
+export function installReviewCacheLookup(): () => void {
+  void warmReviewCache();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const unwatch = useGameStore.subscribe((s, prev) => {
+    if (s.moves === prev.moves) return;
+    clearTimeout(timer);
+    if (s.moves.length < MIN_CACHED_PLIES) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      if (isHumanGameRunning()) return;
+      if (useReviewStore.getState().status === 'running') return;
+      void useReviewStore.getState().loadCached();
+    }, CACHE_LOOKUP_DEBOUNCE_MS);
+  });
+  return () => {
+    clearTimeout(timer);
+    unwatch();
+  };
+}
 
 /**
  * True when the game store change `prev → s` replaced the game by a loaded one (loadPgn):
@@ -43,9 +74,12 @@ export function isGameLoad(
  * Also reviews a live lichess game when it finishes (without switching tabs: the Live panel shows
  * the result) and cancels a running review when a live game or seek starts; the same for a game
  * against a friend (room, ADR-013). A running review (of
- * the previous game) is replaced. Returns the unsubscribe function.
+ * the previous game) is replaced. A game with a stored review of the same or a stronger preset
+ * just shows it (the review store's cache, ADR-016). Also installs
+ * {@link installReviewCacheLookup}. Returns the unsubscribe function.
  */
 export function installAutoReview(): () => void {
+  const unwatchCache = installReviewCacheLookup();
   const unwatchGame = useGameStore.subscribe((s, prev) => {
     if (!isGameLoad(s, prev)) return;
     if (!useSettingsStore.getState().autoReview) return;
@@ -110,6 +144,7 @@ export function installAutoReview(): () => void {
     }
   });
   return () => {
+    unwatchCache();
     unwatchGame();
     unwatchLive();
     unwatchRoom();

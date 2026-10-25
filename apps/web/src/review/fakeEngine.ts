@@ -5,6 +5,8 @@ export interface Script {
   pv?: string[];
   /** `bestmove` reported by the handle; defaults to `pv[0]`. `null` = no bestMove promise value. */
   bestMove?: string | null;
+  /** Depth of the final info (default 10). */
+  depth?: number;
 }
 
 /**
@@ -78,7 +80,7 @@ export class FakeReviewEngine implements Engine {
       if (err) throw err;
       yield { depth: 1, multipv: 1, score: { cp: 12345 }, pv: ['a2a3'] };
       if (stopped) return;
-      yield { depth: 10, multipv: 1, score: script.score, pv };
+      yield { depth: script.depth ?? 10, multipv: 1, score: script.score, pv };
       resolveBest(script.bestMove === null ? null : { move: script.bestMove ?? pv[0]! });
     } finally {
       this.active--;

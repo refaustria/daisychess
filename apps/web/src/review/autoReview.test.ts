@@ -6,7 +6,13 @@ import { configurePlay, resetPlay, usePlayStore } from '../play/playStore';
 import { useGameStore } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
-import { ENGINE_GAME_REVIEW_MIN_PLIES, installAutoReview, isGameLoad } from './autoReview';
+import {
+  CACHE_LOOKUP_DEBOUNCE_MS,
+  ENGINE_GAME_REVIEW_MIN_PLIES,
+  installAutoReview,
+  installReviewCacheLookup,
+  isGameLoad,
+} from './autoReview';
 import { useReviewStore } from './reviewStore';
 
 const SCHOLAR = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7#';
@@ -210,5 +216,65 @@ describe('auto review', () => {
         await resetPlay();
       }
     });
+  });
+});
+
+describe('review cache lookup (ADR-016)', () => {
+  const loadCached = vi.fn(() => Promise.resolve(false));
+  let off: () => void = () => undefined;
+
+  beforeEach(() => {
+    uninstall(); // only the lookup in this block
+    uninstall = () => undefined;
+    vi.useFakeTimers();
+    loadCached.mockClear();
+    useReviewStore.setState({ loadCached, status: 'idle' });
+    off = installReviewCacheLookup();
+  });
+
+  afterEach(() => {
+    off();
+    vi.useRealTimers();
+  });
+
+  it('a change of the moves looks the game up once, debounced', () => {
+    useGameStore.getState().loadPgn(SCHOLAR);
+    useGameStore.getState().loadPgn('1. d4 d5 2. c4');
+    vi.advanceTimersByTime(CACHE_LOOKUP_DEBOUNCE_MS - 1);
+    expect(loadCached).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(loadCached).toHaveBeenCalledTimes(1);
+    // Moves entered by hand change the moves too.
+    useGameStore.getState().makeMove('g8', 'f6');
+    vi.advanceTimersByTime(CACHE_LOOKUP_DEBOUNCE_MS);
+    expect(loadCached).toHaveBeenCalledTimes(2);
+  });
+
+  it('navigation never triggers it, neither do short games, running reviews or human games', () => {
+    useGameStore.getState().loadPgn(SCHOLAR);
+    vi.advanceTimersByTime(CACHE_LOOKUP_DEBOUNCE_MS);
+    loadCached.mockClear();
+    const g = useGameStore.getState();
+    g.goTo(3);
+    g.first();
+    g.last();
+    g.flip();
+    vi.advanceTimersByTime(CACHE_LOOKUP_DEBOUNCE_MS * 2);
+    expect(loadCached).not.toHaveBeenCalled();
+
+    useGameStore.getState().loadPgn('1. e4');
+    vi.advanceTimersByTime(CACHE_LOOKUP_DEBOUNCE_MS);
+    expect(loadCached).not.toHaveBeenCalled();
+
+    useReviewStore.setState({ status: 'running' });
+    useGameStore.getState().loadPgn(SCHOLAR);
+    vi.advanceTimersByTime(CACHE_LOOKUP_DEBOUNCE_MS);
+    expect(loadCached).not.toHaveBeenCalled();
+    useReviewStore.setState({ status: 'idle' });
+
+    usePlayStore.setState({ mode: 'playing' });
+    useGameStore.getState().loadPgn('1. d4 d5 2. c4');
+    vi.advanceTimersByTime(CACHE_LOOKUP_DEBOUNCE_MS);
+    expect(loadCached).not.toHaveBeenCalled();
   });
 });

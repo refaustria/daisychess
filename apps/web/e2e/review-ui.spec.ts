@@ -7,6 +7,10 @@ test('loading a game reviews it automatically with move commentary and arrows', 
   page,
 }) => {
   test.setTimeout(90_000);
+  // The guided tour (M20-2) has its own spec; here the card must stay at the start position.
+  await page.addInitScript(() =>
+    localStorage.setItem('chesslab.settings', JSON.stringify({ reviewTour: false })),
+  );
   await page.goto('/');
   await expect(page.locator('cg-board')).toBeVisible();
 

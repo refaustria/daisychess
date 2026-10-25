@@ -13,6 +13,7 @@ import {
   type ReviewEnginePreference,
 } from '../../store/settingsStore';
 import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
+import { ReviewCacheField } from './ReviewCacheField';
 import styles from './SettingsPanel.module.css';
 
 const HIGHLIGHT_LABEL: Record<HighlightStyle, string> = {
@@ -232,6 +233,15 @@ export function SettingsPanel() {
         Analyse games automatically after loading
       </label>
 
+      <label className={styles.check}>
+        <input
+          type="checkbox"
+          checked={s.reviewTour}
+          onChange={(e) => s.set({ reviewTour: e.target.checked })}
+        />
+        Guided tour after a review
+      </label>
+
       <label className={styles.field}>
         Premoves
         <select
@@ -257,6 +267,7 @@ export function SettingsPanel() {
 
       <ServerTokenField />
       <ReviewEngineField />
+      <ReviewCacheField />
     </div>
   );
 }

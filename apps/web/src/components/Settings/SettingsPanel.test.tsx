@@ -23,6 +23,9 @@ describe('SettingsPanel', () => {
     expect(useSettingsStore.getState().sound).toBe(false);
     fireEvent.click(screen.getByLabelText('Analyse games automatically after loading'));
     expect(useSettingsStore.getState().autoReview).toBe(false);
+    expect(useSettingsStore.getState().reviewTour).toBe(true);
+    fireEvent.click(screen.getByLabelText('Guided tour after a review'));
+    expect(useSettingsStore.getState().reviewTour).toBe(false);
     fireEvent.change(screen.getByLabelText('Premoves'), { target: { value: 'queue' } });
     expect(useSettingsStore.getState().premoves).toBe('queue');
     fireEvent.change(screen.getByLabelText('Highlight style'), { target: { value: 'subtle' } });

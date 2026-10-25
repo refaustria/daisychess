@@ -137,3 +137,15 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M19-1 | At most one shared browser engine for batch work (review + drill), idle disposal, live engine released while paused on memory-constrained devices, iOS thread cap, OOM recovery (recreate smaller, single notice, no error loop) | senior | done |
+
+## M20 — Review follow-ups (requested 2026-10-25)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M20-1 | Persistent review cache (IndexedDB) keyed by game + preset; a loaded game that was reviewed shows its review instantly; no re-run with the same or weaker preset; Deep after Fast only searches what is missing | senior | done |
+| M20-2 | Guided tour after a review: auto-play through the game pausing on great moves, mistakes and blunders with arrows and commentary; play/pause/skip; any user navigation ends the tour | worker | done |
+| M20-3 | Server-side review store (ADR-017): SQLite next to the engine server, keyed by game hash, moves + evaluations only (no headers), `review.get` open / `review.put` token-only, size limit configurable via env `REVIEW_STORE_MAX_BYTES` (default 5 GB, owner decision 2026-10-25) with LRU eviction, so it can be tuned for a public release; client reads local cache first, then server, writes both; shared position evaluations for Deep-after-Fast | architect | todo |
+
+## M21 — Rename to DaisyChess (requested 2026-10-25)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M21-1 | Rename ChessLab → DaisyChess everywhere: UI (title, header with logo), README/docs/runbook, daisy SVG logo + favicons/apple-touch-icon, package scope `@daisychess/*`, storage keys `daisychess.*` with one-time migration, systemd unit `daisychess-server` (deploy script retires the old unit), lichess OAuth client id; domain unchanged | senior | todo (after M20-1) |

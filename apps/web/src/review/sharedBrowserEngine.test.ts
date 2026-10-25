@@ -13,6 +13,7 @@ import { useGameStore } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { configureDrill, resetDrill, useDrillStore, WAITING_NOTICE } from '../trainer/drillStore';
 import { FakeReviewEngine } from './fakeEngine';
+import { clearReviewCache, configureReviewCache } from './reviewCache';
 import {
   BROWSER_UNAVAILABLE_NOTICE,
   disposeReviewEngine,
@@ -63,6 +64,8 @@ async function setupDrill(): Promise<void> {
 }
 
 beforeEach(async () => {
+  configureReviewCache(null);
+  await clearReviewCache();
   resetWasmHealth();
   engines = [];
   prepare = () => undefined;

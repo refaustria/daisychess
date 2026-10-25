@@ -12,8 +12,24 @@ import {
   type BatchOptions,
   type BatchRun,
   type PositionCache,
+  type PositionResult,
 } from './BatchAnalyzer';
 import { buildMoveDetails, type MoveDetails } from './details';
+import {
+  clearReviewCache,
+  covers,
+  gameKey,
+  getStoredPositions,
+  getStoredReview,
+  MIN_CACHED_PLIES,
+  peekStoredPreset,
+  positionId,
+  putStoredPositions,
+  putStoredReview,
+  REVIEW_CACHE_VERSION,
+  type ReviewPreset,
+  type StoredReview,
+} from './reviewCache';
 import { ServerReviewEngine, type RemoteReviewClient } from './serverReviewEngine';
 import { browserEnginePool, PooledEngine, type PoolLease } from '../engine/wasmPool';
 import { isRetryableEngineError, wasmHealth } from '../engine/wasmHealth';
@@ -43,6 +59,15 @@ export interface ReviewEngineInfo {
 /** Who started the current/last review. */
 export type ReviewTrigger = 'manual' | 'auto';
 
+/** The stored review (ADR-016) behind the shown result: loaded from the cache or just written. */
+export interface StoredReviewInfo {
+  preset: ReviewPreset;
+  createdAt: number;
+  engine: ReviewEngineInfo;
+  /** True when the result was loaded from the cache (no engine ran). */
+  fromCache: boolean;
+}
+
 export interface ReviewState {
   status: ReviewStatus;
   progress: { done: number; total: number };
@@ -63,6 +88,8 @@ export interface ReviewState {
    * means the review belongs to the game on the board, e.g. for the Play tab's Review button).
    */
   reviewed?: GameState['moves'];
+  /** Set when the shown result is stored in the review cache (see {@link StoredReviewInfo}). */
+  stored?: StoredReviewInfo;
 }
 
 export interface StartMeta {
@@ -75,8 +102,20 @@ export interface ReviewActions {
    * Reviews the current game of `useGameStore`. Resolves with the summary, or undefined when the
    * run was cancelled, failed or superseded (see `status`/`error`). While running, a second call
    * returns the running promise.
+   *
+   * Review cache (ADR-016): when a review of this game with the same or a stronger preset is
+   * stored (deep ≥ fast), it is shown instead (status `done`, `stored.fromCache`) and no engine is
+   * used; when the index already knows it, the store never enters `running`. A finished preset run
+   * is stored; the analysed positions of every run (also cancelled/failed) are persisted and reused
+   * by later runs with the same or a weaker budget.
    */
   start(options?: ReviewOptions, meta?: StartMeta): Promise<ReviewSummary | undefined>;
+  /**
+   * Shows the stored review of the current game, if there is one (any preset). Never runs an
+   * engine; does nothing while a review runs or when the shown review already belongs to the game.
+   * Resolves true when a stored review is now shown.
+   */
+  loadCached(): Promise<boolean>;
   cancel(): void;
   /** Cancels a running review and returns to `idle`. The position cache is kept. */
   reset(): void;
@@ -108,12 +147,18 @@ const createRemoteClient: CreateServerReviewClient = async () => {
   });
 };
 
-/** Upper bound for cached positions per options key (oldest entries are dropped first). */
+/** Upper bound for positions (FENs) kept in memory (least recently used dropped first). */
 export const MAX_CACHED_POSITIONS = 5000;
 
 /** `null`: no engine server configured (`auto` then silently uses the browser). */
 let createServerClient: CreateServerReviewClient | null = createRemoteClient;
-const caches = new Map<string, PositionCache>();
+/** One analysed position for one search budget. */
+interface CachedPosition {
+  optionsKey: string;
+  result: PositionResult;
+}
+/** FEN → results per budget (at most one per options key); Map order = least recently used first. */
+const positions = new Map<string, CachedPosition[]>();
 /** Recent server failures (auto mode cooldown), keyed by server URL + token. */
 const serverFailures = new Map<string, { until: number; reason: string; silent: boolean }>();
 let current: { token: number; cancel(): void; promise: Promise<ReviewSummary | undefined> } | null =
@@ -144,7 +189,7 @@ export function setReviewEngineFactory(
  */
 export async function disposeReviewEngine(): Promise<void> {
   current?.cancel();
-  caches.clear();
+  positions.clear();
   serverFailures.clear();
   await browserEnginePool.dispose();
 }
@@ -314,23 +359,156 @@ export function reportSearchServerFailure(
   return noticeFor(pref, reason, isUnauthorized(err));
 }
 
-const optionsKey = (o: BatchOptions): string =>
-  o.movetime !== undefined ? `mt:${o.movetime}` : `d:${o.depth}`;
+export const optionsKey = (o: BatchOptions): string =>
+  o.movetime !== undefined ? `mt:${o.movetime}` : `d:${o.depth ?? DEFAULT_REVIEW_DEPTH}`;
 
-function cacheFor(key: string): PositionCache {
-  let c = caches.get(key);
-  if (!c) caches.set(key, (c = new Map()));
-  return c;
+/**
+ * True when a result searched with budget `key` serves a search with `o`: the same budget; for a
+ * movetime a movetime at least as long; for a depth a depth limit at least as deep or a result
+ * that reached that depth (e.g. a Fast run on the server often reaches depth 20+).
+ */
+export function satisfies(key: string, result: PositionResult, o: BatchOptions): boolean {
+  if (key === optionsKey(o)) return true;
+  const mt = key.startsWith('mt:') ? Number(key.slice(3)) : undefined;
+  const depthLimit = key.startsWith('d:') ? Number(key.slice(2)) : undefined;
+  if (o.movetime !== undefined) return mt !== undefined && mt >= o.movetime;
+  const d = o.depth ?? DEFAULT_REVIEW_DEPTH;
+  return (depthLimit !== undefined && depthLimit >= d) || (result.depth ?? 0) >= d;
 }
 
-function prune(cache: PositionCache): void {
-  const excess = cache.size - MAX_CACHED_POSITIONS;
+function addPosition(fen: string, key: string, result: PositionResult): void {
+  const list = positions.get(fen) ?? [];
+  const i = list.findIndex((e) => e.optionsKey === key);
+  if (i >= 0) list[i] = { optionsKey: key, result };
+  else list.push({ optionsKey: key, result });
+  positions.delete(fen);
+  positions.set(fen, list);
+}
+
+function prunePositions(): void {
+  const excess = positions.size - MAX_CACHED_POSITIONS;
   if (excess <= 0) return;
   let i = 0;
-  for (const k of cache.keys()) {
+  for (const k of positions.keys()) {
     if (i++ >= excess) break;
-    cache.delete(k);
+    positions.delete(k);
   }
+}
+
+/** Merges the persisted positions of `fens` into memory (entries in memory win). */
+async function loadPersistedPositions(fens: readonly string[]): Promise<void> {
+  for (const p of await getStoredPositions(fens)) {
+    const list = positions.get(p.fen);
+    if (!list?.some((e) => e.optionsKey === p.optionsKey))
+      addPosition(p.fen, p.optionsKey, p.result);
+  }
+}
+
+/**
+ * The per-run cache for the analyzer: every position of the game that has a result satisfying
+ * `o` (the same budget first, else the deepest). `seeded` remembers what came from elsewhere.
+ */
+function runCache(
+  fens: readonly string[],
+  o: BatchOptions,
+): { cache: PositionCache; seeded: Map<string, PositionResult> } {
+  const key = optionsKey(o);
+  const cache: PositionCache = new Map();
+  const seeded = new Map<string, PositionResult>();
+  for (const fen of fens) {
+    const list = positions.get(fen);
+    if (!list) continue;
+    const ok = list.filter((e) => satisfies(e.optionsKey, e.result, o));
+    if (ok.length === 0) continue;
+    const pick =
+      ok.find((e) => e.optionsKey === key) ??
+      ok.reduce((a, b) => ((b.result.depth ?? 0) > (a.result.depth ?? 0) ? b : a));
+    cache.set(fen, pick.result);
+    seeded.set(fen, pick.result);
+    positions.delete(fen);
+    positions.set(fen, list);
+  }
+  return { cache, seeded };
+}
+
+/** Takes the positions searched by a run into memory and persists the run's positions. */
+function absorbRun(
+  fens: readonly string[],
+  o: BatchOptions,
+  run: { cache: PositionCache; seeded: Map<string, PositionResult> },
+): void {
+  const key = optionsKey(o);
+  for (const [fen, result] of run.cache) {
+    if (run.seeded.get(fen) !== result) addPosition(fen, key, result);
+  }
+  const usedAt = Date.now();
+  const entries = [...new Set(fens)].flatMap((fen) =>
+    (positions.get(fen) ?? []).map((e) => ({
+      id: positionId(e.optionsKey, fen),
+      fen,
+      optionsKey: e.optionsKey,
+      result: e.result,
+      usedAt,
+      version: REVIEW_CACHE_VERSION,
+    })),
+  );
+  prunePositions();
+  void putStoredPositions(entries);
+}
+
+/** `fast` / `deep` when `o` is one of {@link REVIEW_PRESETS}; custom budgets are not cached. */
+export function presetOf(o: ReviewOptions): ReviewPreset | undefined {
+  const key = optionsKey(normalize(o));
+  for (const p of ['fast', 'deep'] as const) {
+    if (optionsKey(normalize(REVIEW_PRESETS[p])) === key) return p;
+  }
+  return undefined;
+}
+
+const keyOfGame = (game: BatchGame): string =>
+  gameKey(
+    game.startFen,
+    game.moves.map((m) => m.uci),
+  );
+
+/** Guards against key collisions: the stored record really is this game. */
+const sameGame = (r: StoredReview, game: BatchGame): boolean =>
+  r.startFen === game.startFen &&
+  r.moves.length === game.moves.length &&
+  r.moves.every((san, i) => game.moves[i]!.san === san);
+
+/** Store state showing the stored review `r` of the game `moves`. */
+function storedState(
+  r: StoredReview,
+  moves: GameState['moves'],
+  trigger: ReviewTrigger,
+): Partial<ReviewState> {
+  const total = r.moves.length + 1;
+  return {
+    status: 'done',
+    progress: { done: total, total },
+    summary: r.summary,
+    moveDetails: r.moveDetails,
+    error: undefined,
+    options: { ...r.options },
+    runsOn: r.engine,
+    engineNotice: undefined,
+    trigger,
+    // A stored Deep review needs no "run Deep" hint.
+    autoNotice: trigger === 'auto' && r.preset === 'fast',
+    reviewed: moves,
+    stored: { preset: r.preset, createdAt: r.createdAt, engine: r.engine, fromCache: true },
+  };
+}
+
+/**
+ * Clears the review cache (stored reviews and positions, also those kept in memory). The shown
+ * review stays but no longer counts as stored (Start is enabled again).
+ */
+export async function clearReviewCaches(): Promise<void> {
+  positions.clear();
+  await clearReviewCache();
+  if (useReviewStore.getState().stored) useReviewStore.setState({ stored: undefined });
 }
 
 /** The game of `useGameStore` in the form the analyzer expects. */
@@ -365,42 +543,79 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
     if (current) return current.promise;
     const options = opts ? { ...opts } : get().options;
     const batchOptions = normalize(options);
+    const preset = presetOf(options);
     const reviewed = useGameStore.getState().moves;
     const game = gameToBatch(useGameStore.getState());
-    const my = ++token;
-    const total = game.moves.length + 1;
+    const fens = [game.startFen, ...game.moves.map((m) => m.fenAfter)];
+    const key = preset && game.moves.length >= MIN_CACHED_PLIES ? keyOfGame(game) : undefined;
+    const trigger: ReviewTrigger = meta?.auto ? 'auto' : 'manual';
 
-    // Keep the live analysis from competing for CPU; restored when no review runs any more.
-    const analysis = useAnalysisStore.getState();
-    if (analysis.enabled) {
-      analysis.setEnabled(false);
-      analysisSuspended = true;
+    // The shown result already is a stored review of this game, as strong as requested: no-op.
+    const shown = get();
+    if (
+      key &&
+      preset &&
+      shown.status === 'done' &&
+      shown.reviewed === reviewed &&
+      covers(shown.stored?.preset, preset)
+    ) {
+      return Promise.resolve(shown.summary);
     }
 
-    set({
-      status: 'running',
-      progress: { done: 0, total },
-      summary: undefined,
-      moveDetails: {},
-      error: undefined,
-      options,
-      runsOn: undefined,
-      engineNotice: undefined,
-      trigger: meta?.auto ? 'auto' : 'manual',
-      autoNotice: meta?.auto === true,
-      reviewed,
-    });
-
+    const my = ++token;
+    const total = game.moves.length + 1;
     let cancelled = false;
     const aborter = new AbortController();
     let run: { cancel(): void } | null = null;
     let selected: Selected | null = null;
     const isCurrent = (): boolean => current?.token === my;
 
-    const promise = (async (): Promise<ReviewSummary | undefined> => {
+    /** The stored review of this game, if it makes this run unnecessary. */
+    const lookup = async (): Promise<StoredReview | undefined> => {
+      if (!key || !preset) return undefined;
+      const r = await getStoredReview(key);
+      return r && sameGame(r, game) && covers(r.preset, preset) ? r : undefined;
+    };
+    const showStored = (r: StoredReview): ReviewSummary => {
+      if (isCurrent()) set(storedState(r, reviewed, trigger));
+      return r.summary;
+    };
+
+    const begin = (): void => {
+      // Keep the live analysis from competing for CPU; restored when no review runs any more.
+      const analysis = useAnalysisStore.getState();
+      if (analysis.enabled) {
+        analysis.setEnabled(false);
+        analysisSuspended = true;
+      }
+      set({
+        status: 'running',
+        progress: { done: 0, total },
+        summary: undefined,
+        moveDetails: {},
+        error: undefined,
+        options,
+        runsOn: undefined,
+        engineNotice: undefined,
+        trigger,
+        autoNotice: meta?.auto === true,
+        reviewed,
+        stored: undefined,
+      });
+    };
+
+    const engineRun = async (checkStore: boolean): Promise<ReviewSummary | undefined> => {
       try {
         // A reset run may still be stopping its search; never overlap two runs on the engine.
         await settling;
+        // Not known to this tab's index (e.g. stored by another tab): ask the store first.
+        if (checkStore) {
+          const stored = await lookup();
+          if (cancelled) throw abortError();
+          if (stored) return showStored(stored);
+        }
+        await loadPersistedPositions(fens).catch(() => undefined);
+        if (cancelled) throw abortError();
         const pref = useSettingsStore.getState().reviewEngine;
         const trace = { server: false };
         const browser = (notice?: string) => browserEngine(notice, aborter.signal);
@@ -414,7 +629,8 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
         selected = await selectEngine(pref, browser, trace).catch(serverInstead);
         if (cancelled) throw abortError();
         if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
-        const cache = cacheFor(optionsKey(batchOptions));
+        const forRun = runCache(fens, batchOptions);
+        const cache = forRun.cache;
         let recreated = false;
         try {
           for (;;) {
@@ -471,17 +687,41 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
               if (cancelled) throw abortError();
               continue;
             }
+            const moveDetails = details(summary);
+            let stored: StoredReviewInfo | undefined;
+            if (key && preset) {
+              const createdAt = Date.now();
+              const engine = selected.runsOn;
+              stored = { preset, createdAt, engine, fromCache: false };
+              void putStoredReview({
+                gameKey: key,
+                startFen: game.startFen,
+                moves: game.moves.map((m) => m.san),
+                preset,
+                options:
+                  batchOptions.movetime !== undefined
+                    ? { movetime: batchOptions.movetime }
+                    : { depth: batchOptions.depth ?? DEFAULT_REVIEW_DEPTH },
+                summary,
+                moveDetails,
+                engine,
+                createdAt,
+                version: REVIEW_CACHE_VERSION,
+              });
+            }
             if (isCurrent())
               set({
                 status: 'done',
                 summary,
-                moveDetails: details(summary),
+                moveDetails,
                 progress: { done: total, total },
+                stored,
               });
             return summary;
           }
         } finally {
-          prune(cache);
+          // Also after a cancel or failure: what was searched stays available.
+          absorbRun(fens, batchOptions, forRun);
         }
       } catch (err) {
         if (isCurrent()) {
@@ -503,7 +743,30 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
           if (!useAnalysisStore.getState().enabled) useAnalysisStore.getState().setEnabled(true);
         }
       }
-    })();
+    };
+
+    let promise: Promise<ReviewSummary | undefined>;
+    if (key && preset && covers(peekStoredPreset(key), preset)) {
+      // Known to be stored: load it without entering `running` (no progress bar, no engine).
+      promise = (async () => {
+        const stored = await lookup().catch(() => undefined);
+        if (cancelled || !isCurrent()) {
+          if (isCurrent()) current = null;
+          return undefined;
+        }
+        if (stored) {
+          const summary = showStored(stored);
+          current = null;
+          return summary;
+        }
+        // Evicted or cleared meanwhile: run after all.
+        begin();
+        return engineRun(false);
+      })();
+    } else {
+      begin();
+      promise = engineRun(true);
+    }
 
     current = {
       token: my,
@@ -536,7 +799,26 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       runsOn: undefined,
       engineNotice: undefined,
       reviewed: undefined,
+      stored: undefined,
     });
+  },
+
+  loadCached: async () => {
+    if (current) return false;
+    const moves = useGameStore.getState().moves;
+    if (moves.length < MIN_CACHED_PLIES) return false;
+    const belongs = (): boolean => {
+      const s = get();
+      return s.status === 'done' && s.reviewed === moves;
+    };
+    if (belongs()) return false;
+    const game = gameToBatch(useGameStore.getState());
+    const stored = await getStoredReview(keyOfGame(game));
+    if (!stored || !sameGame(stored, game)) return false;
+    // Still the same game, nothing started meanwhile.
+    if (current || useGameStore.getState().moves !== moves || belongs()) return false;
+    set(storedState(stored, moves, 'manual'));
+    return true;
   },
 
   dismissAutoNotice: () => set({ autoNotice: false }),

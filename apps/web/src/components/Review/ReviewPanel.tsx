@@ -4,11 +4,13 @@ import { annotatePgn } from '../../review/annotatePgn';
 import { reviewHighlights } from '../../review/details';
 import { CLASS_INFO, bestMoveSan, moveNumberLabel } from '../../review/format';
 import { useHumanGameLockReason } from '../../live/lock';
+import { cachedReviewLabel, covers } from '../../review/reviewCache';
 import { REVIEW_PRESETS, useReviewStore, type ReviewEngineInfo } from '../../review/reviewStore';
 import { useGameStore } from '../../store/gameStore';
 import { EvalGraph } from './EvalGraph';
 import { MoveCommentary } from './MoveCommentary';
 import { OpeningFocusBlock } from './OpeningFocusBlock';
+import { ReviewTour } from './ReviewTour';
 import styles from './ReviewPanel.module.css';
 
 type PresetKey = keyof typeof REVIEW_PRESETS;
@@ -205,9 +207,16 @@ export function ReviewPanel() {
   const reset = useReviewStore((s) => s.reset);
   const dismiss = useReviewStore((s) => s.dismissAutoNotice);
   const hasMoves = useGameStore((s) => s.moves.length > 0);
+  // Review cache (ADR-016): the shown review of this game is stored with at least this preset.
+  const stored = useReviewStore((s) => s.stored);
+  const ofThisGame = useReviewStore((s) => s.reviewed) === useGameStore((s) => s.moves);
   const lock = useHumanGameLockReason();
   const playing = lock !== null;
   const [preset, setPreset] = useState<PresetKey>('deep');
+  const alreadyReviewed =
+    status === 'done' && ofThisGame && stored && covers(stored.preset, preset)
+      ? stored.preset
+      : undefined;
 
   /** A manual start always (re)starts with the chosen preset, replacing a running review. */
   const run = (key: PresetKey = preset) => {
@@ -243,7 +252,7 @@ export function ReviewPanel() {
         <button
           type="button"
           className={styles.btnPrimary}
-          disabled={!hasMoves || playing}
+          disabled={!hasMoves || playing || alreadyReviewed !== undefined}
           onClick={() => run()}
         >
           Start
@@ -262,7 +271,14 @@ export function ReviewPanel() {
                 : 'Finish or stop the game first'}
           </span>
         ) : (
-          !hasMoves && <span className={styles.muted}>Play or import a game first.</span>
+          <>
+            {!hasMoves && <span className={styles.muted}>Play or import a game first.</span>}
+            {alreadyReviewed && (
+              <span className={styles.muted} data-testid="review-already">
+                Already reviewed ({alreadyReviewed})
+              </span>
+            )}
+          </>
         )}
       </div>
       {autoNotice && (
@@ -328,12 +344,13 @@ export function ReviewPanel() {
       )}
       {/* The review summary starts with the opening focus (M18-3). */}
       {status === 'done' && summary && <OpeningFocusBlock />}
+      {status === 'done' && summary && <ReviewTour />}
       {summary && (status === 'running' || status === 'done') && (
         <MoveCommentary summary={summary} details={details} running={status === 'running'} />
       )}
       {status === 'done' && runsOn && (
         <p className={styles.muted} data-testid="review-engine" data-engine={runsOn.kind}>
-          {reviewingLabel(runsOn, true)}
+          {stored?.fromCache ? cachedReviewLabel(stored) : reviewingLabel(runsOn, true)}
         </p>
       )}
       {status === 'done' && summary && <Done summary={summary} />}

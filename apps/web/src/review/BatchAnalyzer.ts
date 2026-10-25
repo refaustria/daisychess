@@ -29,12 +29,17 @@ export interface PositionResult {
   bestMove?: string;
   /** Principal variation of the last info, at most {@link MAX_PV_PLIES} moves (UCI). */
   pv?: string[];
+  /** Depth of the last info (reached depth; lets a deeper budget reuse a movetime result). */
+  depth?: number;
 }
 
 /** Plies of the principal variation kept per position. */
 export const MAX_PV_PLIES = 8;
 
-/** Positions already analysed, keyed by full FEN. Only reuse it with identical search options. */
+/**
+ * Positions already analysed, keyed by full FEN. Only reuse it with identical (or, see the review
+ * store, at least as strong) search options.
+ */
 export type PositionCache = Map<string, PositionResult>;
 
 export interface BatchOptions {
@@ -244,6 +249,7 @@ export class BatchAnalyzer {
       eval: score,
       ...(bestMove !== undefined ? { bestMove } : {}),
       ...(pv.length > 0 ? { pv } : {}),
+      ...(Number.isFinite(last.depth) ? { depth: last.depth } : {}),
     };
   }
 }

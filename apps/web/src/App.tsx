@@ -23,6 +23,7 @@ import { PlayIndicator } from './components/Play/PlayIndicator';
 import { PlayerBar, useBoardPlayers } from './components/PlayerBar/PlayerBar';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
 import { installAutoReview } from './review/autoReview';
+import { installReviewTour } from './review/tourStore';
 import { installRoomRoute } from './room/roomStore';
 import { useRoomStatus } from './room/useRoomStatus';
 import { useReviewStore } from './review/reviewStore';
@@ -208,6 +209,8 @@ export function App() {
   const alert = roomStatus === null && (gameStatus(state) === 'checkmate' || isCheck(state));
   // Loading a game starts a fast review (settings.autoReview) and opens the Review tab.
   useEffect(() => installAutoReview(), []);
+  // Guided tour through the moves once a review is done (settings.reviewTour).
+  useEffect(() => installReviewTour(), []);
   // `#/room/<id>` links open the Friend tab (on load and on hash changes).
   useEffect(() => installRoomRoute(), []);
   const tabsRef = useRef<HTMLDivElement>(null);
