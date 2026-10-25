@@ -389,3 +389,10 @@ Unlike `reviews.sqlite` this file is **not reproducible**: a nightly `sqlite3 hu
 3. **Hub domain:** stay on `c.referee.at` for hub, portal (`/portal/`) and link, or move to a dedicated domain before the public release? (Affects the OAuth client id, CSP, setup links and every node's `HUB_URL`; cheapest to decide now.)
 4. **Pool fairness:** unlimited while capacity exists (first come, first served, per-token session caps only), or a daily engine-time budget per pool token (e.g. 30 min) so a few heavy reviewers cannot drain donated capacity?
 5. **Release scope:** Docker node image first and the `npx @daisychess/node` package after the first community nodes run (recommended), or both before announcing?
+
+### ADR-020 — owner answers (2026-10-25)
+1. Pool access at launch: operator-issued pool tokens only; anonymous per-device tokens later behind `POOL_ANONYMOUS` (apps).
+2. Operator login: lichess OAuth only.
+3. Domain for hub/portal/`/link`: **open** — keep every hub URL configurable (`HUB_URL`, `PUBLIC_ORIGIN`); decide before M24-7.
+4. Pool fairness: per-token concurrent-session caps **and** a daily engine-time budget for pool tokens (`POOL_DAILY_BUDGET_MIN`, default 30, 0 = off).
+5. Release order: Docker node image first, npm CLI after the first community nodes run.
