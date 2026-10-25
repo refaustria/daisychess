@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PRODUCTION_CSP } from '../apps/web/csp.config.mjs';
+import { PORTAL_CSP } from '../apps/portal/csp.config.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const files = [
@@ -28,6 +29,21 @@ for (const file of files) {
     failed = true;
   } else {
     console.log(`✓ ${file}`);
+  }
+  // The operator portal has its own policy (apps/portal/csp.config.mjs); only the site file carries it.
+  if (file.endsWith('c.referee.at.conf')) {
+    const pm = /map\s+\$host\s+\$daisychess_portal_csp\s*\{\s*default\s+"([^"]*)";\s*\}/.exec(conf);
+    if (!pm) {
+      console.error(`✗ ${file}: no \`map $host $daisychess_portal_csp { default "…"; }\` block`);
+      failed = true;
+    } else if (pm[1] !== PORTAL_CSP) {
+      console.error(`✗ ${file}: portal CSP differs from apps/portal/csp.config.mjs`);
+      console.error(`  have:     ${pm[1]}`);
+      console.error(`  expected: default "${PORTAL_CSP}";`);
+      failed = true;
+    } else {
+      console.log(`✓ ${file} (portal)`);
+    }
   }
 }
 process.exit(failed ? 1 : 0);

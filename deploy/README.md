@@ -42,6 +42,21 @@ by hand (keep the `# managed by Certbot` lines), or re-copy it and run
 `sudo certbot --nginx -d c.referee.at --reinstall --redirect` to re-inject TLS.
 Always `sudo nginx -t` before `sudo systemctl reload nginx`.
 
+## Operator portal (`/portal/`)
+
+```bash
+deploy/deploy-portal.sh
+```
+
+Builds `apps/portal` and rsyncs it to `/var/www/c.referee.at/portal/` (`deploy-web.sh` leaves that
+directory alone). First time: re-apply `deploy/nginx/c.referee.at.conf` (new `$daisychess_portal_csp`
+map, `/portal/` locations, `/api/portal/` proxy with `client_max_body_size 16k`) and reload nginx.
+The API only exists on a `ROLE=hub` server with `PUBLIC_ORIGIN=https://c.referee.at`,
+`HUB_ADMIN_LICHESS` and the lichess egress proxy (ADR-020). lichess OAuth client id:
+`daisychess-portal.c.referee.at` (public PKCE client; lichess needs no registration; redirect URI
+`https://c.referee.at/portal/`). `VITE_HUB_URL` at build time overrides the `HUB_URL` shown in node
+snippets.
+
 ## Redeploy the web app
 
 ```bash

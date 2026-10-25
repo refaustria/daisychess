@@ -12,3 +12,5 @@ apps/web/test-results
 playwright-report
 # server-side review store (ADR-017), reproducible
 apps/server/data/
+apps/portal/test-results
+apps/portal/dist-e2e

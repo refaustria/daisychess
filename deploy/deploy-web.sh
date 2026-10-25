@@ -17,6 +17,7 @@ if [[ ! -f apps/web/dist/index.html ]]; then
   exit 1
 fi
 
-rsync -a --delete apps/web/dist/ "$WEB_ROOT"/
+# /portal/ belongs to deploy/deploy-portal.sh: keep it out of this --delete.
+rsync -a --delete --exclude /portal/ apps/web/dist/ "$WEB_ROOT"/
 
 echo "Deployed to ${SITE_URL}"
