@@ -1,5 +1,16 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { parseUciBestMove, parseUciInfo, type BestMove, type EngineInfo } from '@daisychess/engine-core';
+import {
+  parseLc0MoveStats,
+  parseUciBestMove,
+  parseUciInfo,
+  topPolicy,
+  type BestMove,
+  type EngineInfo,
+  type PolicyEntry,
+} from '@daisychess/engine-core';
+
+/** `info.policy` entries relayed per search (ADR-019). */
+export const POLICY_TOP_N = 5;
 
 /**
  * UCI options a client request can ever reach a native process with. Everything else
@@ -13,13 +24,20 @@ export type UciOptions = Partial<Record<AllowedUciOption, number | boolean>>;
 export interface GoParams {
   depth?: number;
   movetime?: number;
-  /** Search until `stop`. Implied when neither `depth` nor `movetime` is given. */
+  /** `go nodes N` (ADR-019); 1 = the policy move of a network engine. */
+  nodes?: number;
+  /** Search until `stop`. Implied when neither `depth`, `movetime` nor `nodes` is given. */
   infinite?: boolean;
 }
 
 export interface SearchResult {
   /** null for `bestmove (none)` (mate/stalemate) or an unparsable reply. */
   bestMove: BestMove | null;
+  /**
+   * Top {@link POLICY_TOP_N} policy moves, when the engine printed Lc0 `VerboseMoveStats` lines
+   * during this search (ADR-019); otherwise absent.
+   */
+  policy?: PolicyEntry[];
 }
 
 export interface ExitInfo {
@@ -36,6 +54,12 @@ export interface ExitInfo {
 export interface UciProcessOptions {
   args?: string[];
   cwd?: string;
+  /**
+   * UCI options sent once after `uciok`, before the first `isready` (operator-controlled, from
+   * the registry's `initOptions`; e.g. `VerboseMoveStats` for Lc0). Not subject to the
+   * client allow-list of {@link UciProcess.setOptions}.
+   */
+  initOptions?: Record<string, string | number | boolean>;
   /** Timeout for `uci` → `uciok` and the initial `isready`. Default 10 s. */
   handshakeTimeoutMs?: number;
   /** Default timeout for `isready` → `readyok`. Default 5 s. */
@@ -76,6 +100,8 @@ interface PendingSearch {
   reject: (err: Error) => void;
   onInfo?: (info: EngineInfo) => void;
   stopSent: boolean;
+  /** Lc0 `VerboseMoveStats` entries seen during this search (ADR-019). */
+  policy: PolicyEntry[];
 }
 
 type LineListener = (line: string) => void;
@@ -181,6 +207,9 @@ export class UciProcess {
       } finally {
         this.uciokWaiter = null;
       }
+      for (const [name, value] of Object.entries(this.options.initOptions ?? {})) {
+        this.send(`setoption name ${name} value ${String(value)}`);
+      }
       await this.isReady(timeout);
     } catch (err) {
       // Never leave a half-initialised process behind.
@@ -220,8 +249,10 @@ export class UciProcess {
   }
 
   /**
-   * Sets options from the allow-list, skipping values that are already in effect, and waits for
-   * `readyok` when anything was sent (e.g. Hash reallocation). Throws for any other option name.
+   * Sets options from the allow-list, skipping values that are already in effect and options
+   * the engine did not announce in its handshake (Lc0 has no `Hash`; it would answer
+   * `error Unknown option`), and waits for `readyok` when anything was sent (e.g. Hash
+   * reallocation). Throws for any other option name.
    */
   async setOptions(options: UciOptions): Promise<void> {
     const lines: string[] = [];
@@ -230,6 +261,7 @@ export class UciProcess {
         throw new Error(`UCI option "${name}" is not allowed`);
       }
       if (value === undefined) continue;
+      if (this.supportedOptions.size > 0 && !this.supportedOptions.has(name)) continue;
       if (typeof value === 'number' && !Number.isInteger(value)) {
         throw new Error(`UCI option "${name}" must be an integer`);
       }
@@ -259,6 +291,7 @@ export class UciProcess {
     const parts = ['go'];
     if (params.depth !== undefined) parts.push('depth', String(Math.trunc(params.depth)));
     if (params.movetime !== undefined) parts.push('movetime', String(Math.trunc(params.movetime)));
+    if (params.nodes !== undefined) parts.push('nodes', String(Math.trunc(params.nodes)));
     if (parts.length === 1 || params.infinite) parts.push('infinite');
     let resolve!: (r: SearchResult) => void;
     let reject!: (e: Error) => void;
@@ -266,7 +299,7 @@ export class UciProcess {
       resolve = res;
       reject = rej;
     });
-    const search: PendingSearch = { promise, resolve, reject, stopSent: false };
+    const search: PendingSearch = { promise, resolve, reject, stopSent: false, policy: [] };
     if (onInfo) search.onInfo = onInfo;
     this.send(parts.join(' '));
     this.search = search;
@@ -325,7 +358,14 @@ export class UciProcess {
   }
 
   private handleLine(line: string): void {
-    if (line.startsWith('info ')) {
+    if (line.startsWith('info string ')) {
+      // Lc0 VerboseMoveStats (ADR-019): one line per legal move at the end of a search.
+      const s = this.search;
+      if (s) {
+        const entry = parseLc0MoveStats(line);
+        if (entry) s.policy.push(entry);
+      }
+    } else if (line.startsWith('info ')) {
       const s = this.search;
       if (s?.onInfo) {
         const info = parseUciInfo(line);
@@ -335,7 +375,9 @@ export class UciProcess {
       const s = this.search;
       if (s) {
         this.search = null;
-        s.resolve({ bestMove: parseUciBestMove(line) });
+        const result: SearchResult = { bestMove: parseUciBestMove(line) };
+        if (s.policy.length > 0) result.policy = topPolicy(s.policy, POLICY_TOP_N);
+        s.resolve(result);
       }
     } else if (line === 'readyok') {
       this.readyWaiters.shift()?.resolve();

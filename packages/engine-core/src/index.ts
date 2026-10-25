@@ -1,6 +1,6 @@
-export type { Score, EngineInfo, BestMove, AnalyzeOptions, Engine } from './types.js';
+export type { Score, EngineInfo, PolicyEntry, BestMove, AnalyzeOptions, Engine } from './types.js';
 export { cpToWinProbability, scoreToWinProbability, evalBarShare, formatScore } from './eval.js';
-export { parseUciInfo, parseUciBestMove } from './uci.js';
+export { parseUciInfo, parseUciBestMove, parseLc0MoveStats, topPolicy } from './uci.js';
 export { sideToMove, scoreToWhitePov, infoToWhitePov } from './pov.js';
 export {
   PROTOCOL_VERSION,
@@ -9,6 +9,9 @@ export {
   PROTOCOL_ERROR_CODES,
   PROTOCOL_BOUNDS,
   DEFAULT_LIMITS,
+  ENGINE_STYLES,
+  PolicyEntrySchema,
+  resolveEngineNodes,
   isValidFen,
   FenSchema,
   SessionIdSchema,
@@ -94,6 +97,7 @@ export {
 export type {
   ProtocolErrorCode,
   Limits,
+  EngineStyle,
   EngineDescriptor,
   HelloMessage,
   AnalyzeMessage,

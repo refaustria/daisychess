@@ -10,6 +10,7 @@
   "scripts": {
     "dev:web": "pnpm --filter @daisychess/web dev",
     "fetch-engines": "bash scripts/fetch-engines.sh",
+    "build-lc0": "bash scripts/build-lc0.sh",
     "dev:server": "pnpm --filter @daisychess/server dev",
     "build": "pnpm -r build",
     "lint": "eslint . && pnpm -r typecheck",

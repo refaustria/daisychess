@@ -44,6 +44,7 @@ describe('loadConfig', () => {
       maxHash: 1024,
       maxMovetimeMs: 30_000,
       maxSessionsPerConnection: 4,
+      maxNodes: DEFAULT_LIMITS.maxNodes,
     });
     expect(c.engineIdleMs).toBe(60_000);
     expect(c.enginesConfig).toBe(path.resolve('x/engines.json'));
@@ -101,7 +102,9 @@ describe('loadConfig', () => {
       putPerIpPerDay: 500,
     });
     expect(path.isAbsolute(d.reviewStore.path)).toBe(true);
-    expect(d.reviewStore.path.endsWith(path.join('apps', 'server', 'data', 'reviews.sqlite'))).toBe(true);
+    expect(d.reviewStore.path.endsWith(path.join('apps', 'server', 'data', 'reviews.sqlite'))).toBe(
+      true,
+    );
     const c = loadConfig({
       REVIEW_STORE: 'off',
       REVIEW_STORE_PATH: 'var/reviews.db',
@@ -116,7 +119,9 @@ describe('loadConfig', () => {
     });
     expect(() => loadConfig({ REVIEW_STORE: 'maybe' })).toThrow(/REVIEW_STORE/);
     expect(() => loadConfig({ REVIEW_STORE_MAX_BYTES: '1000' })).toThrow(/REVIEW_STORE_MAX_BYTES/);
-    expect(() => loadConfig({ REVIEW_PUT_PER_IP_PER_DAY: '0' })).toThrow(/REVIEW_PUT_PER_IP_PER_DAY/);
+    expect(() => loadConfig({ REVIEW_PUT_PER_IP_PER_DAY: '0' })).toThrow(
+      /REVIEW_PUT_PER_IP_PER_DAY/,
+    );
   });
 
   it('parses ACCESS_TOKEN (ADR-010): unset or empty = public, max 256 characters', () => {

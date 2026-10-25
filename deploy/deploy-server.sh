@@ -15,7 +15,8 @@ cd "$REPO_ROOT"
 pnpm install --frozen-lockfile
 pnpm --filter @daisychess/engine-core build
 pnpm --filter @daisychess/server build
-pnpm fetch-engines
+pnpm fetch-engines   # Stockfish + the Maia nets (idempotent, checksum-verified)
+pnpm build-lc0       # Lc0 for the Maia nets (ADR-019); skipped when the pinned build is present
 
 if [[ ! -f apps/server/dist/index.js ]]; then
   echo "error: apps/server/dist/index.js missing after build" >&2

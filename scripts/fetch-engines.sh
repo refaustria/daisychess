@@ -15,6 +15,11 @@
 # NNUE networks are embedded in the official Stockfish binaries, so no separate
 # NNUE download is needed.
 #
+# Maia (ADR-019): afterwards (also when Stockfish is already present) this runs
+# scripts/fetch-maia.sh, which fetches the nine Maia nets into engines/maia/ (pinned commit,
+# sha256-verified). Skip it with MAIA=off. The Lc0 binary that runs them is built separately
+# by scripts/build-lc0.sh (pnpm build-lc0).
+#
 # Asset naming differs between releases:
 #   sf_18 and older: per-CPU tarballs  stockfish-ubuntu-<arch>.tar / stockfish-macos-<arch>.tar
 #   sf_19 and newer: "universal" tarballs (stockfish-linux-x86-64-universal.tar.gz) that
@@ -50,9 +55,22 @@ unverified() {
 
 banner() { (echo uci; sleep 0.3) | "$DEST_BIN" 2>/dev/null | head -1 || true; }
 
+# Maia nets (ADR-019); forwards --force/--no-verify. MAIA=off skips them.
+fetch_maia() {
+  if [[ "${MAIA:-on}" == off ]]; then
+    echo "MAIA=off: skipping the Maia nets"
+    return 0
+  fi
+  local args=()
+  [[ $FORCE -eq 1 ]] && args+=(--force)
+  [[ $VERIFY -eq 0 ]] && args+=(--no-verify)
+  "$ROOT/scripts/fetch-maia.sh" "${args[@]}"
+}
+
 if [[ -x "$DEST_BIN" && $FORCE -eq 0 ]]; then
   echo "Stockfish already present at $DEST_BIN (use --force to re-download)"
   banner
+  fetch_maia
   exit 0
 fi
 
@@ -192,3 +210,4 @@ if ! { grep -q '^uciok' <<<"$out" && grep -q '^readyok' <<<"$out" && grep -q '^b
 fi
 banner
 echo "Installed $DEST_BIN ($TAG)"
+fetch_maia

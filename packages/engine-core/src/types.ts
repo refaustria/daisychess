@@ -1,6 +1,16 @@
 /** Evaluation from White's perspective: centipawns or moves-to-mate (negative = Black mates). */
 export type Score = { cp: number } | { mate: number };
 
+/**
+ * One entry of a policy-network move distribution (ADR-019): the probability `p` (0…1) that
+ * the engine's policy head assigns to `uci`. For a Maia net this is how often players of that
+ * rating play the move.
+ */
+export interface PolicyEntry {
+  uci: string;
+  p: number;
+}
+
 export interface EngineInfo {
   depth: number;
   seldepth?: number;
@@ -12,6 +22,11 @@ export interface EngineInfo {
   nodes?: number;
   /** Milliseconds. */
   time?: number;
+  /**
+   * Top policy moves (most probable first) of a policy-network engine such as Lc0 (ADR-019).
+   * Sent once per search, on the last `info` before `bestmove`; absent for other engines.
+   */
+  policy?: PolicyEntry[];
 }
 
 export interface BestMove {

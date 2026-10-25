@@ -90,7 +90,11 @@ export const PROTOCOL_BOUNDS = {
   multipv: { min: 1, max: 10 },
   threads: { min: 1, max: 64 },
   hashMb: { min: 1, max: 16_384 },
+  /** `analyze.nodes` (ADR-019): a node-limited search; human-like engines use 1. */
+  nodes: { min: 1, max: 10_000 },
   sessionsPerConnection: { min: 1, max: 16 },
+  /** Entries of `info.policy` (ADR-019); the server relays the top 5. */
+  policyMaxEntries: 10,
   /** `sessionId`: 1–64 characters of `[A-Za-z0-9_-]`. */
   sessionIdPattern: /^[A-Za-z0-9_-]{1,64}$/,
   /** Engine ids (same rule as `engines.json`). */
@@ -108,6 +112,11 @@ export interface Limits {
   maxHash: number;
   maxMovetimeMs: number;
   maxSessionsPerConnection: number;
+  /**
+   * Cap on `analyze.nodes` (ADR-019). Absent in the `welcome` of servers older than ADR-019,
+   * which ignore `nodes`; {@link checkAnalyzeLimits} then reports `nodes` as unsupported.
+   */
+  maxNodes?: number;
 }
 
 /** Defaults the server uses when no environment variable overrides them. */
@@ -118,7 +127,12 @@ export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
   maxHash: 512,
   maxMovetimeMs: 600_000,
   maxSessionsPerConnection: 2,
+  maxNodes: 10_000,
 });
+
+/** How an engine plays (ADR-019): for strength (Stockfish) or like a human (Maia). */
+export const ENGINE_STYLES = ['strength', 'human'] as const;
+export type EngineStyle = (typeof ENGINE_STYLES)[number];
 
 // ---------------------------------------------------------------------------------------------
 // Building blocks
@@ -311,6 +325,12 @@ export const ScoreSchema = z.union(
 const nonNegativeInt = (name: string) =>
   z.number().int(`${name} must be an integer`).nonnegative(`${name} must be >= 0`);
 
+/** Mirrors {@link PolicyEntry}: a move and its policy probability (0…1). */
+export const PolicyEntrySchema = z.object({
+  uci: UciMoveSchema,
+  p: z.number().min(0, 'policy.p must be >= 0').max(1, 'policy.p must be <= 1'),
+});
+
 /** Mirrors {@link EngineInfo}. Scores are side-to-move (raw UCI) on the wire. */
 export const EngineInfoSchema = z.object({
   depth: range('depth', { min: 0, max: 1_000 }),
@@ -324,6 +344,8 @@ export const EngineInfoSchema = z.object({
   nps: nonNegativeInt('nps').optional(),
   nodes: nonNegativeInt('nodes').optional(),
   time: nonNegativeInt('time').optional(),
+  /** Top policy moves of a policy-network engine, most probable first (ADR-019). */
+  policy: z.array(PolicyEntrySchema).max(PROTOCOL_BOUNDS.policyMaxEntries).optional(),
 });
 
 /** Mirrors {@link BestMove}. */
@@ -339,6 +361,7 @@ export const LimitsSchema = z.object({
     'maxSessionsPerConnection',
     PROTOCOL_BOUNDS.sessionsPerConnection,
   ),
+  maxNodes: range('maxNodes', PROTOCOL_BOUNDS.nodes).optional(),
 });
 
 /** One entry of the server's engine registry as shown to clients (no paths or internals). */
@@ -353,6 +376,16 @@ export const EngineDescriptorSchema = z.object({
     threads: range('defaults.threads', PROTOCOL_BOUNDS.threads),
     hash: range('defaults.hash', PROTOCOL_BOUNDS.hashMb),
   }),
+  /** Absent = `strength` (ADR-019). `human`: plays the moves people of `rating` would play. */
+  style: z.enum(ENGINE_STYLES).optional(),
+  /** Rating level a `human` engine imitates, e.g. 1500 for Maia 1500. */
+  rating: range('rating', { min: 100, max: 4_000 }).optional(),
+  /**
+   * This engine never searches more than this many nodes: `analyze.nodes` above it is
+   * `limit_exceeded`, and an `analyze` without `nodes` runs exactly `maxNodes` (Maia: 1 — the
+   * policy move). Absent: `nodes` is optional and bounded by `limits.maxNodes` only.
+   */
+  maxNodes: range('maxNodes', PROTOCOL_BOUNDS.nodes).optional(),
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -722,6 +755,11 @@ export const AnalyzeMessageSchema = z.object({
   movetime: range('movetime', PROTOCOL_BOUNDS.movetimeMs).optional(),
   threads: range('threads', PROTOCOL_BOUNDS.threads).optional(),
   hash: range('hash', PROTOCOL_BOUNDS.hashMb).optional(),
+  /**
+   * Node limit (`go nodes N`, ADR-019), bounded by `limits.maxNodes` and the engine's
+   * `maxNodes`. Combined with `depth`/`movetime` the search ends at whichever comes first.
+   */
+  nodes: range('nodes', PROTOCOL_BOUNDS.nodes).optional(),
 });
 
 /** Stops the running search of a session (its `bestmove` follows). No-op when nothing runs. */
@@ -1208,5 +1246,29 @@ export function checkAnalyzeLimits(msg: AnalyzeMessage, limits: Limits): string 
     if (value !== undefined && value > max)
       return `${name} ${value} exceeds the server limit of ${max}`;
   }
+  if (msg.nodes !== undefined) {
+    if (limits.maxNodes === undefined) return 'nodes is not supported by this server';
+    if (msg.nodes > limits.maxNodes)
+      return `nodes ${msg.nodes} exceeds the server limit of ${limits.maxNodes}`;
+  }
   return null;
+}
+
+/**
+ * Per-engine node cap (ADR-019): the node count an `analyze` for `engine` runs with, or a
+ * `limit_exceeded` message when `msg.nodes` exceeds the engine's `maxNodes`. Without a cap the
+ * client's `nodes` (possibly undefined = no node limit) is used as is.
+ */
+export function resolveEngineNodes(
+  msg: Pick<AnalyzeMessage, 'nodes'>,
+  engine: Pick<EngineDescriptor, 'id' | 'maxNodes'>,
+): { ok: true; nodes: number | undefined } | { ok: false; message: string } {
+  if (engine.maxNodes === undefined) return { ok: true, nodes: msg.nodes };
+  if (msg.nodes !== undefined && msg.nodes > engine.maxNodes) {
+    return {
+      ok: false,
+      message: `nodes ${msg.nodes} exceeds the limit of ${engine.maxNodes} for engine "${engine.id}"`,
+    };
+  }
+  return { ok: true, nodes: msg.nodes ?? engine.maxNodes };
 }

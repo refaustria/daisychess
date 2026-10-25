@@ -23,9 +23,12 @@ export function engineConfig(partial: Partial<EngineConfig> & { id: string }): E
   return {
     name: partial.id,
     binary: FAKE_ENGINE,
+    args: [],
+    initOptions: {},
     enabled: true,
     options: { Threads: 1, Hash: 16 },
     maxInstances: 1,
+    style: 'strength',
     ...partial,
   };
 }

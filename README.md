@@ -19,7 +19,8 @@ All milestones M0–M10 are implemented (play, browser and server analysis, game
 | Browser engine (Stockfish 19 WASM, MultiPV, eval bar, arrows, line preview) | done |
 | Server engine (native Stockfish 19, WebSocket, limits, Origin check) | done |
 | Game review (accuracy, eval graph, key moments, annotated PGN export) | done |
-| Engine registry and multi-engine comparison | done (Stockfish only; other UCI engines are configurable on the server but none are shipped) |
+| Engine registry and multi-engine comparison | done (Stockfish; other UCI engines are configurable on the server) |
+| Human-like engine: Lc0 + Maia 1100–1900 on the server (`style: human`, 1-node policy move, move probabilities) | server done (ADR-019, M23-1); web (play vs Maia, review hints) in progress (M23-2/3) |
 | Theming (board colours, piece sets Cburnett/Letters, coordinates, highlights, sounds, dark/light) | done |
 | Accessibility / performance pass | done (axe e2e checks, keyboard-operable tabs; the board itself is mouse/touch only) |
 | Play a friend via link (rooms on the server: nickname, time control, colour; reconnect, draw/resign/abort/claim, spectators) | server done (ADR-013); web UI in progress (M16-2) |
@@ -186,6 +187,30 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - `cpToWinProbability(cp)` using the Lichess sigmoid (`50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1)`), mate handling, eval-bar clamping.
 - Move classification thresholds for game review.
 
+### 2.5 Human-like engine: Lc0 + Maia (ADR-019)
+
+The server can also play (and predict) like a human. [Maia](https://github.com/CSSLab/maia-chess) (CSSLab, GPL-3.0) is a set of nine Lc0 networks trained to predict the moves lichess players of a given rating actually play: `maia-1100` … `maia-1900`. Each runs as an [Lc0](https://github.com/LeelaChessZero/lc0) process (`engines/lc0/lc0`, built by `pnpm build-lc0`; weights in `engines/maia/` from `pnpm fetch-engines`) with a 1-node search: `go nodes 1` returns the policy head's most likely move, no search strength is added. Everything runs server-side only; nothing of Lc0/Maia is shipped to the browser.
+
+Protocol (additive, `PROTOCOL_VERSION` stays 1):
+
+```jsonc
+// welcome.engines[] gains style/rating/maxNodes for human-like engines (absent for Stockfish)
+{ "id": "maia-1500", "name": "Maia 1500", "enabled": true, "defaults": { "threads": 1, "hash": 16 },
+  "style": "human", "rating": 1500, "maxNodes": 1 }
+// welcome.limits gains maxNodes (default 10000, env MAX_NODES); analyze gains an optional node limit
+{ "type": "analyze", "sessionId": "play", "searchId": 3, "engine": "maia-1500", "fen": "…", "nodes": 1 }
+// the last info of a search carries the top-5 policy (how often 1500 players play each move here)
+{ "type": "info", "sessionId": "play", "searchId": 3,
+  "info": { "depth": 1, "multipv": 1, "score": { "cp": 99 }, "pv": ["e2e4"], "nodes": 1,
+            "policy": [{ "uci": "e2e4", "p": 0.5022 }, { "uci": "d2d4", "p": 0.2334 }, { "uci": "c2c4", "p": 0.0497 }, …] } }
+{ "type": "bestmove", "sessionId": "play", "searchId": 3, "bestMove": { "move": "e2e4" }, "reason": "completed" }
+```
+
+- `analyze` without `nodes` on an engine with `maxNodes` runs exactly `maxNodes` nodes (Maia: 1); `nodes` above the engine's `maxNodes` or above `limits.maxNodes` is `limit_exceeded`. `depth`/`movetime` may be combined (whichever ends first). A checkmated/stalemated position gives `bestMove: null` and no `info`.
+- `info.policy` (`PolicyEntry { uci, p }`, `p` as a fraction 0…1, most probable first, at most 10 entries, the server sends 5) is parsed from Lc0's `VerboseMoveStats` lines (`parseLc0MoveStats`/`topPolicy` in engine-core) and sent once per search as one more `info` (the last one, plus `policy`) right before `bestmove`. Other engines never send `policy`.
+- Resources: one Lc0 process is ~2.4 MB on disk, ~16 MB RSS at rest, 2 threads; a 1-node move takes ~1 ms (p90 7 ms) on a warm process, the first move of a fresh process ≤ 100 ms (network load). All nine levels share one process cap (`MAIA_MAX_PROCESSES`, default 3; registry `group: "maia"`): at the cap the least recently used idle Maia process is replaced, when all are busy `analyze` gets `no_capacity`. Maia sessions count against the same per-connection/per-IP session caps and need the access token like every analysis; the fair-play lock (`forbidden` while playing in a room) applies too.
+- `MAIA=off` disables the nine entries; they are also disabled (one warning) when the binary or a weights file is missing. `/health/detail` lists them with `group: "maia"` and `processGroups.maia {processes, max}`.
+
 ---
 
 ## 3. Features in Detail
@@ -294,7 +319,8 @@ Requirements: Node >= 20, pnpm. Ports: web dev server **5180**, engine server **
 
 ```bash
 pnpm install
-pnpm fetch-engines  # downloads native Stockfish 19 (NNUE embedded, checksum-verified) into ./engines
+pnpm fetch-engines  # downloads native Stockfish 19 (NNUE embedded, checksum-verified) and the Maia nets into ./engines
+pnpm build-lc0      # builds Lc0 (CPU/Eigen, no AVX needed) into ./engines/lc0 for the Maia engines (ADR-019); needs meson, ninja, g++, libeigen3-dev, zlib1g-dev
 pnpm dev:web        # http://localhost:5180 (browser mode works without the server)
 pnpm dev:server     # http://127.0.0.1:8580 (/ws, /health); needs the engines above
 pnpm lint           # eslint + typecheck of all packages
@@ -321,6 +347,9 @@ Server configuration is read from the environment (see `apps/server/.env.example
 | `REVIEW_STORE_PATH` | `apps/server/data/reviews.sqlite` | SQLite file of the review store (directory created; needs a writable path — see `deploy/README.md`) |
 | `REVIEW_STORE_MAX_BYTES` | `5000000000` (5 GB) | disk cap of the review store; least recently used positions, then reviews, are evicted down to 90 % |
 | `REVIEW_PUT_PER_IP_PER_DAY` | `500` | review/position writes per client address and UTC day (`reason: quota`) |
+| `MAX_NODES` | `10000` | cap on `analyze.nodes` (ADR-019), announced as `limits.maxNodes` |
+| `MAIA` | `on` | `off` disables the Lc0 + Maia engines (registry group `maia`, ADR-019); they are also off when `engines/lc0/lc0` or a net in `engines/maia/` is missing |
+| `MAIA_MAX_PROCESSES` | `3` | total Lc0 processes of all Maia levels (~16 MB RSS each) |
 
 ### Deployment
 

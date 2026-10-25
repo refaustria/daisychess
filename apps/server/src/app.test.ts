@@ -28,6 +28,7 @@ describe('GET /health', () => {
         { ...EMPTY, id: 'fake', name: 'Fake', enabled: true },
         { ...EMPTY, id: 'off', name: 'off', enabled: false },
       ],
+      processGroups: { maia: { processes: 0, max: 3 } },
       sessions: 0,
       connections: 0,
       clientAddresses: 0,

@@ -7,6 +7,7 @@ import {
   SessionIdSchema,
   checkAnalyzeLimits,
   parseClientMessage,
+  resolveEngineNodes,
   type AnalyzeMessage,
   type BestMove,
   type BestMoveMessage,
@@ -85,6 +86,8 @@ interface Search {
   resolveDone: () => void;
   capTimer: ReturnType<typeof setTimeout> | null;
   stopTimer: ReturnType<typeof setTimeout> | null;
+  /** Most recent relayed `info` of this search; re-sent with `policy` before `bestmove` (ADR-019). */
+  lastInfo: EngineInfo | null;
 }
 
 interface Session {
@@ -368,6 +371,12 @@ export class Connection implements RoomClient {
       this.sendError('limit_exceeded', violation, sessionId, searchId);
       return;
     }
+    // Per-engine node cap (ADR-019): Maia never searches more than its policy move.
+    const nodes = resolveEngineNodes(msg, engine);
+    if (!nodes.ok) {
+      this.sendError('limit_exceeded', nodes.message, sessionId, searchId);
+      return;
+    }
     let session = this.sessions.get(sessionId);
     if (!session) {
       if (this.sessions.size >= this.opts.limits.maxSessionsPerConnection) {
@@ -603,10 +612,17 @@ export class Connection implements RoomClient {
       const params: GoParams = {};
       if (msg.depth !== undefined) params.depth = msg.depth;
       if (msg.movetime !== undefined) params.movetime = msg.movetime;
+      // Validated in onAnalyze; a capped engine (Maia) runs its cap when the client sent none.
+      const nodes = resolveEngineNodes(msg, engine);
+      if (nodes.ok && nodes.nodes !== undefined) params.nodes = nodes.nodes;
       const result = proc.go(params, (info) => this.onInfo(session, search, info));
       result.then(
         (r) => {
           this.opts.pool.reportHealthy(lease);
+          // Policy distribution (ADR-019): one more `info`, the last one plus `policy`.
+          if (r.policy && r.policy.length > 0 && search.lastInfo && !search.terminated) {
+            this.onInfo(session, search, { ...search.lastInfo, policy: r.policy });
+          }
           this.finishSearch(
             session,
             search,
@@ -647,6 +663,7 @@ export class Connection implements RoomClient {
 
   private onInfo(session: Session, search: Search, info: EngineInfo): void {
     if (search.terminated || session.current !== search || this.closed) return;
+    search.lastInfo = info;
     this.send({ type: 'info', sessionId: session.id, searchId: search.searchId, info });
   }
 
@@ -661,6 +678,7 @@ export class Connection implements RoomClient {
       resolveDone,
       capTimer: null,
       stopTimer: null,
+      lastInfo: null,
     };
   }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fakeEnginePids, fakeSpawner, isRunning, registry, until } from '../../test/helpers.js';
+import { FAKE_ENGINE, fakeEnginePids, fakeSpawner, isRunning, registry, until } from '../../test/helpers.js';
 import { EnginePool, type EnginePoolOptions, type Lease } from './EnginePool.js';
 
 const pools: EnginePool[] = [];
@@ -358,5 +358,75 @@ describe('EnginePool', () => {
       await pool.shutdown();
       expect(pool.stats()[0]).toMatchObject({ crashes: 0 });
     });
+  });
+});
+
+describe('EnginePool — process groups (ADR-019)', () => {
+  const grouped = () =>
+    registry(
+      { id: 'm1', group: 'maia', maxInstances: 3 },
+      { id: 'm2', group: 'maia', maxInstances: 3 },
+      { id: 'm3', group: 'maia', maxInstances: 3 },
+      { id: 'sf' },
+    );
+
+  it('caps the live processes of a group and evicts the least recently used idle one', async () => {
+    const pool = makePool(grouped(), { groupLimits: { maia: 2 } });
+    const a = await lease(pool, 'm1');
+    const b = await lease(pool, 'm2');
+    expect(pool.groupStats()).toEqual({ maia: { processes: 2, max: 2 } });
+    // every process of the group is leased: a third level has to wait; other engines are unaffected
+    expect(await pool.acquire('m3')).toMatchObject({
+      ok: false,
+      code: 'no_capacity',
+      message: 'all 2 process(es) of engine group "maia" are busy',
+    });
+    const s = await lease(pool, 'sf');
+    expect(s.engineId).toBe('sf');
+    await pool.release(a); // idle, oldest
+    await pool.release(b); // idle, newer
+    const pidA = a.engine.pid;
+    const c = await lease(pool, 'm3'); // evicts m1's idle process, keeps m2's
+    expect(c.engineId).toBe('m3');
+    expect(isRunning(pidA)).toBe(false);
+    expect(pool.instanceCount('m1')).toBe(0);
+    expect(pool.instanceCount('m2')).toBe(1);
+    expect(pool.instanceCount('m3')).toBe(1);
+    expect(pool.groupStats()).toEqual({ maia: { processes: 2, max: 2 } });
+    expect(pool.stats().find((e) => e.id === 'm3')).toMatchObject({ group: 'maia', busy: 1 });
+    expect(pool.stats().find((e) => e.id === 'sf')?.group).toBeUndefined();
+    // an idle instance of the requested engine is reused, nothing is evicted
+    const b2 = await lease(pool, 'm2');
+    expect(b2.engine.pid).toBe(b.engine.pid);
+    expect(pool.groupStats()).toEqual({ maia: { processes: 2, max: 2 } });
+  });
+
+  it('never exceeds the group cap under concurrent acquires', async () => {
+    const pool = makePool(grouped(), { groupLimits: { maia: 2 } });
+    const results = await Promise.all(
+      ['m1', 'm2', 'm3', 'm1', 'm2'].map((id) => pool.acquire(id)),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(2);
+    expect(results.filter((r) => !r.ok && r.code === 'no_capacity')).toHaveLength(3);
+    expect(pool.groupStats()).toEqual({ maia: { processes: 2, max: 2 } });
+  });
+
+  it('default spawner passes args, --weights and initOptions to the process', async () => {
+    const reg = registry({
+      id: 'maia',
+      binary: process.execPath,
+      args: [FAKE_ENGINE, '--lc0'],
+      weights: '/nets/maia-1500.pb.gz',
+      initOptions: { VerboseMoveStats: true },
+    });
+    const pool = new EnginePool(reg, { maxSessions: 2, idleMs: 60_000 });
+    pools.push(pool);
+    const l = await lease(pool, 'maia');
+    expect(l.engine.engineName).toBe('Lc0 v0.32.1 fake');
+    l.engine.position('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+    const r = await l.engine.go({ nodes: 1 });
+    // policy lines only appear when VerboseMoveStats reached the engine via initOptions
+    expect(r.policy?.[0]).toEqual({ uci: 'e2e4', p: 0.5022 });
+    expect(r.bestMove).toEqual({ move: 'e2e4' });
   });
 });

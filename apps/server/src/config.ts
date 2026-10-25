@@ -47,6 +47,17 @@ export const EnvSchema = z.object({
     PROTOCOL_BOUNDS.sessionsPerConnection.max,
     DEFAULT_LIMITS.maxSessionsPerConnection,
   ),
+  /** Cap on `analyze.nodes` (ADR-019), announced as `limits.maxNodes`. */
+  MAX_NODES: int(
+    PROTOCOL_BOUNDS.nodes.min,
+    PROTOCOL_BOUNDS.nodes.max,
+    DEFAULT_LIMITS.maxNodes ?? PROTOCOL_BOUNDS.nodes.max,
+  ),
+  // Maia / Lc0 (ADR-019).
+  /** `off` disables every engine of group `maia` regardless of the registry. */
+  MAIA: z.enum(['on', 'off']).default('on'),
+  /** Total Lc0 processes of group `maia` (all nine levels together). */
+  MAIA_MAX_PROCESSES: int(1, 64, 3),
   /** Idle engine processes beyond one per engine are killed after this many ms. */
   ENGINE_IDLE_MS: int(1_000, 86_400_000, 300_000),
   /** A session without a running search releases its engine after this many ms. */
@@ -152,6 +163,15 @@ export interface ServerConfig {
   accessToken: string | null;
   rooms: RoomConfig;
   reviewStore: ReviewStoreSettings;
+  /** Human-like engines (ADR-019): Lc0 + Maia nets, registry group `maia`. */
+  maia: MaiaSettings;
+}
+
+export interface MaiaSettings {
+  /** `MAIA=off` disables the group; binaries/weights missing disable it too (app.ts). */
+  enabled: boolean;
+  /** Total Lc0 processes across all Maia levels (`EnginePool` group cap). */
+  maxProcesses: number;
 }
 
 /** Parses the environment; throws with a readable message on invalid values. */
@@ -184,6 +204,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       maxHash: e.MAX_HASH_MB,
       maxMovetimeMs: e.MAX_MOVETIME_MS,
       maxSessionsPerConnection: e.MAX_SESSIONS_PER_CONNECTION,
+      maxNodes: e.MAX_NODES,
     },
     engineIdleMs: e.ENGINE_IDLE_MS,
     sessionIdleMs: e.SESSION_IDLE_MS,
@@ -213,5 +234,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       maxBytes: e.REVIEW_STORE_MAX_BYTES,
       putPerIpPerDay: e.REVIEW_PUT_PER_IP_PER_DAY,
     },
+    maia: { enabled: e.MAIA === 'on', maxProcesses: e.MAIA_MAX_PROCESSES },
   };
 }

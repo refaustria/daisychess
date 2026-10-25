@@ -1,12 +1,15 @@
 {
-  "_comment": "Engine registry. Paths in 'binary' are relative to this file. To enable Fairy-Stockfish, install the binary at engines/fairy-stockfish/fairy-stockfish and set enabled to true on the second entry.",
+  "_comment": "Engine registry. Paths in 'binary'/'weights' are relative to this file. To enable Fairy-Stockfish, install the binary at engines/fairy-stockfish/fairy-stockfish and set enabled to true on its entry. The maia-* entries (ADR-019) are Lc0 processes with the Maia nets (pnpm build-lc0, pnpm fetch-engines): style human, rating = the lichess level they imitate, maxNodes 1 = the policy move; they share one process cap (group maia, env MAIA_MAX_PROCESSES, default 3) and are disabled automatically when the binary or weights are missing or MAIA=off.",
   "engines": [
     {
       "id": "stockfish",
       "name": "Stockfish 19",
       "binary": "../../engines/stockfish/stockfish",
       "enabled": true,
-      "options": { "Threads": 4, "Hash": 256 },
+      "options": {
+        "Threads": 4,
+        "Hash": 256
+      },
       "maxInstances": 3
     },
     {
@@ -14,8 +17,236 @@
       "name": "Fairy-Stockfish",
       "binary": "../../engines/fairy-stockfish/fairy-stockfish",
       "enabled": false,
-      "options": { "Threads": 2, "Hash": 128 },
+      "options": {
+        "Threads": 2,
+        "Hash": 128
+      },
       "maxInstances": 1
+    },
+    {
+      "id": "maia-1100",
+      "name": "Maia 1100",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1100.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1100,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1200",
+      "name": "Maia 1200",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1200.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1200,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1300",
+      "name": "Maia 1300",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1300.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1300,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1400",
+      "name": "Maia 1400",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1400.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1400,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1500",
+      "name": "Maia 1500",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1500.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1500,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1600",
+      "name": "Maia 1600",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1600.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1600,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1700",
+      "name": "Maia 1700",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1700.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1700,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1800",
+      "name": "Maia 1800",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1800.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1800,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1900",
+      "name": "Maia 1900",
+      "binary": "../../engines/lc0/lc0",
+      "weights": "../../engines/maia/maia-1900.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1900,
+      "maxNodes": 1
     }
   ]
 }

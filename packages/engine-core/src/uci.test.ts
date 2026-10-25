@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseUciBestMove, parseUciInfo } from './index.js';
+import { parseLc0MoveStats, parseUciBestMove, parseUciInfo, topPolicy } from './index.js';
 
 describe('parseUciInfo', () => {
   it('parses a full line', () => {
@@ -52,5 +52,60 @@ describe('parseUciBestMove', () => {
     expect(parseUciBestMove('bestmove (none)')).toBeNull();
     expect(parseUciBestMove('bestmove')).toBeNull();
     expect(parseUciBestMove('info depth 1')).toBeNull();
+  });
+});
+
+describe('Lc0 specifics (ADR-019)', () => {
+  it('parseUciBestMove treats the null moves 0000 and a1a1 like (none)', () => {
+    expect(parseUciBestMove('bestmove a1a1')).toBeNull();
+    expect(parseUciBestMove('bestmove 0000')).toBeNull();
+    expect(parseUciBestMove('bestmove e2e4 ponder a1a1')).toEqual({ move: 'e2e4' });
+    expect(parseUciBestMove('bestmove a7a8q')).toEqual({ move: 'a7a8q' });
+  });
+
+  it('parseLc0MoveStats reads the move and its policy prior from a VerboseMoveStats line', () => {
+    expect(
+      parseLc0MoveStats(
+        'info string e2e4  (322 ) N:       0 (+ 0) (P: 50.22%) (WL:  -.-----) (D: -.---) (M:  -.-) (Q:  0.04017) (U: 0.87639) (S:  0.91655) (V:  -.----) ',
+      ),
+    ).toEqual({ uci: 'e2e4', p: 0.5022 });
+    expect(
+      parseLc0MoveStats(
+        'info string a7a8q (1792) N:       0 (+ 0) (P: 83.59%) (WL:  -.-----) (D: -.---) (M:  -.-) (Q:  0.81493) (U: 1.45880) (S:  2.27373) (V:  -.----) ',
+      ),
+    ).toEqual({ uci: 'a7a8q', p: 0.8359 });
+    expect(
+      parseLc0MoveStats(
+        'info string d2d4  (293 ) N:      46 (+ 0) (P: 23.34%) (WL:  0.04694) (D: 0.040) (M:  2.6) (Q:  0.04694) (U: 0.10699) (S:  0.15628) (V:  0.0468) ',
+      ),
+    ).toEqual({ uci: 'd2d4', p: 0.2334 });
+    // Lc0's root summary, other info strings and ordinary info lines are not policy entries.
+    expect(
+      parseLc0MoveStats(
+        'info string node  (  20) N:     151 (+ 0) (P: 89.23%) (WL:  0.03473) (D: 0.038) (M:  3.8) (Q:  0.03473) (V:  0.0402) ',
+      ),
+    ).toBeNull();
+    expect(parseLc0MoveStats('info string fake search started')).toBeNull();
+    expect(parseLc0MoveStats('info depth 1 seldepth 1 nodes 1 score cp 99 pv e2e4')).toBeNull();
+    expect(parseLc0MoveStats('info string e2e4 (322) N: 0 (+ 0) (P: 150%)')).toBeNull();
+    expect(parseLc0MoveStats('info string e2e4 (322) N: 0 (+ 0)')).toBeNull();
+  });
+
+  it('topPolicy returns the n most probable entries, most probable first', () => {
+    const entries = [
+      { uci: 'a2a3', p: 0.01 },
+      { uci: 'e2e4', p: 0.5 },
+      { uci: 'd2d4', p: 0.23 },
+      { uci: 'c2c4', p: 0.05 },
+      { uci: 'g1f3', p: 0.05 },
+      { uci: 'b1c3', p: 0.02 },
+    ];
+    expect(topPolicy(entries).map((e) => e.uci)).toEqual(['e2e4', 'd2d4', 'c2c4', 'g1f3', 'b1c3']);
+    expect(topPolicy(entries, 2)).toEqual([
+      { uci: 'e2e4', p: 0.5 },
+      { uci: 'd2d4', p: 0.23 },
+    ]);
+    expect(topPolicy([], 5)).toEqual([]);
+    expect(topPolicy(entries, 0)).toEqual([]);
   });
 });

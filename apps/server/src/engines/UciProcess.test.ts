@@ -153,3 +153,59 @@ describe('UciProcess', () => {
     await expect(p.newGame(200)).rejects.toBeInstanceOf(UciTimeoutError);
   });
 });
+
+describe('UciProcess — Lc0 specifics (ADR-019)', () => {
+  const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+  it('sends initOptions after uciok and skips client options the engine did not announce', async () => {
+    const p = make(['--lc0', '--weights=/nets/maia-1500.pb.gz'], {
+      initOptions: { VerboseMoveStats: true },
+    });
+    const raw: string[] = [];
+    p.onLine((l) => raw.push(l));
+    await p.start();
+    expect(p.engineName).toBe('Lc0 v0.32.1 fake');
+    expect(raw).toContain('info string lc0-fake args --lc0 --weights=/nets/maia-1500.pb.gz');
+    // setoption precedes the first readyok
+    expect(raw.indexOf('info string setoption VerboseMoveStats=true')).toBeLessThan(
+      raw.indexOf('readyok'),
+    );
+    expect([...p.supportedOptions]).toEqual(['Threads', 'MultiPV', 'VerboseMoveStats', 'MinibatchSize']);
+    await p.setOptions({ Threads: 1, Hash: 16, MultiPV: 1 });
+    expect(raw.some((l) => l.startsWith('error Unknown option'))).toBe(false);
+    expect(raw).toContain('info string setoption Threads=1');
+    expect(raw).toContain('info string setoption MultiPV=1');
+  });
+
+  it('go nodes N forwards the node limit and resolves with the policy move and the top-5 policy', async () => {
+    const p = make(['--lc0'], { initOptions: { VerboseMoveStats: true } });
+    await p.start();
+    const infos: EngineInfo[] = [];
+    p.position(START);
+    const r = await p.go({ nodes: 1 }, (i) => infos.push(i));
+    expect(r.bestMove).toEqual({ move: 'e2e4' });
+    expect(r.policy).toEqual([
+      { uci: 'e2e4', p: 0.5022 },
+      { uci: 'd2d4', p: 0.2334 },
+      { uci: 'c2c4', p: 0.0497 },
+      { uci: 'g1f3', p: 0.0435 },
+      { uci: 'e2e3', p: 0.0359 },
+    ]);
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toMatchObject({ depth: 1, nodes: 1, pv: ['e2e4'] });
+    expect(infos[0]?.policy).toBeUndefined(); // the relay adds it, not the parser
+    const r7 = await p.go({ nodes: 7 }, (i) => infos.push(i));
+    expect(r7.bestMove?.move).toBe('e2e4');
+    expect(infos[1]?.nodes).toBe(7);
+  });
+
+  it('no VerboseMoveStats → no policy; a terminal position (bestmove a1a1) → bestMove null', async () => {
+    const p = make(['--lc0']);
+    await p.start();
+    p.position(START);
+    const r = await p.go({ nodes: 1 });
+    expect(r).toEqual({ bestMove: { move: 'e2e4' } });
+    p.position('7k/5Q2/6K1/8/8/8/8/8 b - - 0 997');
+    expect(await p.go({ nodes: 1 })).toEqual({ bestMove: null });
+  });
+});

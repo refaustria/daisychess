@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadEngineRegistry } from './registry.js';
+import { engineArgs, loadEngineRegistry } from './registry.js';
 
 let dir: string;
 
@@ -63,5 +63,63 @@ describe('loadEngineRegistry', () => {
     const file = await write('engines.json', '{ nope');
     await expect(loadEngineRegistry(file)).rejects.toThrow(/Invalid JSON/);
     await expect(loadEngineRegistry(path.join(dir, 'missing.json'))).rejects.toThrow(/Cannot read/);
+  });
+});
+
+describe('Lc0 / Maia entries (ADR-019)', () => {
+  it('resolves weights like binary, applies defaults and builds the command line', async () => {
+    const file = await write(
+      'conf/engines.json',
+      JSON.stringify({
+        engines: [
+          {
+            id: 'maia-1500',
+            name: 'Maia 1500',
+            binary: '../engines/lc0/lc0',
+            weights: '../engines/maia/maia-1500.pb.gz',
+            args: ['--backend=eigen', '--threads=1'],
+            initOptions: { VerboseMoveStats: true },
+            group: 'maia',
+            style: 'human',
+            rating: 1500,
+            maxNodes: 1,
+          },
+          { id: 'sf', name: 'SF', binary: 'sf' },
+        ],
+      }),
+    );
+    const reg = await loadEngineRegistry(file);
+    const maia = reg.engines[0]!;
+    expect(maia).toMatchObject({
+      binary: path.join(dir, 'engines/lc0/lc0'),
+      weights: path.join(dir, 'engines/maia/maia-1500.pb.gz'),
+      group: 'maia',
+      style: 'human',
+      rating: 1500,
+      maxNodes: 1,
+      initOptions: { VerboseMoveStats: true },
+    });
+    expect(engineArgs(maia)).toEqual([
+      '--backend=eigen',
+      '--threads=1',
+      `--weights=${path.join(dir, 'engines/maia/maia-1500.pb.gz')}`,
+    ]);
+    const sf = reg.engines[1]!;
+    expect(sf).toMatchObject({ args: [], initOptions: {}, style: 'strength' });
+    expect(sf.weights).toBeUndefined();
+    expect(engineArgs(sf)).toEqual([]);
+  });
+
+  it('rejects bad styles, groups, option names, multi-line args and out-of-range caps', async () => {
+    const bad = async (entry: object) => {
+      const file = await write('e.json', JSON.stringify({ engines: [{ id: 'x', name: 'X', binary: 'x', ...entry }] }));
+      await expect(loadEngineRegistry(file)).rejects.toThrow(/Invalid engine registry/);
+    };
+    await bad({ style: 'cheeky' });
+    await bad({ group: 'has space' });
+    await bad({ initOptions: { 'Debug Log File\n': 'x' } });
+    await bad({ args: ['--a\n--b'] });
+    await bad({ maxNodes: 0 });
+    await bad({ rating: 5 });
   });
 });

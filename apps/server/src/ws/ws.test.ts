@@ -110,6 +110,7 @@ describe('WebSocket /ws', () => {
         maxHash: 512,
         maxMovetimeMs: 600_000,
         maxSessionsPerConnection: 2,
+        maxNodes: 10_000,
       },
       engines: [
         { id: 'fake', name: 'Fake Engine', enabled: true, defaults: { threads: 2, hash: 32 } },
@@ -397,7 +398,9 @@ describe('WebSocket /ws', () => {
     await c.waitFor((m) => m.type === 'info' && m.sessionId === 'b');
     expect(app.daisychess.pool.sessions).toBe(2);
     await c.close();
-    await until(() => app.daisychess.pool.sessions === 0 && app.daisychess.ws.connections.size === 0);
+    await until(
+      () => app.daisychess.pool.sessions === 0 && app.daisychess.ws.connections.size === 0,
+    );
     await until(() => app.daisychess.pool.stats().every((s) => s.busy === 0 && s.idle <= 1));
     const health = (await app.inject({ method: 'GET', url: '/health/detail' })).json() as {
       engines: { id: string; busy: number; idle: number }[];

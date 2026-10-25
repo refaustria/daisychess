@@ -122,6 +122,27 @@ If the unit is updated from an older install, the `ReadWritePaths=` line is what
 makes the directory writable — without it the server logs
 "review store unavailable" and runs without the feature.
 
+**Lc0 + Maia, human-like engines (ADR-019).** `deploy/deploy-server.sh` runs
+`pnpm fetch-engines` (now also the nine Maia nets, ~12 MB, into `engines/maia/`,
+sha256-pinned to a commit of github.com/CSSLab/maia-chess; provenance and licence
+in `engines/maia/SOURCE.md`) and `pnpm build-lc0` (Lc0 v0.32.1 from the pinned,
+sha256-verified source tarball, CPU-only Eigen backend, portable SSE4.2/POPCNT code
+so it runs on this VM without AVX2; ~30 s wall on 16 cores, 2.4 MB binary in
+`engines/lc0/`, build log in `engines/lc0/VERSION`). Both are idempotent and skip
+when the files are present with matching checksums/version. Build dependencies,
+installed on the host on 2026-10-25: `meson`, `libeigen3-dev`, `libopenblas-dev`
+(unused by the Eigen build, harmless), plus the already present `ninja-build`,
+`g++`, `python3`, `pkg-config`, `zlib1g-dev`. The build needs network access for
+the two tarballs and meson's abseil-cpp subproject (hash-verified wrap). No unit
+change is needed: the binary and weights live under the read-only `/home` mount
+and the process needs only `@system-service` syscalls. Runtime: one Lc0 process
+per active Maia level (~16 MB RSS, 2 threads; a 1-node move takes ~1 ms), at most
+`MAIA_MAX_PROCESSES` (default 3) for all levels together; `MAIA=off` in
+`apps/server/.env.production` disables them. Verify after a deploy:
+`curl -s http://127.0.0.1:8580/health/detail | jq '.processGroups, [.engines[] | select(.group=="maia") | {id, enabled}]'`
+— every `maia-*` must show `enabled: true`; if not, the journal has one warning
+naming the missing file.
+
 **Access token (ADR-010, ADR-013).** If `ACCESS_TOKEN` is set in
 `apps/server/.env.production` (git-ignored, mode 600), a client must send it in
 `hello.token` to analyse; otherwise it gets a restricted `welcome` (no engines,
@@ -154,6 +175,8 @@ Abuse-relevant limits (production values; all env vars are documented in
 | Engine sessions per IP (all connections) | 2 | `MAX_SESSIONS_PER_IP` (client IP = `X-Real-IP` from loopback nginx) | `no_capacity` "too many sessions from your address" |
 | Sessions per connection | 2 | `MAX_SESSIONS_PER_CONNECTION` | `limit_exceeded` |
 | Instances per engine | 3 | `engines.json` `maxInstances` | `no_capacity` |
+| Lc0 processes, all Maia levels together | 3 | `MAIA_MAX_PROCESSES` (idle ones are replaced first) | `no_capacity` "all 3 process(es) of engine group "maia" are busy" |
+| Nodes per `analyze` | 10 000 (Maia entries: 1) | `MAX_NODES`, `engines.json` `maxNodes` | `limit_exceeded` |
 | Respawn after a crash | 0.5 s doubling to 30 s (±20 %), reset after 60 s up or a completed search; `degraded` after 10 | `ENGINE_CRASH_RESET_MS`, `ENGINE_MAX_CONSECUTIVE_CRASHES` | `no_capacity` "restarting after a crash" |
 | `analyze` / all messages | 20/s / 100/s per connection | server | `rate_limited` / close 1008 |
 

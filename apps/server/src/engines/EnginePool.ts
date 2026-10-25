@@ -1,4 +1,4 @@
-import type { EngineConfig, EngineRegistry } from './registry.js';
+import { engineArgs, type EngineConfig, type EngineRegistry } from './registry.js';
 import { UciProcess, withTimeout, UciTimeoutError } from './UciProcess.js';
 
 export type SpawnEngine = (config: EngineConfig) => UciProcess;
@@ -38,6 +38,13 @@ export interface EnginePoolOptions {
   /** Clock and randomness for the backoff (tests). Defaults `Date.now`, `Math.random`. */
   now?: () => number;
   random?: () => number;
+  /**
+   * Total live processes per engine `group` (ADR-019; e.g. `{ maia: 3 }` for the nine Maia
+   * levels). At the cap, the least recently used idle instance of the group is killed to make
+   * room; when every process of the group is leased, `acquire` answers `no_capacity`.
+   * Groups without an entry are unbounded (per-engine `maxInstances` still applies).
+   */
+  groupLimits?: Record<string, number>;
 }
 
 export interface Lease {
@@ -65,6 +72,14 @@ export interface EngineStats {
   backoffUntil: string | null;
   /** `crashes` reached `maxConsecutiveCrashes`; respawns are attempted every `backoffMaxMs`. */
   degraded: boolean;
+  /** Process group (ADR-019), when the engine belongs to one. */
+  group?: string;
+}
+
+/** Live processes of one engine group against its cap (`/health/detail`). */
+export interface GroupStats {
+  processes: number;
+  max: number;
 }
 
 type InstanceState = 'starting' | 'idle' | 'leased' | 'resetting' | 'dead';
@@ -77,6 +92,8 @@ interface Instance {
   startedAt: number | null;
   /** This instance's death was already counted as a crash. */
   crashCounted: boolean;
+  /** Time it last became idle (group eviction picks the least recently used). */
+  idleSince: number;
 }
 
 interface EngineSlot {
@@ -134,7 +151,11 @@ export class EnginePool {
       idleMs: options.idleMs,
       minWarm: options.minWarm ?? 1,
       resetTimeoutMs: options.resetTimeoutMs ?? 5_000,
-      spawn: options.spawn ?? ((cfg) => new UciProcess(cfg.binary)),
+      spawn:
+        options.spawn ??
+        ((cfg) =>
+          new UciProcess(cfg.binary, { args: engineArgs(cfg), initOptions: cfg.initOptions })),
+      groupLimits: options.groupLimits ?? {},
       backoffBaseMs: options.backoffBaseMs ?? 500,
       backoffMaxMs: options.backoffMaxMs ?? 30_000,
       crashResetMs: options.crashResetMs ?? 60_000,
@@ -180,6 +201,21 @@ export class EnginePool {
               code: 'no_capacity',
               message: `engine "${engineId}" is restarting after a crash; retry in ${Math.ceil(waitMs / 1_000)} s`,
             };
+          }
+          // Group cap (ADR-019): make room by evicting the group's least recently used idle
+          // process; if none is idle, every process of the group is in use.
+          const group = slot.config.group;
+          const groupMax = group !== undefined ? this.options.groupLimits[group] : undefined;
+          if (group !== undefined && groupMax !== undefined && this.liveInGroup(group) >= groupMax) {
+            const evicted = await this.evictIdleInGroup(group);
+            if (!evicted || this.liveInGroup(group) >= groupMax) {
+              this.activeLeases--;
+              return {
+                ok: false,
+                code: 'no_capacity',
+                message: `all ${groupMax} process(es) of engine group "${group}" are busy`,
+              };
+            }
           }
           const inst = await this.spawnInstance(slot);
           if (!inst) {
@@ -256,8 +292,18 @@ export class EnginePool {
         backoffUntil:
           s.backoffUntil > this.options.now() ? new Date(s.backoffUntil).toISOString() : null,
         degraded: s.crashes >= this.options.maxConsecutiveCrashes,
+        ...(s.config.group !== undefined ? { group: s.config.group } : {}),
       };
     });
+  }
+
+  /** Live processes per capped engine group (ADR-019). */
+  groupStats(): Record<string, GroupStats> {
+    const out: Record<string, GroupStats> = {};
+    for (const [group, max] of Object.entries(this.options.groupLimits)) {
+      out[group] = { processes: this.liveInGroup(group), max };
+    }
+    return out;
   }
 
   /**
@@ -273,6 +319,34 @@ export class EnginePool {
   /** Total processes (starting, idle, leased, resetting) of one engine. */
   instanceCount(engineId: string): number {
     return this.slots.get(engineId)?.instances.size ?? 0;
+  }
+
+  /** Processes of every engine in `group` that have not exited yet (dying ones still count). */
+  private liveInGroup(group: string): number {
+    let n = 0;
+    for (const slot of this.slots.values()) {
+      if (slot.config.group === group) n += slot.instances.size;
+    }
+    return n;
+  }
+
+  /** Kills the least recently used idle instance of the group; false when none is idle. */
+  private async evictIdleInGroup(group: string): Promise<boolean> {
+    let oldest: { slot: EngineSlot; inst: Instance } | null = null;
+    for (const slot of this.slots.values()) {
+      if (slot.config.group !== group) continue;
+      for (const inst of slot.idle) {
+        if (inst.state !== 'idle') continue;
+        if (!oldest || inst.idleSince < oldest.inst.idleSince) oldest = { slot, inst };
+      }
+    }
+    if (!oldest) return false;
+    this.log.info(
+      { engine: oldest.slot.config.id, pid: oldest.inst.proc.pid, group },
+      'evicting idle engine process to make room in its group',
+    );
+    await this.kill(oldest.slot, oldest.inst);
+    return true;
   }
 
   /** Stops accepting leases and terminates every process. Safe to call twice. */
@@ -312,6 +386,7 @@ export class EnginePool {
       idleTimer: null,
       startedAt: null,
       crashCounted: false,
+      idleSince: 0,
     };
     slot.instances.add(inst);
     proc.onExit((exit) => {
@@ -374,6 +449,7 @@ export class EnginePool {
       return;
     }
     inst.state = 'idle';
+    inst.idleSince = this.options.now();
     slot.idle.push(inst);
     this.armIdleTimer(slot, inst);
   }

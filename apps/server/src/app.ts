@@ -63,10 +63,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   });
 
   const loaded = opts.registry ?? (await loadEngineRegistry(config.enginesConfig));
-  const registry: EngineRegistry = { engines: [] };
-  for (const engine of loaded.engines) {
-    registry.engines.push(await checkEngine(app, engine, opts.spawnEngine === undefined));
-  }
+  const registry: EngineRegistry = {
+    engines: await checkEngines(app, loaded.engines, config, opts.spawnEngine === undefined),
+  };
   const descriptors = registry.engines.map((e) => toDescriptor(e, config.limits));
 
   const pool = new EnginePool(registry, {
@@ -75,6 +74,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     idleMs: config.engineIdleMs,
     crashResetMs: config.engineCrashResetMs,
     maxConsecutiveCrashes: config.engineMaxConsecutiveCrashes,
+    groupLimits: { [MAIA_GROUP]: config.maia.maxProcesses },
     ...(opts.spawnEngine ? { spawn: opts.spawnEngine } : {}),
     logger: app.log.child({ component: 'pool' }),
   });
@@ -107,6 +107,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     status: 'ok',
     version: SERVER_VERSION,
     engines: pool.stats(),
+    processGroups: pool.groupStats(),
     sessions: pool.sessions,
     connections: ws.connections.size,
     clientAddresses: ws.ipSessions.addresses,
@@ -131,6 +132,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       accessToken: config.accessToken !== null,
       rooms: config.rooms,
       reviewStore: { ...config.reviewStore, open: reviewStore !== null },
+      maia: config.maia,
     },
     'engine server configured',
   );
@@ -158,28 +160,65 @@ async function openReviewStore(
   }
 }
 
-/** Disables (with a warning) enabled engines whose binary is missing or not executable. */
-async function checkEngine(
+/** Registry group of the Lc0 + Maia engines (ADR-019): `MAIA=off` and `MAIA_MAX_PROCESSES` apply to it. */
+export const MAIA_GROUP = 'maia';
+
+/**
+ * Disables enabled engines whose binary is not executable or whose weights file is not readable
+ * (one warning per missing file, not per engine: the nine Maia levels share one binary), and
+ * every engine of group `maia` when `MAIA=off`.
+ */
+async function checkEngines(
   app: FastifyInstance,
-  engine: EngineConfig,
-  checkBinary: boolean,
-): Promise<EngineConfig> {
-  for (const name of Object.keys(engine.options)) {
-    if (!REGISTRY_OPTIONS.has(name)) {
-      app.log.warn({ engine: engine.id, option: name }, 'ignoring unsupported registry option');
+  engines: readonly EngineConfig[],
+  config: ServerConfig,
+  checkFiles: boolean,
+): Promise<EngineConfig[]> {
+  const missing = new Map<string, string[]>(); // file → engine ids
+  const out: EngineConfig[] = [];
+  for (const engine of engines) {
+    for (const name of Object.keys(engine.options)) {
+      if (!REGISTRY_OPTIONS.has(name)) {
+        app.log.warn({ engine: engine.id, option: name }, 'ignoring unsupported registry option');
+      }
     }
+    if (!engine.enabled) {
+      out.push(engine);
+      continue;
+    }
+    if (engine.group === MAIA_GROUP && !config.maia.enabled) {
+      out.push({ ...engine, enabled: false });
+      continue;
+    }
+    if (!checkFiles) {
+      out.push(engine);
+      continue;
+    }
+    const files: [path: string, mode: number][] = [[engine.binary, constants.X_OK]];
+    if (engine.weights) files.push([engine.weights, constants.R_OK]);
+    let ok = true;
+    for (const [file, mode] of files) {
+      const present = await access(file, mode).then(
+        () => true,
+        () => false,
+      );
+      if (!present) {
+        ok = false;
+        missing.set(file, [...(missing.get(file) ?? []), engine.id]);
+      }
+    }
+    out.push(ok ? engine : { ...engine, enabled: false });
   }
-  if (!engine.enabled || !checkBinary) return engine;
-  try {
-    await access(engine.binary, constants.X_OK);
-    return engine;
-  } catch {
+  for (const [file, ids] of missing) {
     app.log.warn(
-      { engine: engine.id, binary: engine.binary },
-      'engine binary missing or not executable; disabling (run `pnpm fetch-engines`)',
+      { file, engines: ids },
+      'engine file missing or not accessible; disabling (run `pnpm fetch-engines`, for Lc0 `pnpm build-lc0`)',
     );
-    return { ...engine, enabled: false };
   }
+  if (!config.maia.enabled && engines.some((e) => e.group === MAIA_GROUP && e.enabled)) {
+    app.log.info('MAIA=off: human-like engines disabled');
+  }
+  return out;
 }
 
 function toDescriptor(engine: EngineConfig, limits: Limits): EngineDescriptor {
@@ -188,7 +227,7 @@ function toDescriptor(engine: EngineConfig, limits: Limits): EngineDescriptor {
     return typeof v === 'number' && Number.isInteger(v) ? v : fallback;
   };
   const clamp = (v: number, max: number) => Math.min(Math.max(v, 1), max);
-  return {
+  const descriptor: EngineDescriptor = {
     id: engine.id,
     name: engine.name.slice(0, 64),
     enabled: engine.enabled,
@@ -197,4 +236,11 @@ function toDescriptor(engine: EngineConfig, limits: Limits): EngineDescriptor {
       hash: clamp(opt('Hash', 16), limits.maxHash),
     },
   };
+  // Additive ADR-019 fields: only present when they say something (strength engines stay as before).
+  if (engine.style !== 'strength') descriptor.style = engine.style;
+  if (engine.rating !== undefined) descriptor.rating = engine.rating;
+  if (engine.maxNodes !== undefined) {
+    descriptor.maxNodes = Math.min(engine.maxNodes, limits.maxNodes ?? engine.maxNodes);
+  }
+  return descriptor;
 }
