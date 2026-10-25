@@ -7,6 +7,10 @@ Two analysis backends are offered and can be switched at runtime:
 - **Browser mode** — Stockfish compiled to WebAssembly runs in a Web Worker on the user's machine. No server required.
 - **Server mode** — native Stockfish (and optionally other engines) runs on a dedicated machine and streams results over WebSocket. Stronger, faster, multi-threaded.
 
+> **License:** GPL-3.0-or-later (see [`LICENSE`](./LICENSE), third-party components in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)).
+> **Live instance:** <https://c.referee.at> · **Source:** <https://github.com/refaustria/gitchess>
+> **Run your own:** a single host with nginx and systemd is described in [`deploy/README.md`](./deploy/README.md); a Docker Compose setup (web + engine server) is in [`docker/`](./docker/). Want to contribute? See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
 > **For Claude Code:** this repository is run by an orchestrating Claude Code session that acts as project manager only. It does not implement features itself; it plans, delegates to sub-agents, reviews and integrates. See [`CLAUDE.md`](./CLAUDE.md) and the section *Working Model for Claude Code* below.
 
 ## Status
@@ -367,4 +371,4 @@ docker compose -f docker/docker-compose.yml down
 
 ## 7. Licenses
 
-Stockfish and Fairy-Stockfish are GPLv3; shipping their binaries or WASM builds makes this project GPLv3 as well. `chessground` is GPLv3, `chess.js` is BSD-2. This repository is licensed under **GPLv3**.
+Stockfish and Fairy-Stockfish are GPLv3; shipping their binaries or WASM builds makes this project GPLv3 as well. `chessground` is GPLv3, `chess.js` is BSD-2. This repository is licensed under **GPL-3.0-or-later** (see `LICENSE`; bundled and downloaded components are listed in `THIRD_PARTY_NOTICES.md`).

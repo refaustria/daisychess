@@ -17,6 +17,7 @@ import {
 } from '../../store/settingsStore';
 import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
 import { MaiaHintsField } from './MaiaHintsField';
+import { AboutField } from './AboutField';
 import { ReviewCacheField } from './ReviewCacheField';
 import styles from './SettingsPanel.module.css';
 
@@ -307,6 +308,7 @@ export function SettingsPanel() {
       <ReviewEngineField />
       <MaiaHintsField />
       <ReviewCacheField />
+      <AboutField />
     </div>
   );
 }
