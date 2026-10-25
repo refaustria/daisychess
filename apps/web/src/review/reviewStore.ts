@@ -22,15 +22,22 @@ import {
   getStoredPositions,
   getStoredReview,
   MIN_CACHED_PLIES,
-  peekStoredPreset,
   positionId,
   putStoredPositions,
   putStoredReview,
   REVIEW_CACHE_VERSION,
   type ReviewPreset,
   type StoredReview,
+  type StoredReviewSource,
 } from './reviewCache';
 import { ServerReviewEngine, type RemoteReviewClient } from './serverReviewEngine';
+import {
+  fetchServerPositions,
+  fetchServerReview,
+  serverStoreAvailable,
+  storeServerPositions,
+  storeServerReview,
+} from './serverReviewStore';
 import { browserEnginePool, PooledEngine, type PoolLease } from '../engine/wasmPool';
 import { isRetryableEngineError, wasmHealth } from '../engine/wasmHealth';
 
@@ -66,6 +73,8 @@ export interface StoredReviewInfo {
   engine: ReviewEngineInfo;
   /** True when the result was loaded from the cache (no engine ran). */
   fromCache: boolean;
+  /** Where the record came from: this browser's cache or the server store (ADR-017). */
+  source: StoredReviewSource;
 }
 
 export interface ReviewState {
@@ -103,11 +112,12 @@ export interface ReviewActions {
    * run was cancelled, failed or superseded (see `status`/`error`). While running, a second call
    * returns the running promise.
    *
-   * Review cache (ADR-016): when a review of this game with the same or a stronger preset is
-   * stored (deep ≥ fast), it is shown instead (status `done`, `stored.fromCache`) and no engine is
-   * used; when the index already knows it, the store never enters `running`. A finished preset run
-   * is stored; the analysed positions of every run (also cancelled/failed) are persisted and reused
-   * by later runs with the same or a weaker budget.
+   * Review cache (ADR-016/017): when a review of this game with the same or a stronger preset is
+   * stored (deep ≥ fast) — in this browser or on the server — it is shown instead (status `done`,
+   * `stored.fromCache`) and no engine is used; the store never enters `running` for it. A finished
+   * preset run is stored (locally, and on the server for token holders); the analysed positions of
+   * every run (also cancelled/failed) are persisted and reused by later runs with the same or a
+   * weaker budget, positions missing locally are fetched from the server before a run.
    */
   start(options?: ReviewOptions, meta?: StartMeta): Promise<ReviewSummary | undefined>;
   /**
@@ -404,6 +414,30 @@ async function loadPersistedPositions(fens: readonly string[]): Promise<void> {
   }
 }
 
+/** True when some position in memory satisfies budget `o` for `fen`. */
+const hasSatisfying = (fen: string, o: BatchOptions): boolean =>
+  (positions.get(fen) ?? []).some((e) => satisfies(e.optionsKey, e.result, o));
+
+/**
+ * Fetches from the server store (ADR-017) the positions of `fens` that have no result in memory
+ * satisfying `o`: for the run's own budget key and, for a depth run, also for the Fast preset
+ * (its results often reached the depth already). Entries in memory win; silent on any failure.
+ */
+async function loadServerPositions(fens: readonly string[], o: BatchOptions): Promise<void> {
+  if (!serverStoreAvailable()) return;
+  const missing = [...new Set(fens)].filter((fen) => !hasSatisfying(fen, o));
+  if (missing.length === 0) return;
+  const key = optionsKey(o);
+  const keys = [key];
+  const fastKey = optionsKey(normalize(REVIEW_PRESETS.fast));
+  if (o.movetime === undefined && fastKey !== key) keys.push(fastKey);
+  for (const p of await fetchServerPositions(keys, missing)) {
+    const list = positions.get(p.fen);
+    if (!list?.some((e) => e.optionsKey === p.optionsKey))
+      addPosition(p.fen, p.optionsKey, p.result);
+  }
+}
+
 /**
  * The per-run cache for the analyzer: every position of the game that has a result satisfying
  * `o` (the same budget first, else the deepest). `seeded` remembers what came from elsewhere.
@@ -431,16 +465,24 @@ function runCache(
   return { cache, seeded };
 }
 
-/** Takes the positions searched by a run into memory and persists the run's positions. */
+/**
+ * Takes the positions searched by a run into memory, persists the run's positions and offers the
+ * newly searched ones to the server store (token holders; silent).
+ */
 function absorbRun(
   fens: readonly string[],
   o: BatchOptions,
   run: { cache: PositionCache; seeded: Map<string, PositionResult> },
 ): void {
   const key = optionsKey(o);
+  const fresh: { fen: string; result: PositionResult }[] = [];
   for (const [fen, result] of run.cache) {
-    if (run.seeded.get(fen) !== result) addPosition(fen, key, result);
+    if (run.seeded.get(fen) !== result) {
+      addPosition(fen, key, result);
+      fresh.push({ fen, result });
+    }
   }
+  if (fresh.length > 0) void storeServerPositions(key, fresh);
   const usedAt = Date.now();
   const entries = [...new Set(fens)].flatMap((fen) =>
     (positions.get(fen) ?? []).map((e) => ({
@@ -482,6 +524,7 @@ function storedState(
   r: StoredReview,
   moves: GameState['moves'],
   trigger: ReviewTrigger,
+  source: StoredReviewSource,
 ): Partial<ReviewState> {
   const total = r.moves.length + 1;
   return {
@@ -497,8 +540,27 @@ function storedState(
     // A stored Deep review needs no "run Deep" hint.
     autoNotice: trigger === 'auto' && r.preset === 'fast',
     reviewed: moves,
-    stored: { preset: r.preset, createdAt: r.createdAt, engine: r.engine, fromCache: true },
+    stored: { preset: r.preset, createdAt: r.createdAt, engine: r.engine, fromCache: true, source },
   };
+}
+
+/** A stored review found locally or on the server. */
+interface Found {
+  review: StoredReview;
+  source: StoredReviewSource;
+}
+
+/**
+ * The stored review of `game` (any preset): this browser's cache first, then the server store
+ * (ADR-017). A server hit is written to the local cache so the next load is local.
+ */
+async function findStored(game: BatchGame, key: string): Promise<Found | undefined> {
+  const local = await getStoredReview(key);
+  if (local && sameGame(local, game)) return { review: local, source: 'local' };
+  const remote = await fetchServerReview(game, key);
+  if (!remote || !sameGame(remote, game)) return undefined;
+  void putStoredReview(remote);
+  return { review: remote, source: 'server' };
 }
 
 /**
@@ -570,15 +632,15 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
     let selected: Selected | null = null;
     const isCurrent = (): boolean => current?.token === my;
 
-    /** The stored review of this game, if it makes this run unnecessary. */
-    const lookup = async (): Promise<StoredReview | undefined> => {
+    /** The stored review of this game (local, then server), if it makes this run unnecessary. */
+    const lookup = async (): Promise<Found | undefined> => {
       if (!key || !preset) return undefined;
-      const r = await getStoredReview(key);
-      return r && sameGame(r, game) && covers(r.preset, preset) ? r : undefined;
+      const found = await findStored(game, key).catch(() => undefined);
+      return found && covers(found.review.preset, preset) ? found : undefined;
     };
-    const showStored = (r: StoredReview): ReviewSummary => {
-      if (isCurrent()) set(storedState(r, reviewed, trigger));
-      return r.summary;
+    const showStored = (f: Found): ReviewSummary => {
+      if (isCurrent()) set(storedState(f.review, reviewed, trigger, f.source));
+      return f.review.summary;
     };
 
     const begin = (): void => {
@@ -604,17 +666,14 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       });
     };
 
-    const engineRun = async (checkStore: boolean): Promise<ReviewSummary | undefined> => {
+    const engineRun = async (): Promise<ReviewSummary | undefined> => {
       try {
         // A reset run may still be stopping its search; never overlap two runs on the engine.
         await settling;
-        // Not known to this tab's index (e.g. stored by another tab): ask the store first.
-        if (checkStore) {
-          const stored = await lookup();
-          if (cancelled) throw abortError();
-          if (stored) return showStored(stored);
-        }
         await loadPersistedPositions(fens).catch(() => undefined);
+        if (cancelled) throw abortError();
+        // Positions other devices analysed (server store); silent when there is no server.
+        await loadServerPositions(fens, batchOptions).catch(() => undefined);
         if (cancelled) throw abortError();
         const pref = useSettingsStore.getState().reviewEngine;
         const trace = { server: false };
@@ -692,8 +751,8 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
             if (key && preset) {
               const createdAt = Date.now();
               const engine = selected.runsOn;
-              stored = { preset, createdAt, engine, fromCache: false };
-              void putStoredReview({
+              stored = { preset, createdAt, engine, fromCache: false, source: 'local' };
+              const record: StoredReview = {
                 gameKey: key,
                 startFen: game.startFen,
                 moves: game.moves.map((m) => m.san),
@@ -707,7 +766,10 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
                 engine,
                 createdAt,
                 version: REVIEW_CACHE_VERSION,
-              });
+              };
+              void putStoredReview(record);
+              // Shared with every device (ADR-017); token holders only, failures ignored.
+              void storeServerReview(record);
             }
             if (isCurrent())
               set({
@@ -746,10 +808,13 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
     };
 
     let promise: Promise<ReviewSummary | undefined>;
-    if (key && preset && covers(peekStoredPreset(key), preset)) {
-      // Known to be stored: load it without entering `running` (no progress bar, no engine).
+    if (key && preset) {
+      // A preset review of a cacheable game: look it up (this browser, then the server) before
+      // anything runs, so a stored review never shows a progress bar or leases an engine. The
+      // local index answers at once when it knows the game; otherwise the lookup costs one
+      // IndexedDB read and, with a server, one round trip (or nothing during its cooldown).
       promise = (async () => {
-        const stored = await lookup().catch(() => undefined);
+        const stored = await lookup();
         if (cancelled || !isCurrent()) {
           if (isCurrent()) current = null;
           return undefined;
@@ -759,13 +824,12 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
           current = null;
           return summary;
         }
-        // Evicted or cleared meanwhile: run after all.
         begin();
-        return engineRun(false);
+        return engineRun();
       })();
     } else {
       begin();
-      promise = engineRun(true);
+      promise = engineRun();
     }
 
     current = {
@@ -813,11 +877,11 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
     };
     if (belongs()) return false;
     const game = gameToBatch(useGameStore.getState());
-    const stored = await getStoredReview(keyOfGame(game));
-    if (!stored || !sameGame(stored, game)) return false;
+    const found = await findStored(game, keyOfGame(game)).catch(() => undefined);
+    if (!found) return false;
     // Still the same game, nothing started meanwhile.
     if (current || useGameStore.getState().moves !== moves || belongs()) return false;
-    set(storedState(stored, moves, 'manual'));
+    set(storedState(found.review, moves, 'manual', found.source));
     return true;
   },
 

@@ -7,6 +7,7 @@ import { EnginePool, type EnginePoolOptions, type SpawnEngine } from './engines/
 import { loadEngineRegistry, type EngineConfig, type EngineRegistry } from './engines/registry.js';
 import { attachWebSocketServer, type WsServerHandle, type WsServerOptions } from './ws/server.js';
 import type { ConnectionOptions } from './ws/connection.js';
+import { ReviewStore } from './review/ReviewStore.js';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -32,6 +33,8 @@ export interface BuildAppOptions {
       | 'analyzeRateLimit'
       | 'messageRateLimit'
       | 'roomRateLimit'
+      | 'reviewGetRateLimit'
+      | 'reviewPutRateLimit'
       | 'maxBufferedBytes'
     >
   >;
@@ -75,6 +78,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     ...(opts.spawnEngine ? { spawn: opts.spawnEngine } : {}),
     logger: app.log.child({ component: 'pool' }),
   });
+  const reviewStore = await openReviewStore(app, config);
   const ws = attachWebSocketServer(app, {
     ...opts.connection,
     pool,
@@ -88,6 +92,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     trustedProxies: config.trustedProxies,
     accessToken: config.accessToken,
     roomConfig: config.rooms,
+    reviewStore,
+    reviewPutPerIpPerDay: config.reviewStore.putPerIpPerDay,
     ...(opts.roomManager ? { roomManager: opts.roomManager } : {}),
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
   });
@@ -105,6 +111,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     connections: ws.connections.size,
     clientAddresses: ws.ipSessions.addresses,
     rooms: ws.rooms.stats(),
+    reviewStore: ws.review.stats(),
   }));
 
   // Close WebSockets before the HTTP server stops, then kill every engine process.
@@ -123,10 +130,32 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       maxSessionsPerIp: config.maxSessionsPerIp,
       accessToken: config.accessToken !== null,
       rooms: config.rooms,
+      reviewStore: { ...config.reviewStore, open: reviewStore !== null },
     },
     'engine server configured',
   );
   return app;
+}
+
+/** Opens the review store (ADR-017) unless disabled; a failure only disables the feature. */
+async function openReviewStore(
+  app: FastifyInstance,
+  config: ServerConfig,
+): Promise<ReviewStore | null> {
+  const settings = config.reviewStore;
+  if (!settings.enabled) return null;
+  try {
+    return await ReviewStore.open(
+      { path: settings.path, maxBytes: settings.maxBytes },
+      app.log.child({ component: 'review-store' }),
+    );
+  } catch (err) {
+    app.log.warn(
+      { path: settings.path, err: (err as Error).message },
+      'review store unavailable; continuing without it (capabilities.reviewStore: false)',
+    );
+    return null;
+  }
 }
 
 /** Disables (with a warning) enabled engines whose binary is missing or not executable. */

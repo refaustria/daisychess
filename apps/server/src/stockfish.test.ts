@@ -26,7 +26,7 @@ describe.skipIf(!available)('real Stockfish over /ws', () => {
 
   beforeAll(async () => {
     app = await buildApp({
-      config: loadConfig({}),
+      config: loadConfig({ REVIEW_STORE: 'off' }),
       registry: {
         engines: [
           {

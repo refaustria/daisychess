@@ -8,7 +8,7 @@ const EMPTY = { busy: 0, idle: 0, crashes: 0, backoffUntil: null, degraded: fals
 describe('GET /health', () => {
   it('returns only status and version; /health/detail adds pool stats, sessions and connections', async () => {
     const app = await buildApp({
-      config: loadConfig({}),
+      config: loadConfig({ REVIEW_STORE: 'off' }),
       registry: registry(
         { id: 'fake', name: 'Fake', maxInstances: 2 },
         { id: 'off', enabled: false },
@@ -32,13 +32,14 @@ describe('GET /health', () => {
       connections: 0,
       clientAddresses: 0,
       rooms: { rooms: 0, waiting: 0, playing: 0, finished: 0, members: 0 },
+      reviewStore: expect.objectContaining({ reviews: 0, positions: 0 }),
     });
     await app.close();
   });
 
   it('disables enabled engines whose binary is missing', async () => {
     const app = await buildApp({
-      config: loadConfig({}),
+      config: loadConfig({ REVIEW_STORE: 'off' }),
       registry: registry({ id: 'ghost', binary: '/nonexistent/stockfish' }),
       logger: false,
     });

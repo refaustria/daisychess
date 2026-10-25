@@ -68,6 +68,7 @@ test.describe('engine backend switch (server mode)', () => {
         HOST: '127.0.0.1',
         MAX_SESSIONS: '2',
         LOG_LEVEL: 'warn',
+        REVIEW_STORE: 'off', // no review store file for these specs (ADR-017)
       },
       stdio: ['ignore', 'inherit', 'inherit'],
     });
@@ -144,7 +145,7 @@ test.describe('engine backend switch (server mode)', () => {
 test.describe('server access token', () => {
   test.describe.configure({ mode: 'serial' });
   test.setTimeout(90_000);
-  const TOKEN_PORT = 8584;
+  const TOKEN_PORT = 8586; // 8584 belongs to friend.spec (the two ran in parallel and collided)
   const TOKEN_URL = `ws://127.0.0.1:${TOKEN_PORT}/ws`;
   const TOKEN = 'e2e-secret-token';
   let tokenServer: ChildProcess | null = null;
@@ -165,6 +166,7 @@ test.describe('server access token', () => {
         HOST: '127.0.0.1',
         MAX_SESSIONS: '2',
         LOG_LEVEL: 'warn',
+        REVIEW_STORE: 'off', // no review store file for these specs (ADR-017)
         ACCESS_TOKEN: TOKEN,
       },
       stdio: ['ignore', 'inherit', 'inherit'],

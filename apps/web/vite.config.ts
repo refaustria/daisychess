@@ -58,5 +58,10 @@ export default defineConfig({
   },
   server: { port: 5180, strictPort: true, headers: isolation },
   preview: { headers: previewHeaders },
-  test: { environment: 'jsdom', globals: false, exclude: ['**/node_modules/**', 'e2e/**'] },
+  test: {
+    environment: 'jsdom',
+    globals: false,
+    exclude: ['**/node_modules/**', 'e2e/**'],
+    setupFiles: ['./src/test/setup.ts'],
+  },
 });

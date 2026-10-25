@@ -102,6 +102,7 @@ test.describe('play a friend via link', () => {
         PORT: String(PORT),
         HOST: '127.0.0.1',
         LOG_LEVEL: 'warn',
+        REVIEW_STORE: 'off', // no review store file for these specs (ADR-017)
         ALLOWED_ORIGINS: 'http://localhost:4180',
         // The pages send no token: rooms work on the restricted welcome (ADR-013).
         ACCESS_TOKEN: 'e2e-room-secret-token',

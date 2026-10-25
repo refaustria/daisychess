@@ -11,11 +11,16 @@
  * Every public function swallows storage errors (a failing cache must never fail a review): reads
  * then return nothing, writes are dropped.
  */
-import type { ReviewSummary } from '@daisychess/engine-core';
+import {
+  coversPreset,
+  reviewGameKey,
+  strongerPreset,
+  type ReviewPreset,
+  type ReviewSummary,
+} from '@daisychess/engine-core';
 import type { PositionResult } from './BatchAnalyzer';
 import type { MoveDetails } from './details';
 import type { ReviewEngineInfo } from './reviewStore';
-import { sha256Hex } from './sha256';
 
 /** Schema version: bumping it drops all stored data of older versions. */
 export const REVIEW_CACHE_VERSION = 1;
@@ -25,26 +30,19 @@ export const MAX_STORED_POSITIONS = 20_000;
 /** Games shorter than this are not cached. */
 export const MIN_CACHED_PLIES = 2;
 
-export type ReviewPreset = 'fast' | 'deep';
-
-const PRESET_RANK: Record<ReviewPreset, number> = { fast: 1, deep: 2 };
+export type { ReviewPreset };
 
 /** True when a review with preset `stored` makes a run with `requested` unnecessary (deep ≥ fast). */
-export function covers(stored: ReviewPreset | undefined, requested: ReviewPreset): boolean {
-  return stored !== undefined && PRESET_RANK[stored] >= PRESET_RANK[requested];
-}
+export const covers = coversPreset;
 
-/** The stronger of two presets. */
-export const strongerPreset = (a: ReviewPreset | undefined, b: ReviewPreset): ReviewPreset =>
-  a !== undefined && PRESET_RANK[a] >= PRESET_RANK[b] ? a : b;
+export { strongerPreset };
 
 /**
- * Deterministic key of a game: SHA-256 (hex) of the start FEN and the UCI moves. Headers, the
- * viewed ply and the SAN spelling do not matter.
+ * Deterministic key of a game: SHA-256 (hex) of the start FEN and the UCI moves (engine-core's
+ * `reviewGameKey`, shared with the server store). Headers, the viewed ply and the SAN spelling do
+ * not matter.
  */
-export function gameKey(startFen: string, uciMoves: readonly string[]): string {
-  return sha256Hex(`daisychess-review-v1\n${startFen.trim()}\n${uciMoves.join(' ')}`);
-}
+export const gameKey = reviewGameKey;
 
 export interface StoredReview {
   gameKey: string;
@@ -73,9 +71,15 @@ export interface StoredPosition {
 
 export const positionId = (optionsKey: string, fen: string): string => `${optionsKey}|${fen}`;
 
-/** "Loaded from cache (reviewed 25 Oct, deep, server)"; the year only when it is not this year. */
+/** Where a shown stored review came from: this browser's cache or the server store (ADR-017). */
+export type StoredReviewSource = 'local' | 'server';
+
+/**
+ * "Loaded from cache (reviewed 25 Oct, deep, server)" for a local hit, "Loaded from server
+ * (reviewed 25 Oct, deep)" for a server hit; the year only when it is not this year.
+ */
 export function cachedReviewLabel(
-  r: Pick<StoredReview, 'createdAt' | 'preset' | 'engine'>,
+  r: Pick<StoredReview, 'createdAt' | 'preset' | 'engine'> & { source?: StoredReviewSource },
   now: number = Date.now(),
 ): string {
   const d = new Date(r.createdAt);
@@ -85,6 +89,7 @@ export function cachedReviewLabel(
     month: 'short',
     ...(sameYear ? {} : { year: 'numeric' }),
   });
+  if (r.source === 'server') return `Loaded from server (reviewed ${date}, ${r.preset})`;
   return `Loaded from cache (reviewed ${date}, ${r.preset}, ${r.engine.kind})`;
 }
 

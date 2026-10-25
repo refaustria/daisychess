@@ -21,6 +21,7 @@ import type { EnginePool, Lease, PoolLogger } from '../engines/EnginePool.js';
 import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
 import type { IpSessionLedger } from './clientIp.js';
 import type { RoomClient, RoomManager } from '../rooms/RoomManager.js';
+import type { ReviewService } from '../review/ReviewService.js';
 import { tokenMatches } from './token.js';
 
 export { tokenMatches };
@@ -58,6 +59,12 @@ export interface ConnectionOptions {
   rooms: RoomManager;
   /** `room.*` messages per window. Default 10 per second. */
   roomRateLimit?: RateLimit;
+  /** Review store of this server (ADR-017). */
+  review: ReviewService;
+  /** `review.get` / `review.positions.get` / `review.stats.get` per window. Default 20 per second. */
+  reviewGetRateLimit?: RateLimit;
+  /** `review.put` / `review.positions.put` per window. Default 20 per 4 s (5/s, bursts of 20). */
+  reviewPutRateLimit?: RateLimit;
 }
 
 /** Who a connection is accounted to for the per-IP session cap. */
@@ -121,6 +128,8 @@ export class Connection implements RoomClient {
   private readonly analyzeTimes: number[] = [];
   private readonly messageTimes: number[] = [];
   private readonly roomTimes: number[] = [];
+  private readonly reviewGetTimes: number[] = [];
+  private readonly reviewPutTimes: number[] = [];
   private handshakeTimer: ReturnType<typeof setTimeout> | null;
   private readonly enginesById: Map<string, EngineDescriptor>;
   private readonly closedPromise: Promise<void>;
@@ -133,6 +142,8 @@ export class Connection implements RoomClient {
   private readonly analyzeRate: RateLimit;
   private readonly messageRate: RateLimit;
   private readonly roomRate: RateLimit;
+  private readonly reviewGetRate: RateLimit;
+  private readonly reviewPutRate: RateLimit;
   private readonly maxBufferedBytes: number;
   private readonly log: PoolLogger;
 
@@ -145,6 +156,8 @@ export class Connection implements RoomClient {
     this.analyzeRate = opts.analyzeRateLimit ?? { max: 20, windowMs: 1_000 };
     this.messageRate = opts.messageRateLimit ?? { max: 100, windowMs: 1_000 };
     this.roomRate = opts.roomRateLimit ?? { max: 10, windowMs: 1_000 };
+    this.reviewGetRate = opts.reviewGetRateLimit ?? { max: 20, windowMs: 1_000 };
+    this.reviewPutRate = opts.reviewPutRateLimit ?? { max: 20, windowMs: 4_000 };
     this.maxBufferedBytes = opts.maxBufferedBytes ?? 1024 * 1024;
     this.log = opts.logger;
     this.enginesById = new Map(opts.engines.map((e) => [e.id, e]));
@@ -266,7 +279,11 @@ export class Connection implements RoomClient {
         engines: this.analysisAllowed
           ? this.opts.engines.map((e) => ({ ...e, defaults: { ...e.defaults } }))
           : [],
-        capabilities: { analysis: this.analysisAllowed, rooms: true },
+        capabilities: {
+          analysis: this.analysisAllowed,
+          rooms: true,
+          reviewStore: this.opts.review.enabled,
+        },
       });
       return;
     }
@@ -303,7 +320,28 @@ export class Connection implements RoomClient {
         }
         this.opts.rooms.handle(this, msg);
         break;
+      case 'review.get':
+      case 'review.positions.get':
+      case 'review.stats.get':
+        if (!this.allow(this.reviewGetTimes, this.reviewGetRate)) {
+          this.sendError('rate_limited', 'too many review requests');
+          return;
+        }
+        this.send(this.opts.review.handle(this.reviewContext(), msg));
+        break;
+      case 'review.put':
+      case 'review.positions.put':
+        if (!this.allow(this.reviewPutTimes, this.reviewPutRate)) {
+          this.sendError('rate_limited', 'too many review writes');
+          return;
+        }
+        this.send(this.opts.review.handle(this.reviewContext(), msg));
+        break;
     }
+  }
+
+  private reviewContext(): { id: number; ip: string; analysisAllowed: boolean } {
+    return { id: this.id, ip: this.peer.ip, analysisAllowed: this.analysisAllowed };
   }
 
   private onAnalyze(msg: AnalyzeMessage): void {

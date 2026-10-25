@@ -101,7 +101,14 @@ test.describe('remote engine (server mode)', () => {
     }
     server = spawn(process.execPath, [SERVER_ENTRY], {
       cwd: REPO,
-      env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', MAX_SESSIONS: '2', LOG_LEVEL: 'warn' },
+      env: {
+        ...process.env,
+        PORT: String(PORT),
+        HOST: '127.0.0.1',
+        MAX_SESSIONS: '2',
+        LOG_LEVEL: 'warn',
+        REVIEW_STORE: 'off', // no review store file for this spec (ADR-017)
+      },
       stdio: ['ignore', 'inherit', 'inherit'],
     });
     await waitForHealth(15_000);

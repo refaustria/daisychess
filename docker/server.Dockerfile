@@ -53,12 +53,16 @@ FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae
 # and reaps zombie Stockfish processes. Compose also works with `init: true`.
 RUN apt-get update && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin daisychess
+    && useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin daisychess \
+    && mkdir -p /data && chown daisychess:daisychess /data
 WORKDIR /app/server
 COPY --from=build --chown=daisychess:daisychess /out /app/server
 COPY --from=engine --chown=daisychess:daisychess /repo/engines/stockfish /app/engines/stockfish
 COPY --chown=daisychess:daisychess docker/engines.docker.json /app/server/engines.json
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=8580 ENGINES_CONFIG=/app/server/engines.json
+# REVIEW_STORE_PATH (ADR-017): the review store lives on the `reviews` volume; the root
+# filesystem stays read-only. Needs node:sqlite (Node >= 22.13); older images run without it.
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=8580 ENGINES_CONFIG=/app/server/engines.json \
+    REVIEW_STORE_PATH=/data/reviews.sqlite
 USER daisychess
 EXPOSE 8580
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

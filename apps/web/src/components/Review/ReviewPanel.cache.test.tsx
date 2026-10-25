@@ -28,6 +28,7 @@ function showStored(preset: 'fast' | 'deep', fromCache: boolean): void {
       createdAt: new Date(new Date().getFullYear(), 9, 25, 10).getTime(),
       engine: { kind: 'server', name: 'Stockfish 19', threads: 8 },
       fromCache,
+      source: 'local',
     },
   });
 }

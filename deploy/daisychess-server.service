@@ -28,8 +28,9 @@ PrivateDevices=true
 ProtectSystem=strict
 # /home is read-only (repo, dist, engine binaries + NNUE are only read).
 ProtectHome=read-only
-# Add writable paths here if the server ever needs them (e.g. logs, cache).
-#ReadWritePaths=/home/bojan/gitchess/apps/server/data
+# The only writable path: the review store (ADR-017, REVIEW_STORE_PATH, default
+# apps/server/data/reviews.sqlite). The server creates the directory (UMask=0077 → mode 700).
+ReadWritePaths=/home/bojan/gitchess/apps/server/data
 # Do NOT set MemoryDenyWriteExecute: V8 JIT needs W+X memory.
 ProtectKernelTunables=true
 ProtectKernelModules=true

@@ -126,6 +126,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - `info` scores are side-to-move, like UCI; the client converts with `infoToWhitePov` exactly as the WASM client does.
 - **Access token** (optional, ADR-010/013): a server started with `ACCESS_TOKEN` answers a `hello` without the matching `token` (max 256 chars, compared in constant time) with a *restricted* `welcome` — `engines: []`, `capabilities: { analysis: false, rooms: true }` — and rejects every `analyze` with `error: unauthorized`; rooms work without the token. With the token (or on a public server) `capabilities` is `{ analysis: true, rooms: true }`. Additive: `PROTOCOL_VERSION` stays 1.
 - Error codes: `invalid_message`, `protocol_mismatch`, `handshake_required`, `unknown_engine`, `limit_exceeded`, `no_capacity`, `session_not_found`, `engine_crashed`, `rate_limited`, `internal_error`, `unauthorized`, `forbidden` (analysis while playing in a room).
+- `welcome.capabilities` is `{ analysis, rooms, reviewStore? }` — `reviewStore: true` when the server stores reviews (ADR-017, below).
 
 **Rooms — play a friend via link** (ADR-013, additive `room.*` messages on the same socket). The server validates moves (chess.js), runs the clocks and sends the full `room.state` snapshot to every member after each change; room-level failures come as `room.error`.
 
@@ -153,6 +154,30 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - Disconnects: the seat stays, the clock runs; the opponent may `room.claim` from `claimableAt` (60 s); both gone → `abandoned`. `abort` only before both sides moved; `reason` is one of `checkmate stalemate draw resign timeout abort abandoned agreement` (no `result` = no game was played).
 - Fair play: a player in a running room gets `forbidden` on `analyze`. Limits: `ROOM_MAX_ROOMS` 200, 10 creations / 10 min per address, waiting rooms expire after 15 min, finished rooms are kept 10 min, 10 spectators per room, nick 1–20 chars.
 - `room.error` codes: `room_not_found`, `room_full`, `bad_token`, `not_a_player`, `not_your_turn`, `illegal_move`, `bad_state`, `too_many_rooms`.
+
+**Review store** (ADR-017, additive `review.*` messages on the same socket). Finished game reviews and position evaluations are kept on the server (SQLite) under the game's hash, so every device gets the same review for the same game. Reads are open to every connection; writes need the access token.
+
+```jsonc
+// client → server
+{ "type": "review.get", "gameKey": "<sha256 hex>", "startFen": "…", "moves": ["e4", "e5", "Nf3"] }       // SAN moves, 2…1000 plies
+{ "type": "review.put", "gameKey": "…", "startFen": "…", "moves": […], "preset": "deep",
+  "record": { "version": 1, "options": { "depth": 18 }, "engine": { "kind": "server", "name": "Stockfish 19", "threads": 4 },
+              "summary": { /* ReviewSummary */ }, "moveDetails": { "1": { /* best line, evals, swing … */ } } } }
+{ "type": "review.positions.get", "optsKey": "mt:300", "fens": ["…"] }                                     // ≤ 64 FENs per message
+{ "type": "review.positions.put", "optsKey": "d:18", "entries": [{ "fen": "…", "result": { "eval": { "cp": 20 }, "bestMove": "e2e4", "pv": ["e2e4"], "depth": 24 } }] }
+{ "type": "review.stats.get" }
+
+// server → client (one answer per request, correlated by gameKey / optsKey)
+{ "type": "review.record", "gameKey": "…", "found": true, "preset": "deep", "record": { … }, "createdAt": 1761000000000 }
+{ "type": "review.stored", "gameKey": "…", "stored": false, "reason": "unauthorized" }   // unauthorized | disabled | key_mismatch | illegal_game | too_large | superseded | quota | storage_error
+{ "type": "review.positions", "optsKey": "mt:300", "results": { "<fen>": { "eval": { "cp": 20 }, "depth": 21 } } }
+{ "type": "review.positions.stored", "optsKey": "d:18", "stored": true }
+{ "type": "review.stats", "enabled": true, "reviews": 123, "positions": 45000, "bytes": 1200000000, "maxBytes": 5000000000 }
+```
+
+- `gameKey` = SHA-256 of `daisychess-review-v1\n<startFen>\n<uci moves>` (`reviewGameKey` in engine-core). The server replays the SAN moves with chess.js and recomputes the key, so nothing can be stored under a foreign key (`key_mismatch`); a stronger stored preset is never replaced by a weaker one (`superseded`).
+- Frames of `review.put`, `review.record`, `review.positions.put` and `review.positions` may be up to `MAX_LARGE_MESSAGE_BYTES` (1 MiB + 128 KiB); every other type keeps the 16 KiB limit. A record is at most 1 MiB of JSON.
+- Limits: 20 reads/s and 20 writes per 4 s per connection (`rate_limited`), `REVIEW_PUT_PER_IP_PER_DAY` (500) writes per address and day (`quota`), `REVIEW_STORE_MAX_BYTES` (5 GB) on disk with least-recently-used eviction. Nothing personal is stored: no headers, names or addresses.
 
 ### 2.4 Shared (`packages/engine-core`)
 
@@ -205,6 +230,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - Export the annotated PGN.
 - Where it runs (Settings → "Review engine", ADR-014): **Auto** (default) reviews on the engine server when it is reachable and the access token is accepted, otherwise in the browser; **Browser** always uses the WASM engine (no network); **Server** always tries the server first. On the server the review gets its own session with the server's maximum threads (`MAX_THREADS`) and is released when the run ends. If the server is unreachable, refuses the token, is busy (session cap) or drops mid-review, the rest of the review runs in the browser (already analysed positions are kept) and the Review tab shows "Server unavailable (reason) — reviewing in the browser" (in Auto a missing/wrong token falls back silently). The progress line says where it runs ("Reviewing on server (Stockfish 19, 8 threads)…").
 - Review cache (ADR-016): finished reviews are stored in the browser (IndexedDB `daisychess-reviews`, in memory only in private mode), keyed by the start position and the moves (headers do not matter). Loading a game that was reviewed before shows its review at once ("Loaded from cache (reviewed 25 Oct, deep, server)") without running an engine; Start with the same or a weaker preset is disabled ("Already reviewed (deep)"); Deep after Fast runs but reuses every position the Fast run already searched to depth 18 or more. Settings → "Review cache" shows the number of stored reviews and clears them.
+- Server review store (ADR-017): when the engine server offers it (`capabilities.reviewStore`), a game not found in the local cache is looked up on the server and, if someone has reviewed it before, shown at once ("Loaded from server (reviewed 25 Oct, deep)") and cached locally. Reviews finished with the access token set are uploaded silently, as are the analysed positions, so a Deep review on an iPad reuses the Fast positions a laptop searched. Reading needs no token; the store keeps only moves and evaluations (no headers or names) and is capped on disk (`REVIEW_STORE_MAX_BYTES`, default 5 GB, least recently used reviews dropped first). Settings → "Review cache" shows "Server: N reviews · X GB of Y GB". "Browser" as review engine never contacts the server.
 
 ### Customization
 - Board colors (presets + custom picker), piece sets (Cburnett, Letters), coordinates on/off, highlight style, sound on/off, dark/light mode.
@@ -290,6 +316,10 @@ Server configuration is read from the environment (see `apps/server/.env.example
 | `LOG_LEVEL` | `info` | pino level |
 | `ACCESS_TOKEN` | unset (public) | shared token for analysis (ADR-010); without it clients are restricted to rooms (ADR-013) |
 | `ROOM_MAX_ROOMS`, `ROOM_MAX_SPECTATORS`, `ROOM_CREATE_PER_IP`, `ROOM_CREATE_WINDOW_MS`, `ROOM_WAITING_TTL_MS`, `ROOM_FINISHED_TTL_MS`, `ROOM_IDLE_TTL_MS`, `ROOM_CLAIM_GRACE_MS` | `200`, `10`, `10`, `600000`, `900000`, `600000`, `7200000`, `60000` | room limits and lifetimes (ADR-013) |
+| `REVIEW_STORE` | `on` | `off` disables the server-side review store (ADR-017); `welcome.capabilities.reviewStore` is then false |
+| `REVIEW_STORE_PATH` | `apps/server/data/reviews.sqlite` | SQLite file of the review store (directory created; needs a writable path — see `deploy/README.md`) |
+| `REVIEW_STORE_MAX_BYTES` | `5000000000` (5 GB) | disk cap of the review store; least recently used positions, then reviews, are evicted down to 90 % |
+| `REVIEW_PUT_PER_IP_PER_DAY` | `500` | review/position writes per client address and UTC day (`reason: quota`) |
 
 ### Deployment
 

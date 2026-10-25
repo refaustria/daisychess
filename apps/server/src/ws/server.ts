@@ -2,15 +2,21 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
 import { WebSocketServer } from 'ws';
-import { MAX_MESSAGE_BYTES } from '@daisychess/engine-core';
+import { MAX_LARGE_MESSAGE_BYTES } from '@daisychess/engine-core';
 import { Connection, type ConnectionOptions } from './connection.js';
 import { isOriginAllowed, type OriginPolicy } from './origin.js';
 import { IpSessionLedger, resolveClientIp, type TrustedProxies } from './clientIp.js';
 import { RoomManager, type RoomConfig, type RoomManagerOptions } from '../rooms/RoomManager.js';
+import { ReviewService } from '../review/ReviewService.js';
+import type { ReviewStore } from '../review/ReviewStore.js';
 
-export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms'> {
+export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'review'> {
   /** Room policy (ADR-013). */
   roomConfig: RoomConfig;
+  /** Review store (ADR-017); null when disabled or it failed to open. Closed with the server. */
+  reviewStore: ReviewStore | null;
+  /** Review writes per client address per day. */
+  reviewPutPerIpPerDay: number;
   /** Room manager tuning for tests (clock, id generators). */
   roomManager?: Omit<RoomManagerOptions, 'config' | 'logger'>;
   /** URL path that accepts upgrades. Default `/ws`. */
@@ -31,6 +37,8 @@ export interface WsServerHandle {
   readonly ipSessions: IpSessionLedger;
   /** "Play a friend" rooms (ADR-013). */
   readonly rooms: RoomManager;
+  /** Review store service (ADR-017). */
+  readonly review: ReviewService;
   /** Closes every connection (1001), waits until their sessions are released, closes the server. */
   close(): Promise<void>;
 }
@@ -43,7 +51,9 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
   const path = opts.path ?? '/ws';
   const wss = new WebSocketServer({
     noServer: true,
-    maxPayload: MAX_MESSAGE_BYTES,
+    // Record-carrying review frames may be this large; every other type is limited by
+    // `parseClientMessage` to MAX_MESSAGE_BYTES.
+    maxPayload: MAX_LARGE_MESSAGE_BYTES,
     perMessageDeflate: false,
     clientTracking: false,
   });
@@ -54,7 +64,12 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     config: opts.roomConfig,
     logger: opts.logger,
   });
-  const connOpts: ConnectionOptions = { ...opts, rooms };
+  const review = new ReviewService({
+    store: opts.reviewStore,
+    putPerIpPerDay: opts.reviewPutPerIpPerDay,
+    logger: opts.logger,
+  });
+  const connOpts: ConnectionOptions = { ...opts, rooms, review };
   let closing = false;
 
   const reject = (socket: Duplex, status: string) => {
@@ -122,6 +137,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     connections,
     ipSessions: ledger,
     rooms,
+    review,
     async close() {
       if (closing) return;
       closing = true;
@@ -134,6 +150,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
       });
       await Promise.allSettled(all);
       await new Promise<void>((resolve) => wss.close(() => resolve()));
+      review.close();
     },
   };
 }

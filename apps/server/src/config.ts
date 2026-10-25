@@ -112,7 +112,24 @@ export const EnvSchema = z.object({
   ROOM_IDLE_TTL_MS: int(1_000, 604_800_000, DEFAULT_ROOM_CONFIG.idleTtlMs),
   /** A player must be disconnected this many ms before the opponent may claim. */
   ROOM_CLAIM_GRACE_MS: int(1_000, 3_600_000, DEFAULT_ROOM_CONFIG.claimGraceMs),
+  // Review store (ADR-017).
+  /** `off` disables the server-side review store (`capabilities.reviewStore: false`). */
+  REVIEW_STORE: z.enum(['on', 'off']).default('on'),
+  /** SQLite file; relative paths resolve against the working directory. Default apps/server/data/reviews.sqlite */
+  REVIEW_STORE_PATH: z.string().min(1).optional(),
+  /** Payload cap of the store in bytes; least recently used rows are evicted above it. */
+  REVIEW_STORE_MAX_BYTES: int(1_000_000, 10_000_000_000_000, 5_000_000_000),
+  /** `review.put` + `review.positions.put` per client address per UTC day. */
+  REVIEW_PUT_PER_IP_PER_DAY: int(1, 1_000_000, 500),
 });
+
+/** Server-side review store (ADR-017), env `REVIEW_*`. */
+export interface ReviewStoreSettings {
+  enabled: boolean;
+  path: string;
+  maxBytes: number;
+  putPerIpPerDay: number;
+}
 
 export interface ServerConfig {
   port: number;
@@ -134,6 +151,7 @@ export interface ServerConfig {
    */
   accessToken: string | null;
   rooms: RoomConfig;
+  reviewStore: ReviewStoreSettings;
 }
 
 /** Parses the environment; throws with a readable message on invalid values. */
@@ -186,6 +204,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       finishedTtlMs: e.ROOM_FINISHED_TTL_MS,
       idleTtlMs: e.ROOM_IDLE_TTL_MS,
       claimGraceMs: e.ROOM_CLAIM_GRACE_MS,
+    },
+    reviewStore: {
+      enabled: e.REVIEW_STORE === 'on',
+      path: e.REVIEW_STORE_PATH
+        ? path.resolve(e.REVIEW_STORE_PATH)
+        : path.join(PACKAGE_DIR, 'data', 'reviews.sqlite'),
+      maxBytes: e.REVIEW_STORE_MAX_BYTES,
+      putPerIpPerDay: e.REVIEW_PUT_PER_IP_PER_DAY,
     },
   };
 }

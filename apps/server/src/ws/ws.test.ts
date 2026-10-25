@@ -2,7 +2,12 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PROTOCOL_VERSION, type ServerMessage } from '@daisychess/engine-core';
+import {
+  MAX_LARGE_MESSAGE_BYTES,
+  MAX_MESSAGE_BYTES,
+  PROTOCOL_VERSION,
+  type ServerMessage,
+} from '@daisychess/engine-core';
 import { buildApp, type BuildAppOptions } from '../app.js';
 import { loadConfig, type ServerConfig } from '../config.js';
 import { fakeSpawner, registry, until } from '../../test/helpers.js';
@@ -30,7 +35,7 @@ async function start(
   config: Partial<Omit<ServerConfig, 'limits'>> & { limits?: Partial<ServerConfig['limits']> } = {},
   extra: Partial<BuildAppOptions> = {},
 ): Promise<{ app: FastifyInstance; url: string }> {
-  const base = loadConfig({});
+  const base = loadConfig({ REVIEW_STORE: 'off' });
   const app = await buildApp({
     config: { ...base, ...config, limits: { ...base.limits, ...config.limits } },
     registry: registry(
@@ -111,7 +116,7 @@ describe('WebSocket /ws', () => {
         { id: 'fake2', name: 'fake2', enabled: true, defaults: { threads: 1, hash: 16 } },
         { id: 'off', name: 'off', enabled: false, defaults: { threads: 1, hash: 16 } },
       ],
-      capabilities: { analysis: true, rooms: true },
+      capabilities: { analysis: true, rooms: true, reviewStore: expect.any(Boolean) },
     });
     c.send({ type: 'ping', t: 42 });
     expect(await c.waitFor((m) => m.type === 'pong')).toEqual({ type: 'pong', t: 42 });
@@ -148,10 +153,16 @@ describe('WebSocket /ws', () => {
     expect(errors[2]).toMatchObject({ sessionId: 's', searchId: 3 });
   });
 
-  it('closes frames larger than MAX_MESSAGE_BYTES', async () => {
+  it('refuses ordinary frames larger than MAX_MESSAGE_BYTES and closes above the hard cap', async () => {
     const { url } = await start();
     const c = await client(url);
+    // Between the ordinary and the large limit (ADR-017): parsed, refused by type.
     c.send({ type: 'ping', pad: 'x'.repeat(20_000) });
+    expect(await c.waitFor((m) => m.type === 'error')).toMatchObject({
+      code: 'invalid_message',
+      message: `message exceeds ${MAX_MESSAGE_BYTES} bytes`,
+    });
+    c.send({ type: 'ping', pad: 'x'.repeat(MAX_LARGE_MESSAGE_BYTES) });
     expect(await c.waitClosed()).toBe(1009);
   });
 
@@ -582,7 +593,7 @@ describe('WebSocket /ws', () => {
         c.send(hello(token));
         expect(await c.waitFor((m) => m.type === 'welcome')).toMatchObject({
           engines: [],
-          capabilities: { analysis: false, rooms: true },
+          capabilities: { analysis: false, rooms: true, reviewStore: expect.any(Boolean) },
         });
         c.send(analyze('s', 1, { depth: 2 }));
         expect(await c.terminal('s', 1)).toMatchObject({
@@ -612,7 +623,7 @@ describe('WebSocket /ws', () => {
         clients.push(c);
         c.send(hello(token));
         expect(await c.waitFor((m) => m.type === 'welcome')).toMatchObject({
-          capabilities: { analysis: true, rooms: true },
+          capabilities: { analysis: true, rooms: true, reviewStore: expect.any(Boolean) },
         });
       }
     });

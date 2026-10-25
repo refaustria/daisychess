@@ -65,6 +65,7 @@ test.describe('multi-engine comparison', () => {
         HOST: '127.0.0.1',
         MAX_SESSIONS: '4',
         LOG_LEVEL: 'warn',
+        REVIEW_STORE: 'off', // no review store file for these specs (ADR-017)
         // The preview page (localhost:4180) connects cross-origin.
         ALLOWED_ORIGINS: 'http://localhost:4180',
       },

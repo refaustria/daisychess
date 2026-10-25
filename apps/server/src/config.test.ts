@@ -93,6 +93,32 @@ describe('loadConfig', () => {
     });
     expect(() => loadConfig({ TRUSTED_PROXIES: 'nginx' })).toThrow(/TRUSTED_PROXIES/);
   });
+  it('parses the review store settings (ADR-017) with a 5 GB default cap', () => {
+    const d = loadConfig({});
+    expect(d.reviewStore).toMatchObject({
+      enabled: true,
+      maxBytes: 5_000_000_000,
+      putPerIpPerDay: 500,
+    });
+    expect(path.isAbsolute(d.reviewStore.path)).toBe(true);
+    expect(d.reviewStore.path.endsWith(path.join('apps', 'server', 'data', 'reviews.sqlite'))).toBe(true);
+    const c = loadConfig({
+      REVIEW_STORE: 'off',
+      REVIEW_STORE_PATH: 'var/reviews.db',
+      REVIEW_STORE_MAX_BYTES: '20000000000',
+      REVIEW_PUT_PER_IP_PER_DAY: '50',
+    });
+    expect(c.reviewStore).toEqual({
+      enabled: false,
+      path: path.resolve('var/reviews.db'),
+      maxBytes: 20_000_000_000,
+      putPerIpPerDay: 50,
+    });
+    expect(() => loadConfig({ REVIEW_STORE: 'maybe' })).toThrow(/REVIEW_STORE/);
+    expect(() => loadConfig({ REVIEW_STORE_MAX_BYTES: '1000' })).toThrow(/REVIEW_STORE_MAX_BYTES/);
+    expect(() => loadConfig({ REVIEW_PUT_PER_IP_PER_DAY: '0' })).toThrow(/REVIEW_PUT_PER_IP_PER_DAY/);
+  });
+
   it('parses ACCESS_TOKEN (ADR-010): unset or empty = public, max 256 characters', () => {
     expect(loadConfig({}).accessToken).toBeNull();
     expect(loadConfig({ ACCESS_TOKEN: '' }).accessToken).toBeNull();

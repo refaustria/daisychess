@@ -25,14 +25,24 @@
  * the server (link + nickname, no account). The server validates moves and runs the clocks; after
  * every change it sends the full `room.state` snapshot to every member. Room-level failures come
  * as `room.error`; envelope-level failures (`invalid_message`, `rate_limited`, …) stay on `error`.
+ *
+ * Review store (ADR-017, additive in protocol 1): `review.*` messages read and write finished game
+ * reviews and position results on the server (SQLite), keyed by the game's hash (`reviewGameKey`),
+ * so every device gets the same review for the same game. Reads are open; writes need the access
+ * token. The record-carrying frames may be up to `MAX_LARGE_MESSAGE_BYTES`.
  */
 import { z } from 'zod';
+import { MOVE_CLASSES, type MoveClass, type ReviewSummary } from './review.js';
+import { REVIEW_PRESETS } from './reviewKey.js';
 import type { BestMove, EngineInfo } from './types.js';
 
 /** Bumped on any incompatible change. `hello` and `welcome` carry it; mismatch → `protocol_mismatch`. */
 export const PROTOCOL_VERSION = 1;
 
-/** Maximum size of one WebSocket text frame in either direction (the server sets `maxPayload` to it). */
+/**
+ * Maximum size of one WebSocket text frame in either direction — except the record-carrying
+ * review frames (ADR-017), see {@link MAX_LARGE_MESSAGE_BYTES} and {@link LARGE_MESSAGE_TYPES}.
+ */
 export const MAX_MESSAGE_BYTES = 16 * 1024;
 
 export const PROTOCOL_ERROR_CODES = [
@@ -481,6 +491,198 @@ export const RoomPlayerSchema = z.object({
 export type RoomPlayer = z.infer<typeof RoomPlayerSchema>;
 
 // ---------------------------------------------------------------------------------------------
+// Review store (ADR-017): building blocks
+
+/**
+ * Hard bounds of the review-store messages. Frames of the four record-carrying types may be
+ * larger than {@link MAX_MESSAGE_BYTES} (up to {@link MAX_LARGE_MESSAGE_BYTES}).
+ */
+export const REVIEW_BOUNDS = {
+  /** `gameKey`: SHA-256 hex (see `reviewGameKey`). */
+  gameKeyPattern: /^[0-9a-f]{64}$/,
+  /** Reviews are stored for games of 2 … 1000 plies (same cap as rooms). */
+  plies: { min: 2, max: 1_000 },
+  /** One SAN move, e.g. `Nbd7`, `exd8=Q#`, `O-O-O+`. */
+  sanPattern: /^(O-O(-O)?|[a-h](x[a-h])?([2-7]|[18]=[NBRQ])|[NBRQK][a-h]?[1-8]?x?[a-h][1-8])[+#]?$/,
+  /** Search budget of a position result: `mt:<ms>` (movetime) or `d:<depth>`. */
+  optsKeyPattern: /^(mt:[1-9]\d{2,5}|d:[1-9]\d?)$/,
+  /** Positions per `review.positions.get` / `review.positions.put`. */
+  positionsPerMessage: 64,
+  /** Principal variation plies kept per position result. */
+  pvMaxLength: 16,
+  /** JSON size of one `StoredReviewRecord` (the server refuses larger ones with `too_large`). */
+  recordMaxBytes: 1024 * 1024,
+} as const;
+
+/**
+ * Frames carrying a review record or a batch of positions (`review.put`, `review.record`,
+ * `review.positions.put`, `review.positions`) may be this large; every other type keeps
+ * {@link MAX_MESSAGE_BYTES}. The server sets `maxPayload` to this value.
+ */
+export const MAX_LARGE_MESSAGE_BYTES = REVIEW_BOUNDS.recordMaxBytes + 128 * 1024;
+
+/** Message types allowed to exceed {@link MAX_MESSAGE_BYTES}. */
+export const LARGE_MESSAGE_TYPES: readonly string[] = [
+  'review.put',
+  'review.record',
+  'review.positions.put',
+  'review.positions',
+];
+
+export const GameKeySchema = z
+  .string()
+  .regex(REVIEW_BOUNDS.gameKeyPattern, 'gameKey must be 64 lowercase hex characters');
+
+export const SanMoveSchema = z
+  .string()
+  .max(10)
+  .regex(REVIEW_BOUNDS.sanPattern, 'move must be in SAN (e.g. Nf3, exd5, O-O, e8=Q+)');
+
+/** SAN moves of a whole game (2 … 1000 plies). */
+export const SanMovesSchema = z
+  .array(SanMoveSchema)
+  .min(REVIEW_BOUNDS.plies.min, `at least ${REVIEW_BOUNDS.plies.min} moves`)
+  .max(REVIEW_BOUNDS.plies.max, `at most ${REVIEW_BOUNDS.plies.max} moves`);
+
+export const OptsKeySchema = z
+  .string()
+  .regex(REVIEW_BOUNDS.optsKeyPattern, 'optsKey must be mt:<ms> or d:<depth>');
+
+export const ReviewPresetSchema = z.enum(REVIEW_PRESETS);
+
+/** Search budget of a stored review (same shape as the web's `ReviewOptions`). */
+export const ReviewOptionsSchema = z.object({
+  depth: range('depth', PROTOCOL_BOUNDS.depth).optional(),
+  movetime: range('movetime', PROTOCOL_BOUNDS.movetimeMs).optional(),
+});
+
+/** Where a review ran (the web's `ReviewEngineInfo`). */
+export const ReviewEngineInfoSchema = z.object({
+  kind: z.enum(['server', 'browser']),
+  name: z.string().min(1).max(64).optional(),
+  threads: range('threads', PROTOCOL_BOUNDS.threads).optional(),
+});
+
+/**
+ * Engine result of one position as the review keeps it (the web's `PositionResult`): White-POV
+ * eval, best move and line in UCI, reached depth.
+ */
+export const PositionResultSchema = z.object({
+  eval: ScoreSchema,
+  bestMove: UciMoveSchema.optional(),
+  pv: z.array(UciMoveSchema).max(REVIEW_BOUNDS.pvMaxLength).optional(),
+  depth: range('depth', { min: 0, max: 1_000 }).optional(),
+});
+
+const winProb = (name: string) =>
+  z.number().min(0, `${name} must be >= 0`).max(100, `${name} must be <= 100`);
+const plyNumber = range('ply', { min: 1, max: REVIEW_BOUNDS.plies.max });
+const moverSchema = z.enum(['white', 'black']);
+const moveClassSchema = z.enum(MOVE_CLASSES as readonly [MoveClass, ...MoveClass[]]);
+
+/** Mirrors `ReviewedMove` (review.ts). */
+export const ReviewedMoveSchema = z.object({
+  ply: plyNumber,
+  san: SanMoveSchema.optional(),
+  uci: UciMoveSchema,
+  mover: moverSchema,
+  evalBefore: ScoreSchema,
+  evalAfter: ScoreSchema,
+  bestMove: UciMoveSchema.optional(),
+  winProbBefore: winProb('winProbBefore'),
+  winProbAfter: winProb('winProbAfter'),
+  winProbLoss: winProb('winProbLoss'),
+  classification: moveClassSchema,
+});
+
+/** Mirrors `SideSummary` (review.ts). */
+export const SideSummarySchema = z.object({
+  accuracy: winProb('accuracy'),
+  counts: z.record(moveClassSchema, nonNegativeInt('counts')),
+});
+
+/** Mirrors `ReviewSummary` (review.ts). */
+export const ReviewSummarySchema = z.object({
+  white: SideSummarySchema,
+  black: SideSummarySchema,
+  moves: z.array(ReviewedMoveSchema).max(REVIEW_BOUNDS.plies.max),
+});
+
+/**
+ * Per-move details of a stored review (the web's `MoveDetail`): the engine's best line in SAN,
+ * evals and a swing text. Display data, bounded so a record stays well under
+ * {@link REVIEW_BOUNDS.recordMaxBytes}.
+ */
+export const StoredMoveDetailSchema = z.object({
+  ply: plyNumber,
+  mover: moverSchema,
+  moveLabel: z.string().max(8),
+  playedUci: UciMoveSchema,
+  playedSan: SanMoveSchema,
+  bestUci: UciMoveSchema.optional(),
+  bestSan: SanMoveSchema.optional(),
+  bestLine: z.array(UciMoveSchema).max(REVIEW_BOUNDS.pvMaxLength),
+  bestLineSan: z.string().max(200),
+  bestLineMoves: z.array(SanMoveSchema).max(REVIEW_BOUNDS.pvMaxLength),
+  bestLineFen: FenSchema,
+  fenBefore: FenSchema,
+  fenAfter: FenSchema,
+  evalBeforeWhite: ScoreSchema,
+  evalAfterWhite: ScoreSchema,
+  evalIfBest: ScoreSchema.optional(),
+  swing: z.string().max(40),
+  winProbLoss: winProb('winProbLoss'),
+  classification: moveClassSchema,
+  playedIsBest: z.boolean(),
+});
+
+/**
+ * What a review consists of beyond the game itself: the record the web caches and the server
+ * stores (gzip JSON). `version` is the web's `REVIEW_CACHE_VERSION`; a client ignores records of
+ * another version.
+ */
+export const StoredReviewRecordSchema = z.object({
+  version: range('version', { min: 1, max: 1_000 }),
+  options: ReviewOptionsSchema,
+  engine: ReviewEngineInfoSchema,
+  summary: ReviewSummarySchema,
+  /** Keyed by ply (1-based, as a string in JSON). */
+  moveDetails: z.record(z.string().regex(/^[1-9]\d{0,3}$/, 'ply'), StoredMoveDetailSchema),
+});
+
+/** A stored review as the browser cache keeps it: the record plus the game and its preset. */
+export const StoredReviewSchema = StoredReviewRecordSchema.extend({
+  gameKey: GameKeySchema,
+  startFen: FenSchema,
+  /** SAN moves of the game (also used to rule out key collisions). */
+  moves: SanMovesSchema,
+  preset: ReviewPresetSchema,
+  /** Epoch ms of the run. */
+  createdAt: nonNegativeInt('createdAt'),
+});
+
+/** Why a `review.put` / `review.positions.put` was not stored. */
+export const REVIEW_STORE_REASONS = [
+  /** The connection has no valid access token (`capabilities.analysis` is false). */
+  'unauthorized',
+  /** The store is off or failed to open (`capabilities.reviewStore` is false). */
+  'disabled',
+  /** `gameKey` is not the key of `startFen` + `moves`. */
+  'key_mismatch',
+  /** `startFen` is not a position chess.js accepts or a move is illegal. */
+  'illegal_game',
+  /** The record is larger than `REVIEW_BOUNDS.recordMaxBytes`. */
+  'too_large',
+  /** A review with a stronger preset is stored already (the stored one is kept). */
+  'superseded',
+  /** The client address used its daily put allowance (`REVIEW_PUT_PER_IP_PER_DAY`). */
+  'quota',
+  /** The database refused the write. */
+  'storage_error',
+] as const;
+export type ReviewStoreReason = (typeof REVIEW_STORE_REASONS)[number];
+
+// ---------------------------------------------------------------------------------------------
 // Client → server
 
 /** Maximum length of `hello.token`. */
@@ -616,6 +818,51 @@ export const RoomLeaveMessageSchema = z.object({
   roomId: RoomIdSchema,
 });
 
+// Review store (ADR-017), client → server. Reads are open to every connection, writes need a
+// connection whose `hello` carried the valid access token (`capabilities.analysis`). Every request
+// is answered with exactly one message carrying the same `gameKey` / `optsKey`.
+
+/** Asks for the stored review of a game. Answer: `review.record` (`found: false` when none). */
+export const ReviewGetMessageSchema = z.object({
+  type: z.literal('review.get'),
+  gameKey: GameKeySchema,
+  startFen: FenSchema,
+  moves: SanMovesSchema,
+});
+
+/**
+ * Offers a finished review for storage. The server recomputes the key from `startFen` + `moves`
+ * (replayed with chess.js), keeps the stronger preset and answers `review.stored`.
+ */
+export const ReviewPutMessageSchema = z.object({
+  type: z.literal('review.put'),
+  gameKey: GameKeySchema,
+  startFen: FenSchema,
+  moves: SanMovesSchema,
+  preset: ReviewPresetSchema,
+  record: StoredReviewRecordSchema,
+});
+
+/** Asks for stored position results of one search budget. Answer: `review.positions`. */
+export const ReviewPositionsGetMessageSchema = z.object({
+  type: z.literal('review.positions.get'),
+  optsKey: OptsKeySchema,
+  fens: z.array(FenSchema).min(1).max(REVIEW_BOUNDS.positionsPerMessage),
+});
+
+/** Offers position results of one search budget. Answer: `review.positions.stored`. */
+export const ReviewPositionsPutMessageSchema = z.object({
+  type: z.literal('review.positions.put'),
+  optsKey: OptsKeySchema,
+  entries: z
+    .array(z.object({ fen: FenSchema, result: PositionResultSchema }))
+    .min(1)
+    .max(REVIEW_BOUNDS.positionsPerMessage),
+});
+
+/** Asks for the store's size. Answer: `review.stats`. */
+export const ReviewStatsGetMessageSchema = z.object({ type: z.literal('review.stats.get') });
+
 export const ClientMessageSchema = z.discriminatedUnion('type', [
   HelloMessageSchema,
   AnalyzeMessageSchema,
@@ -631,6 +878,11 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   RoomAbortMessageSchema,
   RoomClaimMessageSchema,
   RoomLeaveMessageSchema,
+  ReviewGetMessageSchema,
+  ReviewPutMessageSchema,
+  ReviewPositionsGetMessageSchema,
+  ReviewPositionsPutMessageSchema,
+  ReviewStatsGetMessageSchema,
 ]);
 
 export type HelloMessage = z.infer<typeof HelloMessageSchema>;
@@ -647,12 +899,31 @@ export type RoomDrawMessage = z.infer<typeof RoomDrawMessageSchema>;
 export type RoomAbortMessage = z.infer<typeof RoomAbortMessageSchema>;
 export type RoomClaimMessage = z.infer<typeof RoomClaimMessageSchema>;
 export type RoomLeaveMessage = z.infer<typeof RoomLeaveMessageSchema>;
+export type ReviewGetMessage = z.infer<typeof ReviewGetMessageSchema>;
+export type ReviewPutMessage = z.infer<typeof ReviewPutMessageSchema>;
+export type ReviewPositionsGetMessage = z.infer<typeof ReviewPositionsGetMessageSchema>;
+export type ReviewPositionsPutMessage = z.infer<typeof ReviewPositionsPutMessageSchema>;
+export type ReviewStatsGetMessage = z.infer<typeof ReviewStatsGetMessageSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 /** Every `room.*` client message. */
 export type RoomClientMessage = Extract<
   ClientMessage,
   { roomId: string } | { type: 'room.create' }
 >;
+/** Every `review.*` client message. */
+export type ReviewClientMessage =
+  | ReviewGetMessage
+  | ReviewPutMessage
+  | ReviewPositionsGetMessage
+  | ReviewPositionsPutMessage
+  | ReviewStatsGetMessage;
+/** Shapes of the stored review and its parts (ADR-017). */
+export type ReviewOptions = z.infer<typeof ReviewOptionsSchema>;
+export type ReviewEngineInfo = z.infer<typeof ReviewEngineInfoSchema>;
+export type PositionResult = z.infer<typeof PositionResultSchema>;
+export type StoredMoveDetail = z.infer<typeof StoredMoveDetailSchema>;
+export type StoredReviewRecord = z.infer<typeof StoredReviewRecordSchema>;
+export type StoredReview = z.infer<typeof StoredReviewSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Server → client
@@ -661,8 +932,14 @@ export type RoomClientMessage = Extract<
  * What this connection may do (ADR-013). Omitted by servers older than ADR-013, which means
  * `{ analysis: true, rooms: false }`. `analysis: false` (token missing/wrong on a server with
  * `ACCESS_TOKEN`) comes with an empty `engines` list; `analyze` then fails with `unauthorized`.
+ * `reviewStore` (ADR-017; absent = false): the server stores reviews (`review.*` messages);
+ * `review.put` additionally needs `analysis`.
  */
-export const CapabilitiesSchema = z.object({ analysis: z.boolean(), rooms: z.boolean() });
+export const CapabilitiesSchema = z.object({
+  analysis: z.boolean(),
+  rooms: z.boolean(),
+  reviewStore: z.boolean().optional(),
+});
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
 
 export const WelcomeMessageSchema = z.object({
@@ -765,6 +1042,55 @@ export const RoomErrorMessageSchema = z.object({
   message: z.string().max(1_000),
 });
 
+// Review store (ADR-017), server → client.
+
+/**
+ * Answer to `review.get`. `found: false` when nothing is stored for the key (or the stored game
+ * differs from the requested one, or the store is disabled). `record.engine` says where it ran.
+ */
+export const ReviewRecordMessageSchema = z.object({
+  type: z.literal('review.record'),
+  gameKey: GameKeySchema,
+  found: z.boolean(),
+  preset: ReviewPresetSchema.optional(),
+  record: StoredReviewRecordSchema.optional(),
+  /** Epoch ms of the stored run. */
+  createdAt: nonNegativeInt('createdAt').optional(),
+});
+
+/** Answer to `review.put`. */
+export const ReviewStoredMessageSchema = z.object({
+  type: z.literal('review.stored'),
+  gameKey: GameKeySchema,
+  stored: z.boolean(),
+  reason: z.enum(REVIEW_STORE_REASONS).optional(),
+});
+
+/** Answer to `review.positions.get`: the results found, by FEN (missing FENs are absent). */
+export const ReviewPositionsMessageSchema = z.object({
+  type: z.literal('review.positions'),
+  optsKey: OptsKeySchema,
+  results: z.record(FenSchema, PositionResultSchema),
+});
+
+/** Answer to `review.positions.put`. */
+export const ReviewPositionsStoredMessageSchema = z.object({
+  type: z.literal('review.positions.stored'),
+  optsKey: OptsKeySchema,
+  stored: z.boolean(),
+  reason: z.enum(REVIEW_STORE_REASONS).optional(),
+});
+
+/** Answer to `review.stats.get` (all zero when the store is disabled). */
+export const ReviewStatsMessageSchema = z.object({
+  type: z.literal('review.stats'),
+  enabled: z.boolean(),
+  reviews: nonNegativeInt('reviews'),
+  positions: nonNegativeInt('positions'),
+  bytes: nonNegativeInt('bytes'),
+  maxBytes: nonNegativeInt('maxBytes'),
+});
+
 export const ServerMessageSchema = z.discriminatedUnion('type', [
   WelcomeMessageSchema,
   InfoMessageSchema,
@@ -774,6 +1100,11 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
   RoomSeatMessageSchema,
   RoomStateMessageSchema,
   RoomErrorMessageSchema,
+  ReviewRecordMessageSchema,
+  ReviewStoredMessageSchema,
+  ReviewPositionsMessageSchema,
+  ReviewPositionsStoredMessageSchema,
+  ReviewStatsMessageSchema,
 ]);
 
 export type EngineDescriptor = z.infer<typeof EngineDescriptorSchema>;
@@ -785,14 +1116,24 @@ export type PongMessage = z.infer<typeof PongMessageSchema>;
 export type RoomSeatMessage = z.infer<typeof RoomSeatMessageSchema>;
 export type RoomStateMessage = z.infer<typeof RoomStateMessageSchema>;
 export type RoomErrorMessage = z.infer<typeof RoomErrorMessageSchema>;
+export type ReviewRecordMessage = z.infer<typeof ReviewRecordMessageSchema>;
+export type ReviewStoredMessage = z.infer<typeof ReviewStoredMessageSchema>;
+export type ReviewPositionsMessage = z.infer<typeof ReviewPositionsMessageSchema>;
+export type ReviewPositionsStoredMessage = z.infer<typeof ReviewPositionsStoredMessageSchema>;
+export type ReviewStatsMessage = z.infer<typeof ReviewStatsMessageSchema>;
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 
 // Compile-time guarantee that the wire types stay interchangeable with the engine types.
 type Assignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 const infoMatchesEngineInfo: Assignable<z.infer<typeof EngineInfoSchema>, EngineInfo> = true;
 const bestMoveMatchesBestMove: Assignable<z.infer<typeof BestMoveSchema>, BestMove> = true;
+const summaryMatchesReviewSummary: Assignable<
+  z.infer<typeof ReviewSummarySchema>,
+  ReviewSummary
+> = true;
 void infoMatchesEngineInfo;
 void bestMoveMatchesBestMove;
+void summaryMatchesReviewSummary;
 
 // ---------------------------------------------------------------------------------------------
 // Parsing
@@ -812,9 +1153,11 @@ function parseWith<T>(
   input: unknown,
 ): ParseResult<T> {
   let value = input;
+  let large = false;
   if (typeof input === 'string') {
-    if (input.length > MAX_MESSAGE_BYTES)
-      return { ok: false, error: `message exceeds ${MAX_MESSAGE_BYTES} bytes` };
+    if (input.length > MAX_LARGE_MESSAGE_BYTES)
+      return { ok: false, error: `message exceeds ${MAX_LARGE_MESSAGE_BYTES} bytes` };
+    large = input.length > MAX_MESSAGE_BYTES;
     try {
       value = JSON.parse(input);
     } catch (err) {
@@ -827,6 +1170,10 @@ function parseWith<T>(
   const type = (value as { type?: unknown }).type;
   if (typeof type !== 'string' || !knownTypes.includes(type)) {
     return { ok: false, error: `unknown message type ${JSON.stringify(type)}` };
+  }
+  // Only the record-carrying review frames may exceed the ordinary frame size.
+  if (large && !LARGE_MESSAGE_TYPES.includes(type)) {
+    return { ok: false, error: `message exceeds ${MAX_MESSAGE_BYTES} bytes` };
   }
   const result = schema.safeParse(value);
   return result.success

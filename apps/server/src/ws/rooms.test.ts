@@ -28,7 +28,7 @@ async function start(
   config: Partial<Omit<ServerConfig, 'rooms'>> & { rooms?: Partial<ServerConfig['rooms']> } = {},
   extra: Partial<BuildAppOptions> = {},
 ): Promise<{ app: FastifyInstance; url: string }> {
-  const base = loadConfig({});
+  const base = loadConfig({ REVIEW_STORE: 'off' });
   const app = await buildApp({
     config: { ...base, ...config, rooms: { ...base.rooms, ...config.rooms } },
     registry: registry({ id: 'fake', name: 'Fake Engine', maxInstances: 2 }),
@@ -100,7 +100,7 @@ describe('rooms over /ws (ADR-013)', () => {
   it('a full game: create → join → moves → checkmate, with a spectator watching', async () => {
     const { url } = await start();
     const { c: host, welcome } = await client(url);
-    expect(welcome.capabilities).toEqual({ analysis: true, rooms: true });
+    expect(welcome.capabilities).toEqual({ analysis: true, rooms: true, reviewStore: expect.any(Boolean) });
     const seat = await createRoom(host, {
       clock: { initialMs: 60_000, incrementMs: 1_000 },
       color: 'black',
@@ -368,7 +368,7 @@ describe('rooms over /ws (ADR-013)', () => {
       for (const token of [undefined, 'wrong', 'secret-token ', '']) {
         const { c, welcome } = await client(url, token);
         expect(welcome.engines).toEqual([]);
-        expect(welcome.capabilities).toEqual({ analysis: false, rooms: true });
+        expect(welcome.capabilities).toEqual({ analysis: false, rooms: true, reviewStore: expect.any(Boolean) });
         expect(welcome.limits.maxDepth).toBe(30);
         c.send({
           type: 'analyze',
@@ -392,7 +392,7 @@ describe('rooms over /ws (ADR-013)', () => {
       const { c: host } = await client(url);
       const seat = await createRoom(host);
       const { c: guest, welcome } = await client(url, 'secret-token');
-      expect(welcome.capabilities).toEqual({ analysis: true, rooms: true });
+      expect(welcome.capabilities).toEqual({ analysis: true, rooms: true, reviewStore: expect.any(Boolean) });
       expect(welcome.engines.map((e) => e.id)).toEqual(['fake']);
       guest.send({ type: 'room.join', roomId: seat.roomId, nick: 'Bob' });
       await host.waitFor((m) => isState(m) && m.status === 'playing');

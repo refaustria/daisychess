@@ -4,6 +4,7 @@ import {
   type ReviewedMove,
   type ReviewSummary,
   type Score,
+  type StoredMoveDetail,
 } from '@daisychess/engine-core';
 import { convertPv } from '../engine/pvToSan';
 import type { BatchGame, PositionResult } from './BatchAnalyzer';
@@ -47,6 +48,12 @@ export interface MoveDetail {
 }
 
 export type MoveDetails = Record<number, MoveDetail>;
+
+// Compile-time guarantee that the details stay interchangeable with the wire shape of the server
+// review store (ADR-017, `StoredMoveDetailSchema`).
+type Assignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const detailMatchesWire: Assignable<MoveDetail, StoredMoveDetail> = true;
+void detailMatchesWire;
 
 const MINUS = '−';
 

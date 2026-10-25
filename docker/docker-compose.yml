@@ -16,6 +16,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=64m
+    # Review store (ADR-017): the only writable path; reproducible data, no backup needed.
+    volumes:
+      - reviews:/data
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -57,6 +60,9 @@ services:
     networks: [daisychess]
     ports:
       - "${WEB_PORT:-8080}:80"
+
+volumes:
+  reviews:
 
 networks:
   daisychess:

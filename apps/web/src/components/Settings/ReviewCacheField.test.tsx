@@ -8,9 +8,11 @@ import {
   putStoredReview,
   REVIEW_CACHE_VERSION,
 } from '../../review/reviewCache';
+import { FakeReviewServer } from '../../review/fakeReviewServer';
 import { useReviewStore } from '../../review/reviewStore';
 import { scholarSummary } from '../../review/testFixtures';
-import { ReviewCacheField } from './ReviewCacheField';
+import { configureApiConnection } from '../../server/apiConnection';
+import { ReviewCacheField, formatBytes, serverStatsLabel } from './ReviewCacheField';
 import { SettingsPanel } from './SettingsPanel';
 
 const put = (gameKey: string) =>
@@ -34,6 +36,7 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   configureReviewCache(undefined);
+  configureApiConnection(null);
 });
 
 describe('ReviewCacheField', () => {
@@ -41,7 +44,13 @@ describe('ReviewCacheField', () => {
     await put('a');
     await put('b');
     useReviewStore.setState({
-      stored: { preset: 'deep', createdAt: 1, engine: { kind: 'server' }, fromCache: true },
+      stored: {
+        preset: 'deep',
+        createdAt: 1,
+        engine: { kind: 'server' },
+        fromCache: true,
+        source: 'local',
+      },
     });
     render(<ReviewCacheField />);
     const count = screen.getByTestId('review-cache-count');
@@ -56,6 +65,30 @@ describe('ReviewCacheField', () => {
     expect(
       (screen.getByRole('button', { name: 'Clear cache' }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  it('shows the server store size when the engine server reports one (ADR-017)', async () => {
+    const server = new FakeReviewServer();
+    server.bytes = 1_234_000_000;
+    server.maxBytes = 5_000_000_000;
+    configureApiConnection({ createSocket: server.createSocket });
+    render(<ReviewCacheField />);
+    await waitFor(() =>
+      expect(screen.getByTestId('review-cache-server').textContent).toBe(
+        'Server: 0 reviews · 1.2 GB of 5 GB',
+      ),
+    );
+    expect(serverStatsLabel({ enabled: true, reviews: 1, positions: 0, bytes: 2_500_000, maxBytes: 2.5e9 })).toBe(
+      'Server: 1 review · 2.5 MB of 2.5 GB',
+    );
+    expect(formatBytes(999)).toBe('999 B');
+    expect(formatBytes(12_345)).toBe('12 kB');
+  });
+
+  it('shows no server line without a server store', async () => {
+    render(<ReviewCacheField />);
+    await waitFor(() => expect(screen.getByTestId('review-cache-count').textContent).toBe('0 stored reviews'));
+    expect(screen.queryByTestId('review-cache-server')).toBeNull();
   });
 
   it('is part of the Settings panel', async () => {

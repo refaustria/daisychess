@@ -100,7 +100,27 @@ other origins get 403 at the upgrade). Edit it, then
 `maxInstances` live in `apps/server/engines.json`. Resource caps (`MemoryMax`,
 `CPUWeight`, `TasksMax`) are in the unit; after editing it, rerun the script.
 The unit is read-only on the filesystem (`ProtectSystem=strict`,
-`ProtectHome=read-only`); add `ReadWritePaths=` if the server ever writes.
+`ProtectHome=read-only`) except `ReadWritePaths=/home/bojan/gitchess/apps/server/data`,
+the review store (next paragraph).
+
+**Review store (ADR-017).** Finished game reviews and position evaluations are
+kept in `apps/server/data/reviews.sqlite` (SQLite via `node:sqlite`, Node ≥ 22.13;
+the host runs 24). The server creates the directory and file on start
+(`UMask=0077`: `drwx------ bojan`). Only moves and evaluations are stored — no
+PGN headers, names or addresses — and everything is **reproducible** (a missing
+review is simply computed again), so the file needs **no backup**; delete it
+while the service is stopped to start over. Disk use is capped by
+`REVIEW_STORE_MAX_BYTES` in `apps/server/.env.production` (default 5 GB; least
+recently used positions, then reviews, are evicted down to 90 %); the cap is a
+payload estimate, so allow ~20 % slack plus up to 4 MB of WAL. Writes need the
+access token and are capped per address (`REVIEW_PUT_PER_IP_PER_DAY`, 500/day).
+`REVIEW_STORE=off` disables it. Check it with
+`curl -s http://127.0.0.1:8580/health/detail | jq .reviewStore`
+(`{enabled, reviews, positions, bytes, maxBytes}`); the file itself can be
+inspected with `sqlite3 apps/server/data/reviews.sqlite 'select count(*) from reviews'`.
+If the unit is updated from an older install, the `ReadWritePaths=` line is what
+makes the directory writable — without it the server logs
+"review store unavailable" and runs without the feature.
 
 **Access token (ADR-010, ADR-013).** If `ACCESS_TOKEN` is set in
 `apps/server/.env.production` (git-ignored, mode 600), a client must send it in
@@ -128,6 +148,9 @@ Abuse-relevant limits (production values; all env vars are documented in
 | WebSocket connections per IP | 10 | nginx `limit_conn` | 429 |
 | Handshakes per IP | 5/s, burst 20 | nginx `limit_req` | 429 |
 | Engine sessions, global | 4 | `MAX_SESSIONS` | `no_capacity` |
+| Review reads / writes per connection | 20/s / 20 per 4 s | connection rate limits | `rate_limited` |
+| Review writes per IP and day | 500 | `REVIEW_PUT_PER_IP_PER_DAY` | `review.stored … quota` |
+| Review store on disk | 5 GB | `REVIEW_STORE_MAX_BYTES` | LRU eviction to 90 % |
 | Engine sessions per IP (all connections) | 2 | `MAX_SESSIONS_PER_IP` (client IP = `X-Real-IP` from loopback nginx) | `no_capacity` "too many sessions from your address" |
 | Sessions per connection | 2 | `MAX_SESSIONS_PER_CONNECTION` | `limit_exceeded` |
 | Instances per engine | 3 | `engines.json` `maxInstances` | `no_capacity` |
