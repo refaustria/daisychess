@@ -111,6 +111,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M15-1 | Player bars with large clocks above and below the board (names/ratings from live, engine play or PGN headers), side panel (moves, play, live, …) moved to the left with more width; mobile stacks board + bars then panel | senior | done |
 | M15-2 | Captured pieces as small icons in each player bar + material advantage (+n; P1 N3 B3 R5 Q7 as requested) | worker | done |
 | M15-3 | Side panel back on the right; slimmer player bars and tighter vertical spacing so the board regains height | worker | done |
+| M15-4 | iPad Safari: dynamic viewport height (dvh) so the bottom player bar stays visible | worker | done |
 
 ## M16 — Play a friend via link (own server, nickname, no account)
 | ID | Task | Tier | Status |

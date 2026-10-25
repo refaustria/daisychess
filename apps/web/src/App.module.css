@@ -7,9 +7,18 @@
   --player-bar-h: 2.25rem;
   --bar-gap: 4px;
   --pad-y: var(--gap);
+  --vh-full: 100vh;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* iOS Safari: 100vh includes the collapsible browser chrome; dvh is the visible height. */
+@supports (height: 100dvh) {
+  .app {
+    --vh-full: 100dvh;
+  }
 }
 
 .header {
@@ -143,12 +152,13 @@
 @media (min-width: 900px) {
   .app {
     height: 100vh;
+    height: var(--vh-full);
     min-height: 0;
     --header-h: 44px;
     --pad-y: 6px;
     --side-w: 340px;
     --board-size: min(
-      calc(100vh - var(--header-h) - 2 * var(--pad-y) - 2 * var(--player-bar-h) - 2 * var(--bar-gap)),
+      calc(var(--vh-full) - var(--header-h) - 2 * var(--pad-y) - 2 * var(--player-bar-h) - 2 * var(--bar-gap)),
       calc(100vw - 3 * var(--gap) - var(--side-w) - var(--eval-w) - var(--eval-gap))
     );
   }
@@ -167,7 +177,7 @@
   }
 
   .side {
-    height: calc(100vh - var(--header-h) - 2 * var(--pad-y));
+    height: calc(var(--vh-full) - var(--header-h) - 2 * var(--pad-y));
     min-height: 0;
   }
 
