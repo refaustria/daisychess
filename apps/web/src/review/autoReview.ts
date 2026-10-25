@@ -29,7 +29,8 @@ export function isGameLoad(
 /**
  * Starts a fast review whenever a game is loaded (PGN paste/file, online import), if the
  * `autoReview` setting is on and no human game (engine game, live lichess game) is running, and
- * switches the side panel to the Review tab (except from the Explorer tab, which stays open).
+ * switches the side panel to the Review tab (except from the Explorer tab, which stays open; lines
+ * loaded by the Openings tab are not reviewed).
  * Also reviews a live lichess game when it finishes (without switching tabs: the Live panel shows
  * the result) and cancels a running review when a live game or seek starts; the same for a game
  * against a friend (room, ADR-013). A running review (of
@@ -43,8 +44,10 @@ export function installAutoReview(): () => void {
     // finished game here, so the engine game and the review never overlap.
     // Live lichess games are never reviewed while they run (fair play).
     if (isHumanGameRunning()) return;
-    // Loads from the Explorer keep the user there; the review runs in the background.
     const ui = useUiStore.getState();
+    // Opening lines shown by the Openings tab (Browse) are no games to review.
+    if (ui.activeTab === 'openings') return;
+    // Loads from the Explorer keep the user there; the review runs in the background.
     if (ui.activeTab !== 'explorer') ui.setActiveTab('review');
     startFast();
   });

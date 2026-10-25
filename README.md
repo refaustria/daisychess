@@ -69,7 +69,7 @@ chesslab/
 - **Engine access:** a single `EngineClient` interface with two implementations:
   - `WasmEngineClient` — loads a WASM engine inside a Web Worker.
   - `RemoteEngineClient` — talks to the server over WebSocket.
-- **Layout:** a single page (`/`): board + eval bar, engine panel, and tabs for Moves, Play, Import, Review and Settings (Review and Settings are lazy-loaded). There is no router.
+- **Layout:** a single page (`/`): board + eval bar, engine panel, and tabs for Moves, Play, Openings, Live, Friend, Import, Review, Explorer and Settings (all but Moves and Import are lazy-loaded). There is no router.
 - Structure and dev hooks: [`apps/web/README.md`](./apps/web/README.md).
 
 Browser engine builds (from the `stockfish` npm package, Stockfish 19; the two lite builds plus the `full` build as an opt-in download):
@@ -180,6 +180,12 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - Your friend opens the link, picks a nickname and joins; the game starts. Anyone opening the link after both seats are taken watches.
 - The server runs the rules and the clocks (shown in the player bars; the first move of each side is untimed). Draw offers, resign, abort before both have moved, and "Claim victory" when the opponent stays disconnected for 60 s. A reload or a lost connection re-attaches to your seat (the seat secret stays in this browser's localStorage).
 - Engines, review and explorer are locked while you play (fair play); the game is reviewed automatically afterwards. "Play again" creates a new link with colours swapped.
+
+### Openings trainer
+- Openings tab: search the ~3,900 named openings and variations by name or ECO code (e.g. "Italian", "B90"); each entry shows how many sub-variations it has.
+- **Browse**: the line move by move (click a move to see the position on the board, with the move list, opening name and review working as for an imported game) and the named branches at that move.
+- **Drill**: choose White, Black or both (alternating) and start. The app plays the book moves of the other side (main lines more often, side lines now and then). Your book moves are confirmed ("Book: <variation>"); a move outside the book is checked by the engine (same engine choice as the review: server when configured, else the browser): within 0.3 pawns of the best move it is "Not book, but fine" and the line ends out of book, otherwise you see the eval loss, the best move and its line on the board and in text, and "Try again". At the end: moves right first try, mistakes, and Repeat / Next variation / Play on vs engine.
+- Spaced repetition (stored only in this browser, localStorage `chesslab.trainer`): a variation drilled without a mistake comes back after 1, 2.5, 6 … days; one with a mistake is due again at once. "Due" filters the due variations, "Train due" starts the earliest. The live analysis is paused during a drill, and no drill runs during live, friend or engine games (starting one ends the drill).
 
 ### Online import
 - Import tab: fetch recent games of a user from the lichess and chess.com public APIs.

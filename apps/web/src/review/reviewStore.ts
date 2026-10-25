@@ -216,16 +216,19 @@ async function browserEngine(notice?: string): Promise<Selected> {
  * handshake fails, the cached browser engine with a notice (none in `auto` when the server only
  * refused the token). `browser` never touches the network.
  */
-async function selectEngine(pref: ReviewEnginePreference): Promise<Selected> {
+async function selectEngine(
+  pref: ReviewEnginePreference,
+  browser: (notice?: string) => Promise<Selected> = browserEngine,
+): Promise<Selected> {
   const factory = createServerClient;
-  if (pref === 'browser') return browserEngine();
+  if (pref === 'browser') return browser();
   if (!factory) {
-    return browserEngine(pref === 'server' ? fallbackNotice('no server configured') : undefined);
+    return browser(pref === 'server' ? fallbackNotice('no server configured') : undefined);
   }
   const key = serverKey();
   const failed = serverFailures.get(key);
   if (pref === 'auto' && failed && failed.until > Date.now()) {
-    return browserEngine(noticeFor(pref, failed.reason, failed.silent));
+    return browser(noticeFor(pref, failed.reason, failed.silent));
   }
   let server: ServerReviewEngine | null = null;
   try {
@@ -245,8 +248,66 @@ async function selectEngine(pref: ReviewEnginePreference): Promise<Selected> {
     if (server) void server.dispose().catch(() => undefined);
     const reason = serverFailureReason(err);
     rememberFailure(key, reason, isUnauthorized(err));
-    return browserEngine(noticeFor(pref, reason, isUnauthorized(err)));
+    return browser(noticeFor(pref, reason, isUnauthorized(err)));
   }
+}
+
+/** An engine for short searches outside the review (openings drill), see {@link openSearchEngine}. */
+export interface SearchEngineLease {
+  engine: Engine;
+  runsOn: ReviewEngineInfo;
+  /** Fallback notice (same texts as the review's). */
+  notice?: string;
+  /** Releases the server session or terminates the browser engine. Idempotent. */
+  dispose(): Promise<void>;
+}
+
+/**
+ * Picks an engine exactly like the review does (ADR-014: setting `reviewEngine`, server URL and
+ * token, handshake as probe, 60 s failure cooldown in `auto`), but never shares an engine with the
+ * review: the server path opens its own session and the browser path its own engine instance from
+ * the review's browser factory, so both can search at the same time. The caller owns the lease
+ * and must `dispose()` it. A server that fails mid-use should be reported with
+ * {@link reportSearchServerFailure} before falling back to `openSearchEngine('browser')`.
+ */
+export async function openSearchEngine(
+  pref: ReviewEnginePreference = useSettingsStore.getState().reviewEngine,
+): Promise<SearchEngineLease> {
+  const dedicatedBrowser = async (notice?: string): Promise<Selected> => {
+    const e = await createEngine();
+    try {
+      await e.load();
+    } catch (err) {
+      void e.dispose().catch(() => undefined);
+      throw err;
+    }
+    return { engine: e, runsOn: BROWSER, ...(notice ? { notice } : {}) };
+  };
+  const selected = await selectEngine(pref, dedicatedBrowser);
+  let disposed = false;
+  return {
+    engine: selected.engine,
+    runsOn: selected.runsOn,
+    ...(selected.notice ? { notice: selected.notice } : {}),
+    dispose: async () => {
+      if (disposed) return;
+      disposed = true;
+      await selected.engine.dispose().catch(() => undefined);
+    },
+  };
+}
+
+/**
+ * Remembers a server failure of a {@link openSearchEngine} lease (cooldown in `auto`) and returns
+ * the fallback notice to show for `pref` (undefined: silent fallback).
+ */
+export function reportSearchServerFailure(
+  err: unknown,
+  pref: ReviewEnginePreference = useSettingsStore.getState().reviewEngine,
+): string | undefined {
+  const reason = serverFailureReason(err, true);
+  rememberFailure(serverKey(), reason, isUnauthorized(err));
+  return noticeFor(pref, reason, isUnauthorized(err));
 }
 
 const optionsKey = (o: BatchOptions): string =>

@@ -1,14 +1,7 @@
 import { create } from 'zustand';
 
 export type TabId =
-  | 'moves'
-  | 'play'
-  | 'live'
-  | 'friend'
-  | 'import'
-  | 'review'
-  | 'explorer'
-  | 'settings';
+  'moves' | 'play' | 'openings' | 'live' | 'friend' | 'import' | 'review' | 'explorer' | 'settings';
 
 interface UiStore {
   /** Active side-panel tab (lets panels switch tabs, e.g. Play → Review). */

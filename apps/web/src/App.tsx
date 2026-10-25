@@ -20,6 +20,7 @@ import { useRoomStatus } from './room/useRoomStatus';
 import { useReviewStore } from './review/reviewStore';
 import { selectPrimary, useAnalysisStore } from './store/analysisStore';
 import { usePreviewStore } from './store/previewStore';
+import { useDrillArrows, useDrillMovableColor } from './components/Openings/useDrillBoard';
 import { useUiStore, type TabId } from './store/uiStore';
 import {
   currentFen,
@@ -33,6 +34,9 @@ import styles from './App.module.css';
 
 const PlayPanel = lazy(() =>
   import('./components/Play/PlayPanel').then((m) => ({ default: m.PlayPanel })),
+);
+const OpeningsPanel = lazy(() =>
+  import('./components/Openings/OpeningsPanel').then((m) => ({ default: m.OpeningsPanel })),
 );
 const LivePanel = lazy(() =>
   import('./components/Live/LivePanel').then((m) => ({ default: m.LivePanel })),
@@ -53,6 +57,7 @@ const SettingsPanel = lazy(() =>
 const TABS: { id: TabId; label: string }[] = [
   { id: 'moves', label: 'Moves' },
   { id: 'play', label: 'Play' },
+  { id: 'openings', label: 'Openings' },
   { id: 'live', label: 'Live' },
   { id: 'friend', label: 'Friend' },
   { id: 'import', label: 'Import' },
@@ -123,19 +128,23 @@ function ConnectedBoard() {
     const d = s.moveDetails[ply];
     return d && d.fenAfter === gameFen ? d : undefined;
   });
+  const drillArrows = useDrillArrows();
   const shapes = useMemo(
     () =>
-      reviewing && hasReview
-        ? reviewShapes({ previewing: previewFen !== null, move: reviewed })
-        : analysisShapes({
-            enabled,
-            terminal: terminal !== null,
-            previewing: previewFen !== null,
-            inSync: analysisFen === gameFen,
-            best,
-            hover,
-          }),
+      drillArrows.length > 0
+        ? drillArrows
+        : reviewing && hasReview
+          ? reviewShapes({ previewing: previewFen !== null, move: reviewed })
+          : analysisShapes({
+              enabled,
+              terminal: terminal !== null,
+              previewing: previewFen !== null,
+              inSync: analysisFen === gameFen,
+              best,
+              hover,
+            }),
     [
+      drillArrows,
       reviewing,
       hasReview,
       reviewed,
@@ -148,7 +157,9 @@ function ConnectedBoard() {
       hover,
     ],
   );
-  const movableColor = usePlayMovableColor();
+  const playMovable = usePlayMovableColor();
+  const drillMovable = useDrillMovableColor();
+  const movableColor = drillMovable !== undefined ? drillMovable : playMovable;
   return <Board shapes={shapes} previewFen={previewFen} movableColor={movableColor} />;
 }
 
@@ -249,6 +260,7 @@ export function App() {
             )}
             <Suspense fallback={<p className={styles.loading}>Loading…</p>}>
               {tab === 'play' && <PlayPanel />}
+              {tab === 'openings' && <OpeningsPanel />}
               {tab === 'live' && <LivePanel />}
               {tab === 'friend' && <FriendPanel />}
               {tab === 'review' && <ReviewPanel />}

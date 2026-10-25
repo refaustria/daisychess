@@ -4,6 +4,7 @@ import { useLichessAuth } from '../../lichess/auth';
 import { useLiveStore } from '../../live/liveStore';
 import { usePlayStore } from '../../play/playStore';
 import { useRoomStore } from '../../room/roomStore';
+import { drillPlayers, useDrillStore } from '../../trainer/drillState';
 import { roomClockTicks, roomPlayers } from '../../room/view';
 import { currentFen, useGameStore, type Orientation } from '../../store/gameStore';
 import { CapturedPieces } from './CapturedPieces';
@@ -94,12 +95,18 @@ export function useBoardPlayers(): BoardPlayers & {
   const room = shownRoom && (shownRoom.status !== 'finished' || !otherGame) ? shownRoom : undefined;
   const liveGame = live.status === 'playing' ? live.game : undefined;
   const now = useTicker(liveClockTicks(liveGame) || roomClockTicks(room));
+  // A running openings drill: "You" vs "Book (<variation>)" (drills never overlap a human game).
+  const drillStatus = useDrillStore((s) => s.status);
+  const drillColor = useDrillStore((s) => s.userColor);
+  const drillOpening = useDrillStore((s) => s.opening);
+  const drill = drillPlayers({ status: drillStatus, userColor: drillColor, opening: drillOpening });
+  const friend = drill ?? (room ? roomPlayers(room, now) : undefined);
   const players = selectBoardPlayers({
     live: { status: live.status, game: live.game, username },
     play,
     game: { headers, startFen, moves },
     now,
-    ...(room ? { friend: roomPlayers(room, now) } : {}),
+    ...(friend ? { friend } : {}),
   });
   return { ...players, orientation };
 }

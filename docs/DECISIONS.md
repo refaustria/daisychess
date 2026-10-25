@@ -197,3 +197,6 @@
 - *Live analysis.* The review still pauses the live analysis (`setEnabled(false)`), which stops but does not release its server sessions. One live server engine + the review = 2 sessions per address, which fits the default `MAX_SESSIONS_PER_IP` of 2; with two live server engines enabled the review gets `no_capacity` and falls back to the browser (documented trade-off; no protocol change).
 
 **Consequences.** No change to `packages/engine-core` or the WebSocket protocol. A server review costs one extra connection (within nginx's per-IP connection limits) and one session for the duration of the run; under load (`MAX_SESSIONS` exhausted) reviews degrade to the browser instead of failing. Production may want `MAX_SESSIONS_PER_IP=3` (two live server engines + review) and a `MAX_SESSIONS` that leaves room for concurrent reviews; `MAX_THREADS` is what one review gets per search.
+
+### ADR-011 addendum (2026-10-25, M18-1)
+The vendored openings table now stores `[eco, name, epd, moves]` (compact SAN line per variation, pinned upstream commit in `apps/web/src/openings/data/SOURCE.md`), ~88 kB gzip, lazily loaded with the book trie (`openings/book.ts`). The drill is move-order based (transpositions are checked by the engine, not the book); a fine non-book move before the drilled variation is reached asks for a retry, after it ends the line as "out of book".
