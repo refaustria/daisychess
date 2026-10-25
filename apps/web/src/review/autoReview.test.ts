@@ -1,10 +1,12 @@
+import { Chess } from 'chess.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLiveStore } from '../live/liveStore';
-import { usePlayStore } from '../play/playStore';
+import { FakePlayEngine } from '../play/fakePlayEngine';
+import { configurePlay, resetPlay, usePlayStore } from '../play/playStore';
 import { useGameStore } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
-import { installAutoReview, isGameLoad } from './autoReview';
+import { ENGINE_GAME_REVIEW_MIN_PLIES, installAutoReview, isGameLoad } from './autoReview';
 import { useReviewStore } from './reviewStore';
 
 const SCHOLAR = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7#';
@@ -123,5 +125,90 @@ describe('auto review', () => {
     expect(isGameLoad({ ...a, moves: m }, a)).toBe(false);
     expect(isGameLoad({ ...a, startFen: 't', moves: m }, a)).toBe(true);
     expect(isGameLoad({ ...a, headers: {}, moves: m.slice(0, 1) }, a)).toBe(false);
+  });
+
+  describe('after a game against the engine', () => {
+    const flush = () => new Promise<void>((r) => queueMicrotask(r));
+    const loadMoves = (n: number) => {
+      const line = ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6'].slice(0, n);
+      useGameStore.getState().reset();
+      for (const san of line) {
+        const g = useGameStore.getState();
+        const fen = g.moves.at(-1)?.fen ?? g.startFen;
+        const m = new Chess(fen).move(san);
+        g.makeMove(m.from, m.to);
+      }
+    };
+
+    it(`reviews a finished game of at least ${ENGINE_GAME_REVIEW_MIN_PLIES} plies in the background`, async () => {
+      useUiStore.setState({ activeTab: 'play' });
+      loadMoves(ENGINE_GAME_REVIEW_MIN_PLIES);
+      usePlayStore.setState({ mode: 'playing' });
+      usePlayStore.setState({ mode: 'finished', reason: 'resign', result: '0-1' });
+      // Deferred until the play store has finished its own bookkeeping.
+      expect(start).not.toHaveBeenCalled();
+      await flush();
+      expect(reset).toHaveBeenCalledTimes(1);
+      expect(start).toHaveBeenCalledWith({ movetime: 300 }, { auto: true });
+      expect(useUiStore.getState().activeTab).toBe('play');
+    });
+
+    it('not for short games, aborted games, or with the setting off', async () => {
+      loadMoves(ENGINE_GAME_REVIEW_MIN_PLIES - 1);
+      usePlayStore.setState({ mode: 'playing' });
+      usePlayStore.setState({ mode: 'finished', reason: 'resign' });
+      await flush();
+      loadMoves(ENGINE_GAME_REVIEW_MIN_PLIES);
+      usePlayStore.setState({ mode: 'playing' });
+      usePlayStore.setState({ mode: 'finished', reason: 'aborted' });
+      await flush();
+      useSettingsStore.setState({ autoReview: false });
+      usePlayStore.setState({ mode: 'playing' });
+      usePlayStore.setState({ mode: 'finished', reason: 'resign' });
+      await flush();
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('not when another game started right away (rematch)', async () => {
+      loadMoves(ENGINE_GAME_REVIEW_MIN_PLIES);
+      usePlayStore.setState({ mode: 'playing' });
+      usePlayStore.setState({ mode: 'finished', reason: 'resign' });
+      usePlayStore.setState({ mode: 'playing' });
+      await flush();
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('a new engine game cancels a running review', () => {
+      const cancel = vi.fn();
+      useReviewStore.setState({ status: 'running', cancel });
+      usePlayStore.setState({ mode: 'playing' });
+      expect(cancel).toHaveBeenCalledTimes(1);
+      useReviewStore.setState({ status: 'idle' });
+    });
+
+    it('integration: a real engine game that ends by resignation is reviewed', async () => {
+      await configurePlay({
+        createEngine: () => new FakePlayEngine(),
+        extraDelayMs: () => 0,
+        random: () => 0.1,
+      });
+      try {
+        usePlayStore.getState().start({ color: 'white', from: 'start', timeControl: null });
+        for (const [from, to] of [
+          ['a2', 'a3'],
+          ['b2', 'b3'],
+          ['c2', 'c3'],
+        ] as const) {
+          const plies = useGameStore.getState().moves.length;
+          expect(useGameStore.getState().makeMove(from, to)).toBe(true);
+          await vi.waitFor(() => expect(useGameStore.getState().moves.length).toBe(plies + 2));
+        }
+        usePlayStore.getState().resign();
+        await flush();
+        expect(start).toHaveBeenCalledWith({ movetime: 300 }, { auto: true });
+      } finally {
+        await resetPlay();
+      }
+    });
   });
 });

@@ -82,6 +82,12 @@ Browser engine builds (from the `stockfish` npm package, Stockfish 19; the two l
 
 The site must set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` in production to unlock `SharedArrayBuffer` for multi-threaded WASM. Detect support at runtime and fall back gracefully.
 
+**Browser engine memory (ADR-015).** Each WASM instance costs ~60 MiB (`lite-single`) to ~155 MiB (`lite`, 4 threads) plus a 128 MiB…2 GiB `WebAssembly.Memory`, so instances are budgeted:
+- The game review, the openings drill and Play vs Engine share **one pooled browser engine** (`apps/web/src/engine/wasmPool.ts`): one holder at a time (a drill check waits for a running review), disposed 20 s after the last use. Server reviews/drills (ADR-014) do not touch it.
+- `engine/memoryBudget.ts` detects iOS/iPadOS (also the Mac user agent of iPadOS) and low `deviceMemory` (≤ 2 GiB): there the live analysis runs **one browser engine** at a time (the picker says "Memory budget: one browser engine at a time on this device"), with **at most 2 threads** (labels, the Threads select and the engine itself are capped), the multi-threaded build starts through `engine-shim/stockfish-memory-shim.js` (shared memory maximum 512 MiB instead of 2 GiB), and the live engine is released while a review/drill/game pauses it.
+- An out-of-memory (or other worker) failure restarts the engine once single-threaded for the rest of the session and shows one notice in the engine panel ("Browser engine restarted with 1 thread after running out of memory"); if that fails too, the browser engine is disabled until the user retries, and the review/drill switch to the server when one is configured (except with the "Browser" review setting).
+- `window.__chesslab.wasmInstances()` reports live/peak/created instances (e2e `engine-memory.spec.ts`).
+
 ### 2.2 Server (`apps/server`)
 
 - **Node.js 20 + TypeScript**, `ws` for WebSocket, `fastify` for health/REST endpoints.

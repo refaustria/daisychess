@@ -1,6 +1,8 @@
 import { formatScore, type ReviewSummary } from '@chesslab/engine-core';
 import { explainMove, findJump, type MoveDetail, type MoveDetails } from '../../review/details';
 import { CLASS_INFO } from '../../review/format';
+import { alternativesText } from '../../review/openingFocus';
+import { useOpeningFocus } from '../../review/useOpeningFocus';
 import { useGameStore } from '../../store/gameStore';
 import { usePreviewStore } from '../../store/previewStore';
 import styles from './ReviewPanel.module.css';
@@ -77,6 +79,7 @@ export function MoveCommentary({
   const fen = useGameStore((s) => (s.ply > 0 ? s.moves[s.ply - 1]?.fen : undefined));
   const goTo = useGameStore((s) => s.goTo);
   const d = details[ply];
+  const focus = useOpeningFocus();
   const prev = findJump(summary, ply, -1);
   const next = findJump(summary, ply, 1);
 
@@ -97,6 +100,17 @@ export function MoveCommentary({
     <section className={styles.card} aria-label="Current move" data-testid="move-card">
       <div aria-live="polite" className={styles.cardBody}>
         {body}
+        {focus?.leftBy && focus.leavePly === ply && d && d.fenAfter === fen && (
+          <p className={styles.bookNote} data-testid="move-card-book">
+            {focus.endOfBook
+              ? 'First move after the book line (the theory ends at the previous move).'
+              : `Left the book here; book moves: ${
+                  focus.bookMoveInstead
+                    ? alternativesText(focus.bookMoveInstead, focus.openingName)
+                    : 'none'
+                }.`}
+          </p>
+        )}
       </div>
       <div className={styles.row}>
         <button

@@ -15,6 +15,8 @@ import {
 } from './BatchAnalyzer';
 import { buildMoveDetails, type MoveDetails } from './details';
 import { ServerReviewEngine, type RemoteReviewClient } from './serverReviewEngine';
+import { browserEnginePool, PooledEngine, type PoolLease } from '../engine/wasmPool';
+import { isRetryableEngineError, wasmHealth } from '../engine/wasmHealth';
 
 export type ReviewStatus = 'idle' | 'running' | 'done' | 'error' | 'cancelled';
 
@@ -56,6 +58,11 @@ export interface ReviewState {
   runsOn?: ReviewEngineInfo;
   /** One-line notice when the server could not be used (fallback to the browser). */
   engineNotice?: string;
+  /**
+   * The game store's `moves` array the current/last run reviews (identity: still the same array
+   * means the review belongs to the game on the board, e.g. for the Play tab's Review button).
+   */
+  reviewed?: GameState['moves'];
 }
 
 export interface StartMeta {
@@ -78,15 +85,10 @@ export interface ReviewActions {
 
 export type ReviewStore = ReviewState & ReviewActions;
 
-/** Engine factory: returns an engine with a `load()` the store calls once (lazily). */
+/** Engine factory: returns an engine with a `load()` the pool calls once (lazily). */
 export type CreateReviewEngine = () => Engine | Promise<Engine>;
 /** Server client factory (one dedicated connection + session per review run); not loaded yet. */
 export type CreateServerReviewClient = () => RemoteReviewClient | Promise<RemoteReviewClient>;
-
-const createWasmEngine: CreateReviewEngine = async () => {
-  const { WasmEngineClient } = await import('../engine/WasmEngineClient');
-  return new WasmEngineClient();
-};
 
 /** Handshake budget of the review's server connection (it doubles as the probe). */
 export const REVIEW_HANDSHAKE_TIMEOUT_MS = 5_000;
@@ -109,11 +111,8 @@ const createRemoteClient: CreateServerReviewClient = async () => {
 /** Upper bound for cached positions per options key (oldest entries are dropped first). */
 export const MAX_CACHED_POSITIONS = 5000;
 
-let createEngine: CreateReviewEngine = createWasmEngine;
 /** `null`: no engine server configured (`auto` then silently uses the browser). */
 let createServerClient: CreateServerReviewClient | null = createRemoteClient;
-let enginePromise: Promise<Engine> | null = null;
-let engine: Engine | null = null;
 const caches = new Map<string, PositionCache>();
 /** Recent server failures (auto mode cooldown), keyed by server URL + token. */
 const serverFailures = new Map<string, { until: number; reason: string; silent: boolean }>();
@@ -126,44 +125,33 @@ let settling: Promise<unknown> = Promise.resolve();
 let analysisSuspended = false;
 
 /**
- * Replaces the browser engine factory (tests). Without a second argument the server is treated
- * as not configured, so a review never touches the network. Disposes the current engine.
+ * Replaces the browser engine factory of the shared pool (tests). Without a second argument the
+ * server is treated as not configured, so a review never touches the network. Disposes the
+ * current browser engine.
  */
 export function setReviewEngineFactory(
   factory: CreateReviewEngine,
   server: CreateServerReviewClient | null = null,
 ): void {
-  createEngine = factory;
   createServerClient = server;
-  void disposeReviewEngine();
+  current?.cancel();
+  browserEnginePool.setFactory(factory);
 }
 
-/** Disposes the review engine and forgets all cached positions and server failures (tests, teardown). */
+/**
+ * Disposes the shared browser engine (also when a drill or game holds it) and forgets all cached
+ * positions and server failures (tests, teardown).
+ */
 export async function disposeReviewEngine(): Promise<void> {
   current?.cancel();
-  const e = engine;
-  engine = null;
-  enginePromise = null;
   caches.clear();
   serverFailures.clear();
-  if (e) await e.dispose().catch(() => undefined);
+  await browserEnginePool.dispose();
 }
 
-function getEngine(): Promise<Engine> {
-  enginePromise ??= (async () => {
-    const e = await createEngine();
-    engine = e;
-    await e.load();
-    return e;
-  })().catch((err: unknown) => {
-    // Retry with a fresh engine next time.
-    const e = engine;
-    engine = null;
-    enginePromise = null;
-    if (e) void e.dispose().catch(() => undefined);
-    throw err;
-  });
-  return enginePromise;
+/** True when an engine server is configured (the review/drill can fall back to it). */
+export function serverConfigured(): boolean {
+  return createServerClient !== null;
 }
 
 /** Short reason for the fallback notice (protocol code → words). */
@@ -201,14 +189,23 @@ interface Selected {
   runsOn: ReviewEngineInfo;
   /** Set for a server run: disposed (session released) when the run ends or falls back. */
   server?: ServerReviewEngine;
+  /** Set for a browser run: the lease of the shared engine, released when the run ends. */
+  lease?: PoolLease;
   notice?: string;
 }
 
 const BROWSER: ReviewEngineInfo = { kind: 'browser' };
 
-async function browserEngine(notice?: string): Promise<Selected> {
-  return { engine: await getEngine(), runsOn: BROWSER, ...(notice ? { notice } : {}) };
+/** The shared browser engine for one run (waits while a drill check or engine move holds it). */
+async function browserEngine(notice?: string, signal?: AbortSignal): Promise<Selected> {
+  const lease = await browserEnginePool.acquire('review', signal ? { signal } : {});
+  return { engine: lease.engine, runsOn: BROWSER, lease, ...(notice ? { notice } : {}) };
 }
+
+/** The browser engine is disabled for this session (its degraded retry failed too; ADR-015). */
+export const browserEngineDisabled = (): boolean => wasmHealth().disabled !== undefined;
+
+export const BROWSER_UNAVAILABLE_NOTICE = 'Browser engine unavailable — reviewing on the server';
 
 /**
  * Picks the engine for one run (ADR-014): the server (a fresh dedicated session) for `server`,
@@ -219,6 +216,7 @@ async function browserEngine(notice?: string): Promise<Selected> {
 async function selectEngine(
   pref: ReviewEnginePreference,
   browser: (notice?: string) => Promise<Selected> = browserEngine,
+  trace: { server: boolean } = { server: false },
 ): Promise<Selected> {
   const factory = createServerClient;
   if (pref === 'browser') return browser();
@@ -231,6 +229,7 @@ async function selectEngine(
     return browser(noticeFor(pref, failed.reason, failed.silent));
   }
   let server: ServerReviewEngine | null = null;
+  trace.server = true;
   try {
     server = new ServerReviewEngine(await factory());
     await server.load();
@@ -262,28 +261,33 @@ export interface SearchEngineLease {
   dispose(): Promise<void>;
 }
 
+export interface OpenSearchEngineOptions {
+  /** The browser path waits while another user (the review) holds the shared engine. */
+  onWait?: (waiting: boolean) => void;
+}
+
 /**
  * Picks an engine exactly like the review does (ADR-014: setting `reviewEngine`, server URL and
- * token, handshake as probe, 60 s failure cooldown in `auto`), but never shares an engine with the
- * review: the server path opens its own session and the browser path its own engine instance from
- * the review's browser factory, so both can search at the same time. The caller owns the lease
- * and must `dispose()` it. A server that fails mid-use should be reported with
- * {@link reportSearchServerFailure} before falling back to `openSearchEngine('browser')`.
+ * token, handshake as probe, 60 s failure cooldown in `auto`). The server path opens its own
+ * session. The browser path shares the review's pooled browser engine (ADR-015): each search
+ * leases it and gives it back, so it waits while a review runs (`onWait`) and never adds a WASM
+ * instance. The caller owns the lease and must `dispose()` it. A server that fails mid-use should
+ * be reported with {@link reportSearchServerFailure} before falling back to
+ * `openSearchEngine('browser')`.
  */
 export async function openSearchEngine(
   pref: ReviewEnginePreference = useSettingsStore.getState().reviewEngine,
+  opts: OpenSearchEngineOptions = {},
 ): Promise<SearchEngineLease> {
-  const dedicatedBrowser = async (notice?: string): Promise<Selected> => {
-    const e = await createEngine();
-    try {
-      await e.load();
-    } catch (err) {
-      void e.dispose().catch(() => undefined);
-      throw err;
-    }
-    return { engine: e, runsOn: BROWSER, ...(notice ? { notice } : {}) };
-  };
-  const selected = await selectEngine(pref, dedicatedBrowser);
+  const pooledBrowser = async (notice?: string): Promise<Selected> => ({
+    engine: new PooledEngine(browserEnginePool, {
+      purpose: 'drill',
+      ...(opts.onWait ? { onWait: (waiting: boolean) => opts.onWait?.(waiting) } : {}),
+    }),
+    runsOn: BROWSER,
+    ...(notice ? { notice } : {}),
+  });
+  const selected = await selectEngine(pref, pooledBrowser);
   let disposed = false;
   return {
     engine: selected.engine,
@@ -361,6 +365,7 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
     if (current) return current.promise;
     const options = opts ? { ...opts } : get().options;
     const batchOptions = normalize(options);
+    const reviewed = useGameStore.getState().moves;
     const game = gameToBatch(useGameStore.getState());
     const my = ++token;
     const total = game.moves.length + 1;
@@ -383,9 +388,11 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       engineNotice: undefined,
       trigger: meta?.auto ? 'auto' : 'manual',
       autoNotice: meta?.auto === true,
+      reviewed,
     });
 
     let cancelled = false;
+    const aborter = new AbortController();
     let run: { cancel(): void } | null = null;
     let selected: Selected | null = null;
     const isCurrent = (): boolean => current?.token === my;
@@ -395,10 +402,20 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
         // A reset run may still be stopping its search; never overlap two runs on the engine.
         await settling;
         const pref = useSettingsStore.getState().reviewEngine;
-        selected = await selectEngine(pref);
+        const trace = { server: false };
+        const browser = (notice?: string) => browserEngine(notice, aborter.signal);
+        // The browser engine failed for good (ADR-015): the server once, if configured and allowed.
+        const serverInstead = async (err: unknown): Promise<Selected> => {
+          if (pref === 'browser' || trace.server || !createServerClient || !browserEngineDisabled())
+            throw err;
+          const s = await selectEngine('server', () => Promise.reject(err), trace);
+          return { ...s, notice: s.notice ?? BROWSER_UNAVAILABLE_NOTICE };
+        };
+        selected = await selectEngine(pref, browser, trace).catch(serverInstead);
         if (cancelled) throw abortError();
         if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
         const cache = cacheFor(optionsKey(batchOptions));
+        let recreated = false;
         try {
           for (;;) {
             const analyzer = new BatchAnalyzer({
@@ -423,8 +440,25 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
             try {
               summary = await r.promise;
             } catch (err) {
+              if (cancelled || isAbortError(err)) throw err;
               const server = selected.server;
-              if (!server || cancelled || isAbortError(err)) throw err;
+              if (!server) {
+                // The browser engine failed: never hand it to the next user. Out of memory → one
+                // fresh (degraded, single-threaded) instance; disabled → the server, if allowed.
+                const lease = selected.lease;
+                const notice = selected.notice;
+                selected = null;
+                lease?.release({ broken: true });
+                if (isRetryableEngineError(err) && !recreated) {
+                  recreated = true;
+                  selected = await browser(notice);
+                } else {
+                  selected = await serverInstead(err);
+                  if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
+                }
+                if (cancelled) throw abortError();
+                continue;
+              }
               // The server dropped mid-review: finish on the browser engine. Positions analysed so
               // far stay in `cache` (same key for both engines), so only the rest is searched.
               selected = null; // disposed here, not again in `finally`
@@ -433,7 +467,7 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
               rememberFailure(serverKey(), reason, isUnauthorized(err));
               const notice = noticeFor(pref, reason, isUnauthorized(err));
               if (isCurrent()) set({ runsOn: BROWSER, engineNotice: notice });
-              selected = await browserEngine(notice);
+              selected = await browser(notice);
               if (cancelled) throw abortError();
               continue;
             }
@@ -460,6 +494,8 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
         // live server engines keep their quota between reviews.
         const server = selected?.server;
         if (server) await server.dispose().catch(() => undefined);
+        // The shared browser engine stays loaded for the next user (idle disposal in the pool).
+        selected?.lease?.release();
         if (isCurrent()) current = null;
         if (current === null && analysisSuspended) {
           analysisSuspended = false;
@@ -473,6 +509,7 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       token: my,
       cancel: () => {
         cancelled = true;
+        aborter.abort();
         run?.cancel();
       },
       promise,
@@ -498,6 +535,7 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       autoNotice: false,
       runsOn: undefined,
       engineNotice: undefined,
+      reviewed: undefined,
     });
   },
 

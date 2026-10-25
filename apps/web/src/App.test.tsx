@@ -10,6 +10,7 @@ vi.mock('chessground/assets/chessground.cburnett.css', () => ({}));
 
 import { App } from './App';
 import { useGameStore } from './store/gameStore';
+import { useUiStore } from './store/uiStore';
 
 beforeEach(() => useGameStore.getState().reset());
 
@@ -52,6 +53,31 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Flip' }));
     expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe('White: White');
     expect(screen.getByTestId('player-bar-bottom').getAttribute('aria-label')).toBe('Black: Black');
+  });
+
+  it('tab row: one tablist, roving tabindex, arrow keys, active tab scrolled into view', () => {
+    useUiStore.setState({ activeTab: 'moves' });
+    render(<App />);
+    const list = screen.getByRole('tablist', { name: 'Game panels' });
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(9);
+    expect(tabs.filter((t) => t.tabIndex === 0)).toHaveLength(1);
+    // Layout of a narrow panel: 9 tabs of 60px in a 200px wide row (jsdom has no layout).
+    const define = (el: HTMLElement, props: Record<string, number>) => {
+      for (const [k, v] of Object.entries(props))
+        Object.defineProperty(el, k, { configurable: true, value: v });
+    };
+    define(list, { clientWidth: 200 });
+    tabs.forEach((t, i) => define(t, { offsetLeft: i * 60, offsetWidth: 60 }));
+    list.scrollLeft = 0;
+    fireEvent.keyDown(tabs[0]!, { key: 'End' });
+    const settings = screen.getByRole('tab', { name: 'Settings' });
+    expect(settings.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(settings);
+    expect(list.scrollLeft).toBe(8 * 60 + 60 - 200);
+    fireEvent.keyDown(settings, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Moves' }).getAttribute('aria-selected')).toBe('true');
+    expect(list.scrollLeft).toBe(0);
   });
 });
 afterEach(cleanup);

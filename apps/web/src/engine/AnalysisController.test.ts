@@ -420,6 +420,51 @@ describe('AnalysisController', () => {
     expect(cb.statuses.at(-1)).toBe('analysing');
   });
 
+  it('an out-of-memory search failure (retryable) recreates the engine once without an error', async () => {
+    const { c, cb, factory, engines } = setup();
+    c.setPosition(FEN_A);
+    c.setEnabled(true);
+    await settle();
+    const oom = () =>
+      Object.assign(new Error('Stockfish worker error: RangeError: Out of memory'), {
+        retryable: true,
+      });
+    engines[0]!.last().fail(oom());
+    await settle();
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(engines[0]!.disposed).toBe(true);
+    expect(cb.statuses).not.toContain('error');
+    expect(engines[1]!.last().fen).toBe(FEN_A);
+    expect(cb.statuses.at(-1)).toBe('analysing');
+    // The fresh engine loaded: a later retryable failure may recreate once more…
+    engines[1]!.last().fail(oom());
+    await settle();
+    expect(factory).toHaveBeenCalledTimes(3);
+  });
+
+  it('a final browser-engine error is not retried on re-enable (only by retry())', async () => {
+    const { c, cb, factory, failNextLoad } = setup();
+    failNextLoad(Object.assign(new Error('RangeError: Out of memory'), { retryable: false }));
+    c.setPosition(FEN_A);
+    c.setEnabled(true);
+    await settle();
+    expect(cb.statuses).toEqual(['loading', 'error']);
+    // Paused and resumed (review/drill/play): no new engine, the error is shown again.
+    c.setEnabled(false);
+    c.setEnabled(true);
+    await settle();
+    c.setSettings({ depth: 10, multipv: 2 });
+    c.setPosition(FEN_B);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(cb.statuses.at(-1)).toBe('error');
+    expect(cb.errors.at(-1)).toBe('RangeError: Out of memory');
+    c.retry();
+    await settle();
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(cb.statuses.at(-1)).toBe('analysing');
+  });
+
   it('does not analyse terminal positions', async () => {
     const { c, cb, engine } = setup();
     c.setPosition(MATED);

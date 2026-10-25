@@ -16,6 +16,7 @@ import {
   displacedBy,
   isMultiThreadKey,
   MAX_REMOTE_ENGINES,
+  maxWasmInstances,
   parseEngineKey,
   probeServer as runProbe,
   type EngineKey,
@@ -24,6 +25,8 @@ import {
   type RegistryEnv,
   type ServerProbeState,
 } from '../engine/registry';
+import { browserEnginePool } from '../engine/wasmPool';
+import { allowWasmRetry, clearWasmNotice, subscribeWasmHealth, wasmHealth } from '../engine/wasmHealth';
 import { currentFen, useGameStore } from './gameStore';
 import { useSettingsStore } from './settingsStore';
 
@@ -98,6 +101,8 @@ export interface AnalysisState {
   serverProbe: ServerProbeState;
   /** Why the last attempt to enable an engine was refused (resource guard). */
   engineHint?: string;
+  /** One-time notice of the browser engine's out-of-memory recovery (ADR-015). */
+  wasmNotice?: string;
 }
 
 export interface AnalysisActions {
@@ -120,7 +125,8 @@ export interface AnalysisActions {
   /** Replaces the server engines by the default browser engine (error fallback). */
   fallBackToBrowser(): void;
   clearEngineHint(): void;
-  /** Re-creates failed engines (all, or only `key`). */
+  dismissWasmNotice(): void;
+  /** Re-creates failed engines (all, or only `key`); also re-allows a disabled browser engine. */
   retry(key?: EngineKey): void;
   /**
    * Discovers the server's engines (one short connection). Cached: a successful result is reused
@@ -171,12 +177,14 @@ export function sanitizeSettings(
 
 /**
  * Valid, unique keys in order: a multi-threaded build (`wasm:lite`/`wasm:full`) that this page
- * cannot run becomes `wasm:lite-single`, only the first multi-threaded build is kept, server
- * engines are capped at {@link MAX_REMOTE_ENGINES}; never empty (default browser engine).
+ * cannot run becomes `wasm:lite-single`, only the first multi-threaded build is kept, browser
+ * engines are capped by the memory budget, server engines at {@link MAX_REMOTE_ENGINES}; never
+ * empty (default browser engine).
  */
 export function sanitizeEngineKeys(keys: unknown, env: RegistryEnv = currentEnv()): EngineKey[] {
   const out: EngineKey[] = [];
   let remotes = 0;
+  let wasm = 0;
   for (const raw of Array.isArray(keys) ? keys : []) {
     const parsed = parseEngineKey(raw);
     if (!parsed) continue;
@@ -187,6 +195,7 @@ export function sanitizeEngineKeys(keys: unknown, env: RegistryEnv = currentEnv(
     if (out.includes(key)) continue;
     if (isMultiThreadKey(key) && out.some(isMultiThreadKey)) continue;
     if (parsed.backend === 'remote' && ++remotes > MAX_REMOTE_ENGINES) continue;
+    if (parsed.backend === 'wasm' && ++wasm > maxWasmInstances(env)) continue;
     out.push(key);
     if (out.length >= MAX_ENGINES) break;
   }
@@ -442,6 +451,7 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
     fen: currentFen(useGameStore.getState()),
     terminal: null,
     serverProbe: { status: 'idle' },
+    ...(wasmHealth().notice ? { wasmNotice: wasmHealth().notice } : {}),
 
     setEnabled: (enabled) => {
       // Disabling also clears pending errors; re-enabling retries with fresh engines.
@@ -569,7 +579,15 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
 
     clearEngineHint: () => set({ engineHint: undefined }),
 
-    retry: (key) => bridge?.retry(key),
+    dismissWasmNotice: () => {
+      clearWasmNotice();
+      set({ wasmNotice: undefined });
+    },
+
+    retry: (key) => {
+      if (key === undefined || !isRemoteKey(key)) allowWasmRetry();
+      bridge?.retry(key);
+    },
 
     probeServer: (opts = {}) => {
       if (probePromise) return probePromise;
@@ -616,6 +634,11 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
       bridge?.setPosition(fen);
     },
   };
+});
+
+// The browser engine's out-of-memory notice (set once per session by the engine code).
+subscribeWasmHealth((h) => {
+  if (h.notice !== useAnalysisStore.getState().wasmNotice) useAnalysisStore.setState({ wasmNotice: h.notice });
 });
 
 /** Primary (first enabled) engine's state; a stable reference between its updates. */
@@ -834,9 +857,15 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
   const own: ControllerBridge = {
     sync,
     setEnabled: (enabled) => {
+      const constrained = get().env.budget?.constrained === true;
+      // Memory-constrained devices (ADR-015): the shared batch engine of the review/drill/game
+      // goes away before the live engine loads again, and a paused live browser engine is
+      // released (reloaded lazily on resume), so only one WASM instance is alive at a time.
+      if (enabled && constrained) void browserEnginePool.trim();
       for (const r of runners.values()) {
         if (!enabled) resetReconnect(r);
         r.controller.setEnabled(enabled);
+        if (!enabled && constrained && r.spec.backend === 'wasm') r.controller.release();
       }
     },
     applySettings: () => {

@@ -119,6 +119,35 @@ describe('AnalysisPanel', () => {
     expect(threads.map((o) => o.value)).toEqual(['1']);
   });
 
+  it('memory-constrained device (iPad): threads capped at 2 also with a persisted override of 7', () => {
+    useAnalysisStore.setState({
+      env: {
+        crossOriginIsolated: true,
+        hardwareConcurrency: 8,
+        budget: { maxInstances: 1, maxThreads: 2, constrained: true, reason: 'ios' },
+      },
+      settings: { depth: 22, multipv: 2, threads: 7 },
+    });
+    single({ ...browserInstance, capabilities: { threads: true, build: 'mt', threadCount: 2 } });
+    render(<AnalysisPanel />);
+    const select = screen.getByLabelText('Threads') as HTMLSelectElement;
+    expect(Array.from(select.querySelectorAll('option')).map((o) => o.value)).toEqual(['1', '2']);
+    expect(select.value).toBe('2');
+  });
+
+  it('shows the out-of-memory notice once with a dismiss button', () => {
+    const dismissWasmNotice = vi.fn(() => useAnalysisStore.setState({ wasmNotice: undefined }));
+    useAnalysisStore.setState({
+      wasmNotice: 'Browser engine restarted with 1 thread after running out of memory',
+      dismissWasmNotice,
+    });
+    render(<AnalysisPanel />);
+    expect(screen.getByTestId('wasm-notice').textContent).toMatch(/restarted with 1 thread/);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(dismissWasmNotice).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('wasm-notice')).toBeNull();
+  });
+
   it("single engine: a change of the defaults drops that engine's override of the field", () => {
     useAnalysisStore.setState({ engineSettings: { [SINGLE]: { depth: 14, multipv: 3 } } });
     render(<AnalysisPanel />);

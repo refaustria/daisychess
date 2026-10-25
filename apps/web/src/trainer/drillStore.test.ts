@@ -1,7 +1,8 @@
 import { Chess } from 'chess.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Book, openingKey, type BookOpening, type OpeningRow } from '../openings/book';
-import { resetPlay, usePlayStore } from '../play/playStore';
+import { FakePlayEngine } from '../play/fakePlayEngine';
+import { configurePlay, resetPlay, setPlayStartGuard, usePlayStore } from '../play/playStore';
 import { FakeReviewEngine } from '../review/fakeEngine';
 import type { SearchEngineLease } from '../review/reviewStore';
 import { useGameStore } from '../store/gameStore';
@@ -302,6 +303,8 @@ describe('line end, summary and schedule', () => {
       interval: 1,
       lapses: 0,
       successes: 1,
+      lastAt: now,
+      lastMistakes: 0,
     });
     expect(JSON.parse(storage.data[TRAINER_KEY]!)[key].interval).toBe(1);
     expect(drillMovableColor(drill(), true)).toBeUndefined();
@@ -327,7 +330,14 @@ describe('line end, summary and schedule', () => {
     await vi.waitFor(() => expect(drill().status).toBe('done'));
     expect(drill().summary).toMatchObject({ userMoves: 1, firstTry: 0, mistakes: 1 });
     const key = openingKey(sicilian);
-    expect(drill().schedule[key]).toEqual({ due: now, interval: 1, lapses: 1, successes: 0 });
+    expect(drill().schedule[key]).toEqual({
+      due: now,
+      interval: 1,
+      lapses: 1,
+      successes: 0,
+      lastAt: now,
+      lastMistakes: 1,
+    });
     expect(dueCount(drill().schedule, now)).toBe(1);
 
     game().reset();
@@ -342,15 +352,56 @@ describe('line end, summary and schedule', () => {
     expect(drill().opening?.name).toBe('Italian Game: Giuoco Piano');
   });
 
-  it('Play on hands the position to the Play tab', async () => {
+  it('Play on starts the engine game from the drill position with the drill colour', async () => {
+    const playEngine = new FakePlayEngine();
+    playEngine.manual = true;
+    await configurePlay({ createEngine: () => playEngine, extraDelayMs: () => 0 });
     drill().start(sicilian, 'white');
     play('e4');
     await vi.waitFor(() => expect(drill().status).toBe('done'));
     useUiStore.getState().setActiveTab('openings');
     drill().playOn();
     expect(useUiStore.getState().activeTab).toBe('play');
+    expect(usePlayStore.getState()).toMatchObject({
+      mode: 'playing',
+      playerColor: 'white',
+      fromPly: 2,
+      setup: { from: 'current', color: 'white' },
+    });
     expect(sans()).toEqual(['e4', 'c5']);
+    expect(game().orientation).toBe('white');
     expect(drill().status).toBe('idle');
+  });
+
+  it('Play on as Black: the engine game starts with Black for the user', async () => {
+    const playEngine = new FakePlayEngine();
+    playEngine.manual = true;
+    await configurePlay({ createEngine: () => playEngine, extraDelayMs: () => 0 });
+    drill().start(sicilian, 'black');
+    await waitPhase('user');
+    play('c5');
+    await vi.waitFor(() => expect(drill().status).toBe('done'));
+    drill().playOn();
+    expect(usePlayStore.getState()).toMatchObject({ mode: 'playing', playerColor: 'black' });
+    expect(game().orientation).toBe('black');
+    expect(useUiStore.getState().activeTab).toBe('play');
+  });
+
+  it('Play on that cannot start shows the play store message and stays on the tab', async () => {
+    drill().start(sicilian, 'white');
+    play('e4');
+    await vi.waitFor(() => expect(drill().status).toBe('done'));
+    useUiStore.getState().setActiveTab('openings');
+    setPlayStartGuard(() => 'A live game is running.', 'drill-test');
+    try {
+      drill().playOn();
+    } finally {
+      setPlayStartGuard(() => null, 'drill-test');
+    }
+    expect(usePlayStore.getState().mode).toBe('idle');
+    expect(useUiStore.getState().activeTab).toBe('openings');
+    expect(drill().message).toBe('A live game is running.');
+    expect(sans()).toEqual(['e4', 'c5']);
   });
 });
 

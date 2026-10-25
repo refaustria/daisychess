@@ -30,6 +30,8 @@ import {
   type EngineInstanceState,
   type EngineSpec,
 } from './analysisStore';
+import { memoryBudget } from '../engine/memoryBudget';
+import { degradedNotice, markWasmDegraded, resetWasmHealth } from '../engine/wasmHealth';
 import { START_FEN, useGameStore } from './gameStore';
 import { useSettingsStore } from './settingsStore';
 
@@ -43,6 +45,14 @@ const info = (multipv: number, depth: number, cp = 10): EngineInfo => ({
 
 const ISOLATED = { crossOriginIsolated: true, hardwareConcurrency: 8 };
 const PLAIN = { crossOriginIsolated: false, hardwareConcurrency: 8 };
+/** iPad: iPadOS reports a Mac user agent with touch points (memory budget: 1 instance, 2 threads). */
+const IPAD_BUDGET = memoryBudget({
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
+  platform: 'MacIntel',
+  maxTouchPoints: 5,
+  hardwareConcurrency: 8,
+});
+const IPAD = { crossOriginIsolated: true, hardwareConcurrency: 8, budget: IPAD_BUDGET };
 const SINGLE = 'wasm:lite-single';
 const REMOTE = 'remote:stockfish';
 
@@ -552,6 +562,57 @@ describe('multi-engine instances', () => {
     useAnalysisStore.setState({ env: PLAIN });
     expect(s.setEngineEnabled('wasm:full', true)).toBe(false);
     expect(useAnalysisStore.getState().engineHint).toMatch(/cross-origin isolated/);
+  });
+
+  it('memory budget of 1: a second browser engine is refused with a clear reason', async () => {
+    useAnalysisStore.setState({ env: IPAD });
+    const s = useAnalysisStore.getState();
+    s.setEnabled(true);
+    await settle();
+    expect(s.setEngineEnabled('wasm:lite', true)).toBe(false);
+    expect(useAnalysisStore.getState().engineHint).toBe(
+      'Memory budget: one browser engine at a time on this device',
+    );
+    expect(useAnalysisStore.getState().enabledEngines).toEqual([SINGLE]);
+    expect(created.map((c) => c.key)).toEqual([SINGLE]);
+    // A server engine is no browser instance: allowed.
+    expect(s.setEngineEnabled(REMOTE, true)).toBe(true);
+    // Persisted keys beyond the budget are dropped.
+    expect(sanitizeEngineKeys(['wasm:lite', SINGLE, REMOTE], IPAD)).toEqual(['wasm:lite', REMOTE]);
+  });
+
+  it('memory-constrained: pausing releases the live browser engine, resuming reloads it lazily', async () => {
+    useAnalysisStore.setState({ env: IPAD });
+    const s = useAnalysisStore.getState();
+    s.setEnabled(true);
+    s.setEngineEnabled(REMOTE, true);
+    await settle();
+    const first = engineOf(SINGLE);
+    const remote = engineOf(REMOTE);
+    s.setEnabled(false);
+    await settle();
+    expect(first.disposedCount).toBe(1);
+    expect(remote.disposedCount).toBe(0);
+    s.setEnabled(true);
+    await settle();
+    expect(created.filter((c) => c.key === SINGLE)).toHaveLength(2);
+    expect(inst(SINGLE)!.status).toBe('analysing');
+    // Unconstrained devices keep the paused engine.
+    useAnalysisStore.setState({ env: PLAIN });
+    s.setEnabled(false);
+    await settle();
+    expect(engineOf(SINGLE).disposedCount).toBe(0);
+  });
+
+  it('shows the out-of-memory notice once and dismisses it', () => {
+    resetWasmHealth();
+    expect(useAnalysisStore.getState().wasmNotice).toBeUndefined();
+    markWasmDegraded('oom');
+    markWasmDegraded('oom');
+    expect(useAnalysisStore.getState().wasmNotice).toBe(degradedNotice('oom'));
+    useAnalysisStore.getState().dismissWasmNotice();
+    expect(useAnalysisStore.getState().wasmNotice).toBeUndefined();
+    resetWasmHealth();
   });
 
   it('a new access token in the settings reconnects the server engines', async () => {

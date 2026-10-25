@@ -6,4 +6,6 @@ declare const __STOCKFISH_ENGINE__: {
   builds: { 'lite-single': string; lite: string; full: string };
   /** Download size in bytes per build (script + `.wasm`). */
   sizes: { 'lite-single': number; lite: number; full: number };
+  /** Memory-cap worker shim for the multi-threaded builds (ADR-015). */
+  memoryShim: string;
 };

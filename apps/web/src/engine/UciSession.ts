@@ -26,6 +26,11 @@ export interface UciSessionOptions {
   handshakeTimeoutMs?: number;
   /** Max time for `isready`→`readyok` and `stop`→`bestmove`. Exceeding it fails the session. */
   responseTimeoutMs?: number;
+  /**
+   * Called once with a fatal error ({@link UciSession.fail}: worker error, abort, timeout) before it
+   * reaches pending operations and iterators; may return a replacement (e.g. a classified error).
+   */
+  onFatal?: (error: Error) => Error;
 }
 
 class Deferred<T> {
@@ -164,6 +169,7 @@ export class UciSession {
   private readonly aborted = new Deferred<never>();
   private readonly handshakeTimeoutMs: number;
   private readonly responseTimeoutMs: number;
+  private readonly onFatal: ((error: Error) => Error) | undefined;
 
   constructor(
     private readonly transport: UciTransport,
@@ -171,6 +177,7 @@ export class UciSession {
   ) {
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 30_000;
     this.responseTimeoutMs = opts.responseTimeoutMs ?? 10_000;
+    this.onFatal = opts.onFatal;
     this.aborted.promise.catch(() => undefined);
     transport.onLine((chunk) => {
       for (const line of chunk.split(/\r?\n/)) this.handleLine(line.trim());
@@ -274,8 +281,14 @@ export class UciSession {
   }
 
   /** Fatal error (worker crashed, engine aborted, timeout): rejects everything pending. */
-  fail(error: Error): void {
+  fail(cause: Error): void {
     if (this.terminal) return;
+    let error = cause;
+    try {
+      error = this.onFatal?.(cause) ?? cause;
+    } catch {
+      /* keep the original error */
+    }
     this.terminal = error;
     this.aborted.reject(error);
     this.running?.finish(null, error);

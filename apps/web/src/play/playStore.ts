@@ -10,6 +10,7 @@ import {
 } from '../clock/gameClock';
 import { sanitizeSetting, type ClockSetting } from '../clock/timeControls';
 import { PremoveQueue } from '../live/premoves';
+import { browserEnginePool, PooledEngine } from '../engine/wasmPool';
 import { useAnalysisStore } from '../store/analysisStore';
 import { useSettingsStore } from '../store/settingsStore';
 import {
@@ -124,12 +125,15 @@ export function takeBackPlies(
   return g.moves.length - Math.max(0, fromPly) >= n ? n : 0;
 }
 
-const createWasmPlayEngine: CreatePlayEngine = async () => {
-  const { WasmEngineClient } = await import('../engine/WasmEngineClient');
-  // Same build/threads selection as the registry: multi-threaded `lite` with
-  // max(1, min(cores - 1, 4)) threads when cross-origin isolated, `lite-single` otherwise.
-  return new WasmEngineClient();
-};
+/**
+ * The engine plays on the shared browser engine of the review/drill (ADR-015): each move leases
+ * it (strength options applied per lease, `UCI_LimitStrength` switched off again afterwards), so a
+ * game never adds a WASM instance. Same build/threads as the registry: multi-threaded `lite` with
+ * max(1, min(cores - 1, 4)) threads (memory budget cap) when cross-origin isolated, else
+ * `lite-single`.
+ */
+const createWasmPlayEngine: CreatePlayEngine = () =>
+  new PooledEngine(browserEnginePool, { purpose: 'play', restore: { UCI_LimitStrength: false } });
 
 interface PlayHooks {
   createEngine: CreatePlayEngine;

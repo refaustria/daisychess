@@ -3,7 +3,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { Chess } from 'chess.js';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getBook, loadOpenings } from '../../openings';
-import { resetPlay, usePlayStore } from '../../play/playStore';
+import { FakePlayEngine } from '../../play/fakePlayEngine';
+import { configurePlay, resetPlay, usePlayStore } from '../../play/playStore';
+import { useUiStore } from '../../store/uiStore';
 import { FakeReviewEngine } from '../../review/fakeEngine';
 import { useGameStore } from '../../store/gameStore';
 import { configureDrill, resetDrill, useDrillStore } from '../../trainer/drillStore';
@@ -97,6 +99,46 @@ describe('OpeningsPanel: picker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Train due' }));
     expect(useDrillStore.getState()).toMatchObject({ status: 'running', opening: italian });
     expect(screen.getByTestId('drill-feedback').textContent).toContain('You play White');
+  });
+
+  it('shows the last result per variation and the overall training line', () => {
+    const [italian, ruy] = [
+      getBook()!.search('Italian')[0]!,
+      getBook()!.openings.find((o) => o.name === 'Ruy Lopez')!,
+    ];
+    const at = new Date(2026, 9, 25, 12).getTime();
+    useDrillStore.setState({
+      schedule: {
+        [`${italian.eco} ${italian.name}`]: {
+          due: 0,
+          interval: 1,
+          lapses: 1,
+          successes: 0,
+          lastAt: at,
+          lastMistakes: 2,
+        },
+        [`${ruy.eco} ${ruy.name}`]: {
+          due: Date.now() + 3 * 86_400_000,
+          interval: 2.5,
+          lapses: 0,
+          successes: 2,
+          lastAt: at,
+          lastMistakes: 0,
+        },
+      },
+    });
+    render(<OpeningsPanel />);
+    expect(screen.getByTestId('drill-stats').textContent).toBe('Trained: 2 variations · due: 1');
+    fireEvent.change(search(), { target: { value: 'Italian' } });
+    const first = within(screen.getByRole('list', { name: 'Openings' })).getAllByRole('button')[0]!;
+    const date = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(at);
+    expect(within(first).getByTestId('last-result').textContent).toBe(`Last: ${date} · 2 mistakes`);
+    fireEvent.change(search(), { target: { value: 'Ruy Lopez' } });
+    const ruyItem = within(screen.getByRole('list', { name: 'Openings' })).getAllByRole(
+      'button',
+    )[0]!;
+    expect(ruyItem.textContent).toContain('in 3 days');
+    expect(within(ruyItem).getByTestId('last-result').textContent).toContain('no mistakes');
   });
 
   it('Train due is disabled when nothing is due', () => {
@@ -213,6 +255,31 @@ describe('OpeningsPanel: drill', () => {
     for (const name of ['Repeat', 'Next variation', 'Play on vs engine']) {
       expect(within(summary).getByRole('button', { name })).toBeTruthy();
     }
+  });
+
+  it('Play on vs engine starts the engine game with the drill colour and opens Play', async () => {
+    const playEngine = new FakePlayEngine();
+    playEngine.manual = true;
+    await configurePlay({ createEngine: () => playEngine, extraDelayMs: () => 0 });
+    const sicilian = getBook()!.openings.find((o) => o.name === 'Sicilian Defense')!;
+    useUiStore.setState({ activeTab: 'openings' });
+    render(<OpeningsPanel />);
+    act(() => useDrillStore.getState().start(sicilian, 'black'));
+    await waitFor(() => expect(game().moves.map((m) => m.san)).toEqual(['e4']));
+    act(() =>
+      useDrillStore.setState({
+        status: 'done',
+        phase: 'none',
+        summary: { reason: 'end', userMoves: 1, firstTry: 1, mistakes: 0 },
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Play on vs engine' }));
+    expect(usePlayStore.getState()).toMatchObject({
+      mode: 'playing',
+      playerColor: 'black',
+      fromPly: 1,
+    });
+    expect(useUiStore.getState().activeTab).toBe('play');
   });
 });
 

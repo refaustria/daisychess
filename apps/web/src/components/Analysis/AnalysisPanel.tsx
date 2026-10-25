@@ -13,6 +13,7 @@ import {
   describeEngine,
   formatDownload,
   listEngines,
+  maxWasmThreads,
   shortEngineName,
   type EngineDescriptor,
 } from '../../engine/registry';
@@ -356,6 +357,8 @@ export function AnalysisPanel() {
   const setSettings = useAnalysisStore((s) => s.setSettings);
   const setEngineSettings = useAnalysisStore((s) => s.setEngineSettings);
   const applySettingsToAll = useAnalysisStore((s) => s.applySettingsToAll);
+  const wasmNotice = useAnalysisStore((s) => s.wasmNotice);
+  const dismissWasmNotice = useAnalysisStore((s) => s.dismissWasmNotice);
   const [open, setOpen] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const tabsId = useId();
@@ -389,7 +392,7 @@ export function AnalysisPanel() {
   const settings = override ? { ...defaults, ...override } : defaults;
   const activeDescriptor = descriptors.find((d) => d.key === activeKey);
   const maxThreads =
-    remote && limits ? limits.maxThreads : Math.max(1, env.hardwareConcurrency - 1);
+    remote && limits ? limits.maxThreads : maxWasmThreads(env);
   const maxLines = remote && limits ? Math.min(MAX_MULTIPV, limits.maxMultipv) : MAX_MULTIPV;
   const maxDepth = remote && limits ? limits.maxDepth : Infinity;
   // The server clamps to its limits; show what will actually run.
@@ -499,6 +502,14 @@ export function AnalysisPanel() {
             />
           ))}
         </div>
+      )}
+      {wasmNotice && (
+        <p className={styles.notice} role="status" data-testid="wasm-notice">
+          {wasmNotice}{' '}
+          <button type="button" className={styles.linkButton} onClick={dismissWasmNotice}>
+            Dismiss
+          </button>
+        </p>
       )}
       {open && (
         <>

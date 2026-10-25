@@ -16,6 +16,10 @@ export interface ScheduleEntry {
   lapses: number;
   /** Drills right first try. */
   successes: number;
+  /** When the variation was last drilled (epoch ms); missing in entries stored before M18-3. */
+  lastAt?: number;
+  /** Mistakes in the last drill. */
+  lastMistakes?: number;
 }
 
 export type Schedule = Readonly<Record<string, ScheduleEntry>>;
@@ -28,15 +32,20 @@ export const MAX_INTERVAL_DAYS = 3650;
 /** Entries kept at most (oldest due dropped first); keeps the stored JSON small. */
 export const MAX_ENTRIES = 5000;
 
-/** The entry after one drill of the variation: `success` = no mistake. */
+/**
+ * The entry after one drill of the variation: `success` = no mistake. `mistakes` is the number
+ * of mistakes of that drill (stored as the last result; defaults to 0 / 1 by `success`).
+ */
 export function reviewEntry(
   prev: ScheduleEntry | undefined,
   success: boolean,
   now: number,
+  mistakes: number = success ? 0 : 1,
 ): ScheduleEntry {
   const base = prev ?? { due: now, interval: 0, lapses: 0, successes: 0 };
+  const last = { lastAt: now, lastMistakes: Math.max(0, Math.floor(mistakes)) };
   if (!success) {
-    return { due: now, interval: 1, lapses: base.lapses + 1, successes: base.successes };
+    return { due: now, interval: 1, lapses: base.lapses + 1, successes: base.successes, ...last };
   }
   const interval = Math.min(MAX_INTERVAL_DAYS, Math.max(1, base.interval * GROWTH));
   return {
@@ -44,6 +53,7 @@ export function reviewEntry(
     interval,
     lapses: base.lapses,
     successes: base.successes + 1,
+    ...last,
   };
 }
 
@@ -53,8 +63,9 @@ export function recordResult(
   key: string,
   success: boolean,
   now: number,
+  mistakes?: number,
 ): Schedule {
-  return { ...schedule, [key]: reviewEntry(schedule[key], success, now) };
+  return { ...schedule, [key]: reviewEntry(schedule[key], success, now, mistakes) };
 }
 
 export const isDue = (e: ScheduleEntry, now: number): boolean => e.due <= now;
@@ -65,6 +76,12 @@ export function dueKeys(schedule: Schedule, now: number): string[] {
     .filter(([, e]) => isDue(e, now))
     .sort(([ka, a], [kb, b]) => a.due - b.due || ka.localeCompare(kb))
     .map(([k]) => k);
+}
+
+/** Number of trained variations and of the due ones (the picker's overview line). */
+export function scheduleStats(schedule: Schedule, now: number): { trained: number; due: number } {
+  const entries = Object.values(schedule);
+  return { trained: entries.length, due: entries.filter((e) => isDue(e, now)).length };
 }
 
 const finiteNonNeg = (v: unknown): v is number =>
@@ -97,6 +114,8 @@ export function parseSchedule(raw: string | null): Schedule {
       interval: Math.min(MAX_INTERVAL_DAYS, o.interval),
       lapses: Math.floor(o.lapses),
       successes: Math.floor(o.successes),
+      ...(finiteNonNeg(o.lastAt) ? { lastAt: o.lastAt } : {}),
+      ...(finiteNonNeg(o.lastMistakes) ? { lastMistakes: Math.floor(o.lastMistakes) } : {}),
     };
   }
   return out;

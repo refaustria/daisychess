@@ -1,6 +1,8 @@
 import type { EngineDescriptor as ServerEngine } from '@chesslab/engine-core';
 import { describe, expect, it } from 'vitest';
 import {
+  maxWasmInstances,
+  maxWasmThreads,
   browserEngines,
   canEnable,
   defaultWasmKey,
@@ -199,5 +201,56 @@ describe('probeServer', () => {
     const bad = new FakeClient(Object.assign(new Error('closed'), { code: 'closed' }));
     await expect(probeServer(async () => bad)).rejects.toThrow('closed');
     expect(bad.disposed).toBe(1);
+  });
+});
+
+describe('memory budget (ADR-015)', () => {
+  const IPAD = {
+    crossOriginIsolated: true,
+    hardwareConcurrency: 8,
+    budget: { maxInstances: 1, maxThreads: 2, constrained: true, reason: 'ios' as const },
+  };
+  const DESKTOP = {
+    crossOriginIsolated: true,
+    hardwareConcurrency: 8,
+    budget: { maxInstances: 2, maxThreads: 4, constrained: false },
+  };
+
+  it('caps default threads and the offered thread range on constrained devices', () => {
+    expect(defaultThreads(IPAD)).toBe(2);
+    expect(maxWasmThreads(IPAD)).toBe(2);
+    expect(defaultThreads(DESKTOP)).toBe(4);
+    expect(maxWasmThreads(DESKTOP)).toBe(7);
+    expect(maxWasmThreads(ISOLATED)).toBe(7);
+    expect(browserEngines(IPAD)[0]!.name).toMatch(/multi-thread, 2 threads\)$/);
+  });
+
+  it('one browser engine on iOS: a second is refused, a replacement (lite ⇄ full) is allowed', () => {
+    expect(maxWasmInstances(IPAD)).toBe(1);
+    expect(maxWasmInstances(ISOLATED)).toBe(2);
+    const reason = 'Memory budget: one browser engine at a time on this device';
+    expect(canEnable('wasm:lite-single', ['wasm:lite'], IPAD)).toEqual({ ok: false, reason });
+    expect(canEnable('wasm:lite', ['wasm:lite-single', 'remote:stockfish'], IPAD)).toEqual({
+      ok: false,
+      reason,
+    });
+    // The store passes `enabled` without the displaced key.
+    expect(canEnable('wasm:full', [], IPAD)).toEqual({ ok: true });
+    expect(canEnable('remote:stockfish', ['wasm:lite'], IPAD)).toEqual({ ok: true });
+    expect(canEnable('wasm:lite-single', ['wasm:lite'], DESKTOP)).toEqual({ ok: true });
+  });
+
+  it('the picker marks browser engines beyond the budget unavailable with the reason', () => {
+    const probe = { status: 'idle' as const };
+    const byKey = (env: typeof IPAD | typeof DESKTOP) =>
+      Object.fromEntries(listEngines(probe, ['wasm:lite'], env).map((d) => [d.key, d]));
+    const ipad = byKey(IPAD);
+    expect(ipad['wasm:lite']!.available).toBe(true);
+    expect(ipad['wasm:full']!.available).toBe(true); // replaces lite
+    expect(ipad['wasm:lite-single']).toMatchObject({
+      available: false,
+      reason: 'Memory budget: one browser engine at a time on this device',
+    });
+    expect(byKey(DESKTOP)['wasm:lite-single']!.available).toBe(true);
   });
 });

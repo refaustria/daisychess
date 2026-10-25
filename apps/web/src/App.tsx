@@ -1,5 +1,13 @@
 import '@chesslab/ui-theme/base.css';
-import { lazy, Suspense, useEffect, useMemo, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { AnalysisPanel } from './components/Analysis/AnalysisPanel';
 import { PreviewBanner } from './components/Analysis/PreviewBanner';
 import { analysisShapes, reviewShapes } from './components/Analysis/shapes';
@@ -65,6 +73,17 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'explorer', label: 'Explorer' },
   { id: 'settings', label: 'Settings' },
 ];
+
+/** Scrolls the tab row horizontally so that the tab `id` is fully visible. */
+function revealTab(row: HTMLElement | null, id: TabId): void {
+  const el = row?.querySelector<HTMLElement>(`#tab-${id}`);
+  if (!row || !el) return;
+  // The row is `position: relative`, so offsetLeft is relative to it.
+  const left = el.offsetLeft;
+  const right = left + el.offsetWidth;
+  if (left < row.scrollLeft) row.scrollLeft = left;
+  else if (right > row.scrollLeft + row.clientWidth) row.scrollLeft = right - row.clientWidth;
+}
 
 /** WAI-ARIA tabs: arrows/Home/End move focus and activate (automatic activation), roving tabindex. */
 function onTabKeyDown(e: KeyboardEvent<HTMLElement>, tab: TabId, setTab: (t: TabId) => void) {
@@ -191,6 +210,10 @@ export function App() {
   useEffect(() => installAutoReview(), []);
   // `#/room/<id>` links open the Friend tab (on load and on hash changes).
   useEffect(() => installRoomRoute(), []);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  // The tab row scrolls horizontally on narrow panels: keep the active tab visible (only the row
+  // scrolls, never the page, unlike scrollIntoView).
+  useEffect(() => revealTab(tabsRef.current, tab), [tab]);
   return (
     <div className={styles.app}>
       <header className={styles.header}>
@@ -225,7 +248,7 @@ export function App() {
           </p>
           <Controls />
           <AnalysisPanel />
-          <div className={styles.tabs} role="tablist" aria-label="Game panels">
+          <div ref={tabsRef} className={styles.tabs} role="tablist" aria-label="Game panels">
             {TABS.map((t) => (
               <button
                 key={t.id}

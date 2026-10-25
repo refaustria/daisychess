@@ -18,7 +18,7 @@ import {
   type DrillFeedback,
   type DrillState,
 } from '../../trainer/drillStore';
-import { DAY_MS, dueKeys, type Schedule } from '../../trainer/schedule';
+import { DAY_MS, dueKeys, scheduleStats, type Schedule } from '../../trainer/schedule';
 import styles from './OpeningsPanel.module.css';
 
 /** Results shown at most (the search ranks, so the best hits are on top). */
@@ -78,6 +78,21 @@ function dueLabel(schedule: Schedule, o: BookOpening, now: number): string | nul
   return `in ${days} day${days === 1 ? '' : 's'}`;
 }
 
+const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+
+/** "Last: 25 Oct · 2 mistakes" for a drilled variation (entries from before M18-3 have no date). */
+export function lastResultText(
+  schedule: Schedule,
+  o: Pick<BookOpening, 'eco' | 'name'>,
+): string | null {
+  const e = schedule[openingKey(o)];
+  if (!e || e.lastAt === undefined) return null;
+  const m = e.lastMistakes ?? 0;
+  return `Last: ${DATE_FORMAT.format(new Date(e.lastAt))} · ${
+    m === 0 ? 'no mistakes' : `${m} mistake${m === 1 ? '' : 's'}`
+  }`;
+}
+
 export function OpeningsPanel() {
   const book = useBook();
   const status = useDrillStore((s) => s.status);
@@ -135,6 +150,7 @@ function Picker({ book, onPick }: { book: Book; onPick(o: BookOpening): void }) 
   const lock = useHumanGameLockReason();
   const now = Date.now();
   const due = dueCount(schedule, now);
+  const stats = scheduleStats(schedule, now);
 
   const results = useMemo(() => {
     if (dueOnly) {
@@ -191,6 +207,11 @@ function Picker({ book, onPick }: { book: Book; onPick(o: BookOpening): void }) 
           Train due
         </button>
       </div>
+      {stats.trained > 0 && (
+        <p className={styles.meta} data-testid="drill-stats">
+          Trained: {stats.trained} variation{stats.trained === 1 ? '' : 's'} · due: {stats.due}
+        </p>
+      )}
       {results.length === 0 ? (
         <p className={styles.note}>{dueOnly ? 'Nothing is due.' : 'No opening found.'}</p>
       ) : (
@@ -198,6 +219,7 @@ function Picker({ book, onPick }: { book: Book; onPick(o: BookOpening): void }) 
           {results.map((o) => {
             const subs = book.countUnder(o);
             const d = dueLabel(schedule, o, now);
+            const last = lastResultText(schedule, o);
             return (
               <li key={o.id}>
                 <button type="button" className={styles.item} onClick={() => onPick(o)}>
@@ -209,6 +231,11 @@ function Picker({ book, onPick }: { book: Book; onPick(o: BookOpening): void }) 
                       <span className={d === 'due' ? styles.dueBadge : styles.dueLater}>{d}</span>
                     )}
                   </span>
+                  {last && (
+                    <span className={styles.lastResult} data-testid="last-result">
+                      {last}
+                    </span>
+                  )}
                 </button>
               </li>
             );

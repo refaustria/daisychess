@@ -5,11 +5,14 @@ import { useLiveStore } from '../live/liveStore';
 import { getBook, type Book, type BookOpening } from '../openings';
 import { openingKey, pickWeighted } from '../openings/book';
 import { usePlayStore } from '../play/playStore';
+import { isRetryableEngineError, wasmHealth } from '../engine/wasmHealth';
 import {
   openSearchEngine,
   reportSearchServerFailure,
+  serverConfigured,
   type SearchEngineLease,
 } from '../review/reviewStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { useRoomStore } from '../room/roomStore';
 import { useAnalysisStore } from '../store/analysisStore';
 import { currentFen, useGameStore, type Orientation } from '../store/gameStore';
@@ -52,6 +55,8 @@ export interface DrillHooks {
   checkTimeoutMs: number;
   /** The book (tests may pass a small one). */
   book: () => Book | null;
+  /** The browser engine failed for good: may the drill switch to the engine server? */
+  canUseServer: () => boolean;
 }
 
 /** Engine check budget: 500 ms per position (two positions per check). */
@@ -68,8 +73,11 @@ const browserStorage = (): KeyValueStorage | undefined => {
   }
 };
 
+/** Shown while a check waits for the shared browser engine (a review holds it). */
+export const WAITING_NOTICE = 'Waiting for the running review to finish…';
+
 const DEFAULT_HOOKS: DrillHooks = {
-  createEngine: (pref) => openSearchEngine(pref),
+  createEngine: (pref) => openSearchEngine(pref, { onWait: onEngineWait }),
   reportServerFailure: (err) => reportSearchServerFailure(err),
   appDelayMs: () => 350 + Math.random() * 250,
   random: Math.random,
@@ -78,6 +86,7 @@ const DEFAULT_HOOKS: DrillHooks = {
   search: DRILL_SEARCH,
   checkTimeoutMs: CHECK_TIMEOUT_MS,
   book: getBook,
+  canUseServer: () => serverConfigured() && useSettingsStore.getState().reviewEngine !== 'browser',
 };
 
 let hooks: DrillHooks = DEFAULT_HOOKS;
@@ -97,6 +106,12 @@ let failedPlies = new Set<number>();
 const evalCache = new Map<string, SearchResult>();
 /** Number of drills started (colour alternation for `both`). */
 let runs = 0;
+/** Timeout of the running check; paused while the check waits for the shared engine. */
+let deadline: { pause(): void; resume(): void } | null = null;
+/** The drill already switched to the server after the browser engine was disabled. */
+let serverTried = false;
+/** Engine notice before the "waiting" text replaced it. */
+let noticeBeforeWait: string | undefined;
 
 interface SearchResult {
   score: Score;
@@ -170,7 +185,26 @@ async function searchOnce(engine: Engine, fen: string): Promise<SearchResult> {
   return { score: last.score, pv: [...pv], ...(bestMove ? { bestMove } : {}) };
 }
 
-/** Search with fallback: a failing server lease is replaced by the browser engine once. */
+/** The shared browser engine is busy (a review runs) or free again (ADR-015). */
+function onEngineWait(waiting: boolean): void {
+  if (waiting) {
+    deadline?.pause();
+    noticeBeforeWait = useDrillStore.getState().engineNotice;
+    useDrillStore.setState({ engineNotice: WAITING_NOTICE });
+  } else {
+    useDrillStore.setState({ engineNotice: noticeBeforeWait });
+    noticeBeforeWait = undefined;
+    deadline?.resume();
+  }
+}
+
+const browserDisabled = (): boolean => wasmHealth().disabled !== undefined;
+
+/**
+ * Search with fallback: a failing server lease is replaced by the browser engine once; a browser
+ * engine that ran out of memory is recreated once (degraded, by the pool); a browser engine that
+ * is disabled for the session hands over to the server once (if configured and allowed).
+ */
 async function search(fen: string): Promise<SearchResult> {
   const hit = evalCache.get(fen);
   if (hit) return hit;
@@ -179,7 +213,23 @@ async function search(fen: string): Promise<SearchResult> {
   try {
     result = await searchOnce(l.engine, fen);
   } catch (err) {
-    if (l.runsOn.kind !== 'server') throw err;
+    if (l.runsOn.kind !== 'server') {
+      if (isRetryableEngineError(err)) {
+        result = await searchOnce(l.engine, fen);
+      } else if (browserDisabled() && !serverTried && hooks.canUseServer()) {
+        serverTried = true;
+        void l.dispose().catch(() => undefined);
+        lease = hooks.createEngine('server').then((s) => {
+          useDrillStore.setState({ runsOn: s.runsOn, engineNotice: drillNotice(s.notice) });
+          return s;
+        });
+        result = await searchOnce((await lease).engine, fen);
+      } else {
+        throw err;
+      }
+      evalCache.set(fen, result);
+      return result;
+    }
     const notice = drillNotice(hooks.reportServerFailure(err));
     void l.dispose().catch(() => undefined);
     lease = hooks.createEngine('browser').then((b) => {
@@ -193,12 +243,37 @@ async function search(fen: string): Promise<SearchResult> {
   return result;
 }
 
+/** Rejects after `ms` of running time; the clock stops while waiting for the shared engine. */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let left = ms;
+  let since = 0;
+  let fail: (err: Error) => void = () => undefined;
   const t = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('The engine took too long')), ms);
+    fail = reject;
   });
-  return Promise.race([p, t]).finally(() => clearTimeout(timer));
+  const arm = () => {
+    since = Date.now();
+    timer = setTimeout(() => fail(new Error('The engine took too long')), left);
+  };
+  const own = {
+    pause: () => {
+      if (timer === undefined) return;
+      clearTimeout(timer);
+      timer = undefined;
+      left = Math.max(0, left - (Date.now() - since));
+    },
+    resume: () => {
+      if (timer === undefined) arm();
+    },
+  };
+  deadline = own;
+  arm();
+  return Promise.race([p, t]).finally(() => {
+    clearTimeout(timer);
+    timer = undefined;
+    if (deadline === own) deadline = null;
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -415,6 +490,11 @@ async function check(san: string, onTheWay: boolean, expected: string | undefine
     });
   } catch (err) {
     if (my !== gen || useDrillStore.getState().status !== 'running') return;
+    if (browserDisabled() && useDrillStore.getState().runsOn?.kind !== 'server') {
+      // Out of memory twice (ADR-015): say it once and end, instead of an error on every move.
+      endWithMessage(`Drill ended: the browser engine is unavailable (${message(err)}).`);
+      return;
+    }
     // A broken engine is not reused; the next check opens a new one.
     void releaseEngine();
     useDrillStore.setState({
@@ -437,7 +517,13 @@ function finish(reason: DrillEndReason): void {
   let schedule = s.schedule;
   // Only a drill with at least one move of the user counts for the schedule.
   if (s.opening && s.userMoves > 0) {
-    schedule = recordResult(schedule, openingKey(s.opening), s.mistakes === 0, hooks.now());
+    schedule = recordResult(
+      schedule,
+      openingKey(s.opening),
+      s.mistakes === 0,
+      hooks.now(),
+      s.mistakes,
+    );
     saveSchedule(hooks.storage, schedule);
   }
   useDrillStore.setState({ status: 'done', phase: 'none', summary, schedule });
@@ -526,6 +612,7 @@ const actions: DrillActions = {
     teardown();
     failedPlies = new Set();
     evalCache.clear();
+    serverTried = false;
     const colorChoice = color ?? get().colorChoice;
     const userColor: Orientation =
       colorChoice === 'both' ? (runs % 2 === 0 ? 'white' : 'black') : colorChoice;
@@ -605,8 +692,18 @@ const actions: DrillActions = {
   },
 
   playOn: () => {
-    // The game stays on the board; the Play tab offers "Play from this position" (M18-2).
+    // M18-3: the engine game starts at once from the drill's position (the moves so far stay in
+    // the game, so the review covers the opening too), with the user's drill colour.
+    const color = get().userColor;
     get().stop();
+    const play = usePlayStore.getState();
+    play.start({ from: 'current', color });
+    const after = usePlayStore.getState();
+    if (after.mode !== 'playing') {
+      // A live/room game runs or the position is over: stay here and say why.
+      set({ message: after.message ?? 'The game against the engine could not start.' });
+      return;
+    }
     useUiStore.getState().setActiveTab('play');
   },
 };
@@ -637,6 +734,9 @@ export async function resetDrill(): Promise<void> {
   failedPlies = new Set();
   evalCache.clear();
   runs = 0;
+  serverTried = false;
+  deadline = null;
+  noticeBeforeWait = undefined;
   hooks = DEFAULT_HOOKS;
   useDrillStore.setState({
     status: 'idle',

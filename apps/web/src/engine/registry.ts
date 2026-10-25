@@ -1,4 +1,10 @@
 import type { EngineDescriptor as ServerEngine, Limits } from '@chesslab/engine-core';
+import {
+  budgetReason,
+  currentMemoryBudget,
+  defaultThreadCount,
+  type MemoryBudget,
+} from './memoryBudget';
 import type { WasmBuild } from './WasmEngineClient';
 
 /**
@@ -34,6 +40,8 @@ export type ParsedEngineKey =
 export interface RegistryEnv {
   crossOriginIsolated: boolean;
   hardwareConcurrency: number;
+  /** Memory budget of the device (ADR-015); absent = unconstrained (tests, old callers). */
+  budget?: MemoryBudget;
 }
 
 /** Server discovery result, cached by the analysis store. */
@@ -85,7 +93,22 @@ export function currentEnv(): RegistryEnv {
   return {
     crossOriginIsolated: globalThis.crossOriginIsolated === true,
     hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || 1,
+    budget: currentMemoryBudget(),
   };
+}
+
+/** Browser engines the live analysis may run at once on this device. */
+export function maxWasmInstances(env: RegistryEnv): number {
+  return env.budget?.maxInstances ?? 2;
+}
+
+/**
+ * Highest thread count offered for a browser engine: `cores - 1`, capped by the memory budget on
+ * constrained devices (iOS: 2).
+ */
+export function maxWasmThreads(env: RegistryEnv): number {
+  const all = Math.max(1, Math.floor(env.hardwareConcurrency) - 1 || 1);
+  return env.budget?.constrained ? Math.min(all, env.budget.maxThreads) : all;
 }
 
 /** The browser engine used by default: multi-threaded when the page allows it. */
@@ -116,11 +139,44 @@ export function formatDownload(bytes: number): string {
   return `~${Math.max(1, Math.round(bytes / 1e6))} MB`;
 }
 
-/** Default thread count of the multi-threaded builds: `min(cores - 1, 4)`, at least 1. */
+/**
+ * Default thread count of the multi-threaded builds: `min(cores - 1, 4)`, at least 1, capped by
+ * the memory budget (same rule as `selectBuild` in WasmEngineClient).
+ */
 export function defaultThreads(env: RegistryEnv): number {
-  // Same rule as `selectBuild` in WasmEngineClient (not imported: that module is loaded lazily).
-  const cores = Number.isFinite(env.hardwareConcurrency) ? Math.floor(env.hardwareConcurrency) : 1;
-  return Math.max(1, Math.min(cores - 1, 4));
+  const threads = defaultThreadCount(env.hardwareConcurrency);
+  return env.budget ? Math.min(threads, env.budget.maxThreads) : threads;
+}
+
+/**
+ * Marks browser engines that are not enabled as unavailable when enabling them would exceed the
+ * memory budget (`displacedBy` replacements stay allowed: they do not add an instance).
+ */
+function applyMemoryBudget(
+  engines: EngineDescriptor[],
+  enabledKeys: readonly EngineKey[],
+  env: RegistryEnv,
+): EngineDescriptor[] {
+  if (!env.budget) return engines;
+  return engines.map((d) => {
+    if (d.backend !== 'wasm' || !d.available || enabledKeys.includes(d.key)) return d;
+    const guard = wasmBudgetGuard(d.key, enabledKeys, env);
+    return guard.ok ? d : { ...d, available: false, reason: guard.reason };
+  });
+}
+
+/** The memory-budget part of {@link canEnable} for a browser engine key. */
+function wasmBudgetGuard(
+  key: EngineKey,
+  enabled: readonly EngineKey[],
+  env: RegistryEnv,
+): GuardResult {
+  const displaced = displacedBy(key, enabled);
+  const wasm = enabled.filter((k) => k.startsWith('wasm:') && !displaced.includes(k)).length;
+  const max = maxWasmInstances(env);
+  return wasm >= max
+    ? { ok: false, reason: budgetReason({ maxInstances: max }) }
+    : { ok: true };
 }
 
 /**
@@ -223,7 +279,10 @@ export function listEngines(
   enabledKeys: readonly EngineKey[] = [],
   env: RegistryEnv = currentEnv(),
 ): EngineDescriptor[] {
-  return [...browserEngines(env), ...serverEngines(probe, enabledKeys)];
+  return [
+    ...applyMemoryBudget(browserEngines(env), enabledKeys, env),
+    ...serverEngines(probe, enabledKeys),
+  ];
 }
 
 /**
@@ -246,7 +305,8 @@ export type GuardResult = { ok: true } | { ok: false; reason: string };
  * Resource guard for enabling `key` next to `enabled`: unknown keys and unavailable browser builds
  * are refused, and at most {@link MAX_REMOTE_ENGINES} server engines run at once. Keys are unique,
  * and `wasm:lite`/`wasm:full` replace each other ({@link displacedBy}), so there is never more
- * than one multi-threaded and one single-threaded WASM instance.
+ * than one multi-threaded and one single-threaded WASM instance; the memory budget (ADR-015)
+ * lowers that to one browser engine on iOS/low-memory devices.
  */
 export function canEnable(
   key: EngineKey,
@@ -260,7 +320,8 @@ export function canEnable(
     if (parsed.build !== 'lite-single' && !env.crossOriginIsolated) {
       return { ok: false, reason: NOT_ISOLATED_REASON };
     }
-    return { ok: true };
+    // Callers pass `enabled` without the engines `key` displaces (see displacedBy).
+    return wasmBudgetGuard(key, enabled, env);
   }
   const remotes = enabled.filter((k) => k.startsWith('remote:')).length;
   if (remotes >= MAX_REMOTE_ENGINES) {

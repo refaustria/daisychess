@@ -263,6 +263,13 @@
   color: var(--danger);
 }
 
+/* One-time notice of the browser engine's out-of-memory recovery (ADR-015). */
+.notice {
+  margin: 0 0.75rem 0.45rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* --- multi-engine: compare strip + tabs ------------------------------------------------------- */
 
 .compare {

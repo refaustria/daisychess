@@ -316,3 +316,32 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
+.opening {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.85rem;
+}
+
+.opening .linkBtn {
+  padding: 0 0.1rem;
+}
+
+.openingLabel {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bookNote {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}

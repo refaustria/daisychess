@@ -105,7 +105,8 @@ describe('reviewStore', () => {
     useReviewStore.getState().cancel();
     expect(await p).toBeUndefined();
     expect(useReviewStore.getState().status).toBe('cancelled');
-    expect(engine.stopCalls).toBe(1);
+    // The cancel stops the search; the pool stops the engine again when the lease is handed back.
+    expect(engine.stopCalls).toBeGreaterThanOrEqual(1);
     expect(useAnalysisStore.getState().enabled).toBe(true);
 
     engine.hang.clear();

@@ -1,5 +1,20 @@
 import type { AnalyzeOptions, Engine } from '@chesslab/engine-core';
+import {
+  currentMemoryBudget,
+  defaultThreadCount,
+  memoryPagesCap,
+  threadCap,
+} from './memoryBudget';
 import { UciSession, type AnalysisHandle, type UciTransport } from './UciSession';
+import {
+  classifyWasmFailure,
+  disableWasm,
+  markWasmDegraded,
+  WasmEngineError,
+  wasmHealth,
+  wasmInstanceStarted,
+  wasmInstanceStopped,
+} from './wasmHealth';
 
 /**
  * Browser builds shipped from the `stockfish` npm package (see vite-plugin-stockfish.ts):
@@ -36,6 +51,18 @@ export interface WasmEngineClientOptions {
   createWorker?: (scriptUrl: string) => EngineWorker;
   handshakeTimeoutMs?: number;
   responseTimeoutMs?: number;
+  /**
+   * Thread cap of the multi-threaded builds (default threads and `setoption Threads`). Defaults to
+   * the memory budget's cap on constrained devices (iOS/iPadOS, low `deviceMemory`; ADR-015), none
+   * elsewhere.
+   */
+  maxThreads?: number;
+  /**
+   * Caps the shared memory's maximum (64 KiB pages) of the multi-threaded builds by starting them
+   * through the memory shim (ADR-015). Defaults to the memory budget's cap on constrained devices
+   * (512 MiB), none elsewhere (`0` = never).
+   */
+  maxMemoryPages?: number;
 }
 
 export interface WasmEngineCapabilities {
@@ -47,20 +74,50 @@ export interface WasmEngineCapabilities {
   threadCount: number;
 }
 
-export const MAX_DEFAULT_THREADS = 4;
+export { MAX_DEFAULT_THREADS } from './memoryBudget';
 
 /**
- * Multi-threaded `lite` build with `min(cores - 1, 4)` threads (at least 1) when the page is
- * cross-origin isolated (SharedArrayBuffer available); otherwise the single-threaded `lite-single`.
+ * Multi-threaded `lite` build with `min(cores - 1, 4)` threads (at least 1, at most `maxThreads`)
+ * when the page is cross-origin isolated (SharedArrayBuffer available); otherwise the
+ * single-threaded `lite-single`.
  */
-export function selectBuild(env: { crossOriginIsolated: boolean; hardwareConcurrency: number }): {
+export function selectBuild(
+  env: { crossOriginIsolated: boolean; hardwareConcurrency: number },
+  maxThreads?: number,
+): {
   build: WasmBuild;
   threads: number;
 } {
   if (!env.crossOriginIsolated) return { build: 'lite-single', threads: 1 };
-  const cores = Number.isFinite(env.hardwareConcurrency) ? Math.floor(env.hardwareConcurrency) : 1;
-  return { build: 'lite', threads: Math.max(1, Math.min(cores - 1, MAX_DEFAULT_THREADS)) };
+  const threads = defaultThreadCount(env.hardwareConcurrency);
+  return {
+    build: 'lite',
+    threads: maxThreads !== undefined ? Math.max(1, Math.min(threads, maxThreads)) : threads,
+  };
 }
+
+/** The smallest configuration, used after a failure (ADR-015). */
+const FALLBACK = { build: 'lite-single', threads: 1 } as const satisfies {
+  build: WasmBuild;
+  threads: number;
+};
+
+/**
+ * URL of the worker script: the build itself, or for a multi-threaded build with a memory cap the
+ * memory shim (`?engine=…&maxPages=…#<.wasm URL>`), which lowers the shared memory's maximum and
+ * then runs the unchanged engine (the hash tells the engine where its .wasm is).
+ */
+export function engineScriptUrl(base: string, build: WasmBuild, maxMemoryPages?: number): string {
+  const script = __STOCKFISH_ENGINE__.builds[build];
+  if (!maxMemoryPages || !isMultiThreadBuild(build)) return new URL(script, base).href;
+  const wasm = new URL(script.replace(/\.js$/, '.wasm'), base).href;
+  const shim = new URL(__STOCKFISH_ENGINE__.memoryShim, base);
+  shim.search = new URLSearchParams({ engine: script, maxPages: String(maxMemoryPages) }).toString();
+  shim.hash = encodeURIComponent(wasm);
+  return shim.href;
+}
+
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function defaultEngineBaseUrl(): string {
   return new URL(`${import.meta.env.BASE_URL}${__STOCKFISH_ENGINE__.dir}`, globalThis.location.href)
@@ -75,7 +132,13 @@ function defaultEngineBaseUrl(): string {
  */
 export class WasmEngineClient implements Engine {
   private readonly options: WasmEngineClientOptions;
-  private readonly selected: { build: WasmBuild; threads: number };
+  private selected: { build: WasmBuild; threads: number };
+  private readonly maxThreads: number | undefined;
+  private readonly maxMemoryPages: number | undefined;
+  /** Runs the smallest configuration (after a failure in this session); no further downgrade. */
+  private fallback = false;
+  /** The handshake of the current worker completed (failures are search failures now). */
+  private ready = false;
   private worker: EngineWorker | null = null;
   private session: UciSession | null = null;
   private loading: Promise<void> | null = null;
@@ -83,16 +146,30 @@ export class WasmEngineClient implements Engine {
 
   constructor(options: WasmEngineClientOptions = {}) {
     this.options = options;
-    const auto = selectBuild({
-      crossOriginIsolated: options.crossOriginIsolated ?? globalThis.crossOriginIsolated === true,
-      hardwareConcurrency:
-        options.hardwareConcurrency ?? globalThis.navigator?.hardwareConcurrency ?? 1,
-    });
+    this.maxThreads =
+      options.maxThreads !== undefined ? options.maxThreads : threadCap(currentMemoryBudget());
+    this.maxMemoryPages =
+      options.maxMemoryPages !== undefined
+        ? options.maxMemoryPages || undefined
+        : memoryPagesCap(currentMemoryBudget());
+    const auto = selectBuild(
+      {
+        crossOriginIsolated: options.crossOriginIsolated ?? globalThis.crossOriginIsolated === true,
+        hardwareConcurrency:
+          options.hardwareConcurrency ?? globalThis.navigator?.hardwareConcurrency ?? 1,
+      },
+      this.maxThreads,
+    );
     const build = options.build ?? auto.build;
     this.selected =
       build === 'lite-single'
         ? { build, threads: 1 }
         : { build, threads: auto.build === 'lite-single' ? 1 : auto.threads };
+    if (wasmHealth().degraded) {
+      // An earlier instance ran out of memory (or crashed) in this session: start small.
+      this.selected = { ...FALLBACK };
+      this.fallback = true;
+    }
   }
 
   capabilities(): WasmEngineCapabilities {
@@ -108,10 +185,17 @@ export class WasmEngineClient implements Engine {
     return this.session?.engineName;
   }
 
-  /** Spawns the worker and completes the UCI handshake. Idempotent; retryable after failure. */
+  /**
+   * Spawns the worker and completes the UCI handshake. Idempotent; retryable after failure.
+   *
+   * Out of memory / worker failures (ADR-015): the first one in the session degrades every later
+   * instance to `lite-single` and this load is retried once with it; a failure of that smaller
+   * configuration disables the browser engine for the session (later loads reject at once without
+   * spawning a worker, until `allowWasmRetry`).
+   */
   load(): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Engine has been disposed'));
-    this.loading ??= this.doLoad().catch((err: unknown) => {
+    this.loading ??= this.loadWithRecovery().catch((err: unknown) => {
       this.teardown();
       this.loading = null;
       throw err;
@@ -119,12 +203,56 @@ export class WasmEngineClient implements Engine {
     return this.loading;
   }
 
+  private async loadWithRecovery(): Promise<void> {
+    const disabled = wasmHealth().disabled;
+    if (disabled !== undefined) throw new WasmEngineError(disabled, 'worker', false);
+    try {
+      await this.doLoad();
+      return;
+    } catch (err) {
+      const kind = classifyWasmFailure(err);
+      if (!kind || this.disposed) throw err;
+      if (this.fallback) {
+        disableWasm(message(err));
+        throw new WasmEngineError(message(err), kind, false);
+      }
+      markWasmDegraded(kind);
+      this.teardown();
+      this.selected = { ...FALLBACK };
+      this.fallback = true;
+    }
+    try {
+      await this.doLoad();
+    } catch (err) {
+      const kind = classifyWasmFailure(err);
+      if (!kind || this.disposed) throw err;
+      disableWasm(message(err));
+      throw new WasmEngineError(message(err), kind, false);
+    }
+  }
+
+  /** Classifies a fatal session error after the handshake (failure during a search). */
+  private onFatal(err: Error): Error {
+    if (!this.ready || this.disposed) return err;
+    const kind = classifyWasmFailure(err);
+    if (!kind) return err;
+    if (this.fallback) {
+      disableWasm(err.message);
+      return new WasmEngineError(err.message, kind, false);
+    }
+    // A fresh instance (degraded to the single-threaded build) may succeed: callers recreate once.
+    markWasmDegraded(kind);
+    return new WasmEngineError(err.message, kind, true);
+  }
+
   private async doLoad(): Promise<void> {
+    this.ready = false;
     const base = this.options.engineBaseUrl ?? defaultEngineBaseUrl();
-    const scriptUrl = new URL(__STOCKFISH_ENGINE__.builds[this.selected.build], base).href;
+    const scriptUrl = engineScriptUrl(base, this.selected.build, this.maxMemoryPages);
     const create = this.options.createWorker ?? ((url: string): EngineWorker => new Worker(url));
     const worker = create(scriptUrl);
     this.worker = worker;
+    wasmInstanceStarted();
 
     let receiver: ((line: string) => void) | null = null;
     const transport: UciTransport = {
@@ -136,6 +264,7 @@ export class WasmEngineClient implements Engine {
     const session = new UciSession(transport, {
       handshakeTimeoutMs: this.options.handshakeTimeoutMs,
       responseTimeoutMs: this.options.responseTimeoutMs,
+      onFatal: (err) => this.onFatal(err),
     });
     this.session = session;
     worker.onmessage = (ev) => {
@@ -161,10 +290,24 @@ export class WasmEngineClient implements Engine {
         ? session.setOptions({ Threads: this.selected.threads })
         : undefined,
     ]);
+    this.ready = true;
   }
 
+  /** `Threads` is capped by `maxThreads` (memory budget) and ignored by the single-threaded build. */
   setOptions(options: Record<string, string | number | boolean>): Promise<void> {
-    return this.requireSession().then((s) => s.setOptions(options));
+    return this.requireSession().then((s) => {
+      const opts = { ...options };
+      if ('Threads' in opts) {
+        const n = Math.max(1, Math.floor(Number(opts.Threads)) || 1);
+        if (!isMultiThreadBuild(this.selected.build)) {
+          delete opts.Threads;
+        } else {
+          opts.Threads = this.maxThreads !== undefined ? Math.min(n, this.maxThreads) : n;
+          this.selected = { ...this.selected, threads: opts.Threads };
+        }
+      }
+      return Object.keys(opts).length > 0 ? s.setOptions(opts) : undefined;
+    });
   }
 
   /**
@@ -196,9 +339,11 @@ export class WasmEngineClient implements Engine {
   }
 
   private teardown(): void {
+    this.ready = false;
     this.session?.close();
     this.worker?.terminate();
     if (this.worker) {
+      wasmInstanceStopped();
       this.worker.onmessage = null;
       this.worker.onerror = null;
       this.worker.onmessageerror = null;

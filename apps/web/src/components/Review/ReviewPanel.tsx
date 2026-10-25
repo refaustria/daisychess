@@ -8,6 +8,7 @@ import { REVIEW_PRESETS, useReviewStore, type ReviewEngineInfo } from '../../rev
 import { useGameStore } from '../../store/gameStore';
 import { EvalGraph } from './EvalGraph';
 import { MoveCommentary } from './MoveCommentary';
+import { OpeningFocusBlock } from './OpeningFocusBlock';
 import styles from './ReviewPanel.module.css';
 
 type PresetKey = keyof typeof REVIEW_PRESETS;
@@ -325,6 +326,8 @@ export function ReviewPanel() {
           </div>
         </>
       )}
+      {/* The review summary starts with the opening focus (M18-3). */}
+      {status === 'done' && summary && <OpeningFocusBlock />}
       {summary && (status === 'running' || status === 'done') && (
         <MoveCommentary summary={summary} details={details} running={status === 'running'} />
       )}

@@ -1,5 +1,6 @@
 import { isHumanGameRunning } from '../live/lock';
 import { isLiveLocked, useLiveStore } from '../live/liveStore';
+import { usePlayStore } from '../play/playStore';
 import { isRoomLocked, useRoomStore } from '../room/roomStore';
 import { useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -8,6 +9,12 @@ import { REVIEW_PRESETS, useReviewStore } from './reviewStore';
 
 /** Games shorter than this are not reviewed automatically. */
 export const AUTO_REVIEW_MIN_MOVES = 2;
+
+/**
+ * A finished game against the engine is reviewed automatically from this many plies (whole game,
+ * including an opening line it was started from, e.g. the drill's "Play on vs engine").
+ */
+export const ENGINE_GAME_REVIEW_MIN_PLIES = 6;
 
 /**
  * True when the game store change `prev → s` replaced the game by a loaded one (loadPgn):
@@ -31,6 +38,8 @@ export function isGameLoad(
  * `autoReview` setting is on and no human game (engine game, live lichess game) is running, and
  * switches the side panel to the Review tab (except from the Explorer tab, which stays open; lines
  * loaded by the Openings tab are not reviewed).
+ * Also reviews a finished engine game of at least {@link ENGINE_GAME_REVIEW_MIN_PLIES} plies in
+ * the background (no tab switch) and cancels a running review when an engine game starts.
  * Also reviews a live lichess game when it finishes (without switching tabs: the Live panel shows
  * the result) and cancels a running review when a live game or seek starts; the same for a game
  * against a friend (room, ADR-013). A running review (of
@@ -79,10 +88,32 @@ export function installAutoReview(): () => void {
       startFast();
     }
   });
+  const unwatchPlay = usePlayStore.subscribe((s, prev) => {
+    // A new engine game: the review of the previous game must not compete with the engine.
+    if (s.mode === 'playing' && prev.mode !== 'playing') {
+      const review = useReviewStore.getState();
+      if (review.status === 'running') review.cancel();
+    }
+    // An engine game just ended (M18-3): review it in the background like a live game; the Play
+    // panel keeps showing the result and its "Review this game" button opens the review. Not after
+    // an abort (a load or New game replaced the game; the load reviews itself).
+    if (s.mode === 'finished' && prev.mode === 'playing' && s.reason !== 'aborted') {
+      // Deferred: the play store restores the live analysis right after this notification, and
+      // the review must see it switched on to pause it (and switch it back on afterwards).
+      queueMicrotask(() => {
+        if (!useSettingsStore.getState().autoReview) return;
+        if (usePlayStore.getState().mode !== 'finished') return;
+        if (useGameStore.getState().moves.length < ENGINE_GAME_REVIEW_MIN_PLIES) return;
+        if (isHumanGameRunning()) return;
+        startFast();
+      });
+    }
+  });
   return () => {
     unwatchGame();
     unwatchLive();
     unwatchRoom();
+    unwatchPlay();
   };
 }
 

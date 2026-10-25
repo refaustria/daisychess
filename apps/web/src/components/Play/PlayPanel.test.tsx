@@ -4,9 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const reviewStart = vi.fn(() => Promise.resolve(undefined));
 const reviewReset = vi.fn();
+/** Extra review state the mocked store reports (status, reviewed moves). */
+let reviewExtra: Record<string, unknown> = {};
 vi.mock('../../review/reviewStore', () => ({
   REVIEW_PRESETS: { fast: { movetime: 300 }, deep: { depth: 14 } },
-  useReviewStore: { getState: () => ({ start: reviewStart, reset: reviewReset }) },
+  useReviewStore: {
+    getState: () => ({ start: reviewStart, reset: reviewReset, ...reviewExtra }),
+  },
 }));
 
 import { FakePlayEngine } from '../../play/fakePlayEngine';
@@ -42,6 +46,7 @@ beforeEach(async () => {
   useGameStore.getState().reset();
   reviewStart.mockClear();
   reviewReset.mockClear();
+  reviewExtra = {};
 });
 
 afterEach(async () => {
@@ -124,6 +129,21 @@ describe('PlayPanel', () => {
     await waitFor(() => expect(reviewStart).toHaveBeenCalledWith({ depth: 14 }));
     expect(reviewReset).toHaveBeenCalled();
     expect(useUiStore.getState().activeTab).toBe('review');
+  });
+
+  it('“Review this game” keeps the automatic review of this game and only opens the tab', async () => {
+    render(<PlayPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resign' }));
+    reviewExtra = { status: 'running', reviewed: useGameStore.getState().moves };
+    fireEvent.click(screen.getByRole('button', { name: 'Review this game' }));
+    await waitFor(() => expect(useUiStore.getState().activeTab).toBe('review'));
+    expect(reviewStart).not.toHaveBeenCalled();
+    expect(reviewReset).not.toHaveBeenCalled();
+    // A review of another game (other moves array) is replaced by a deep one.
+    reviewExtra = { status: 'done', reviewed: [] };
+    fireEvent.click(screen.getByRole('button', { name: 'Review this game' }));
+    await waitFor(() => expect(reviewStart).toHaveBeenCalledWith({ depth: 14 }));
   });
 
   it('time control: grouped presets, Custom inputs (clamped), No clock', () => {

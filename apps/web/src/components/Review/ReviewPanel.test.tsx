@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLiveStore } from '../../live/liveStore';
+import { loadOpenings } from '../../openings';
 import { usePlayStore } from '../../play/playStore';
 import { buildMoveDetails } from '../../review/details';
 import { gameToBatch, useReviewStore } from '../../review/reviewStore';
 import { scholarSummary } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
+import { OpeningFocusView } from './OpeningFocusBlock';
 import { ReviewPanel, reviewingLabel } from './ReviewPanel';
 
 const PGN = '[White "Ann"]\n[Black "Bob"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
@@ -37,6 +39,7 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+beforeAll(loadOpenings);
 
 describe('ReviewPanel', () => {
   it('idle: Start is disabled without moves', () => {
@@ -221,5 +224,57 @@ describe('ReviewPanel', () => {
     expect(screen.getByRole('alert').textContent).toContain('boom');
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(start).toHaveBeenCalled();
+  });
+
+  it('done: the Opening block names the opening and where the book was left', () => {
+    act(() => useGameStore.getState().loadPgn(PGN));
+    const summary = scholarSummary();
+    const moveDetails = buildMoveDetails(summary, gameToBatch(useGameStore.getState()), []);
+    useReviewStore.setState({ status: 'done', summary, moveDetails });
+    render(<ReviewPanel />);
+    const block = screen.getByRole('region', { name: 'Opening' });
+    // 1. e4 e5 2. Bc4 Nc6 is book (Bishop's Opening); 3. Qh5 is not (eval 0.30 → 0.20 for White).
+    expect(block.textContent).toBe(
+      "OpeningBishop's Opening (C23) · book until move 2 (…Nc6) · White left the book with " +
+        "3. Qh5 (book: Nc3 (King's Gambit Declined: Classical, Svenonius Variation)) · " +
+        'eval −0.1 for White',
+    );
+    act(() => useGameStore.getState().goTo(0));
+    fireEvent.click(screen.getByTestId('opening-focus-leave'));
+    expect(useGameStore.getState().ply).toBe(5);
+    // The move card at the leave ply says so.
+    expect(screen.getByTestId('move-card-book').textContent).toBe(
+      "Left the book here; book moves: Nc3 (King's Gambit Declined: Classical, Svenonius Variation).",
+    );
+    act(() => useGameStore.getState().goTo(4));
+    expect(screen.queryByTestId('move-card-book')).toBeNull();
+  });
+
+  it('done: the Opening block for a game that stayed in book or had no book moves', () => {
+    act(() => useGameStore.getState().loadPgn('1. e4 e5 2. Nf3 Nc6'));
+    useReviewStore.setState({ status: 'done', summary: scholarSummary(), moveDetails: {} });
+    const { unmount } = render(<ReviewPanel />);
+    expect(screen.getByRole('region', { name: 'Opening' }).textContent).toMatch(
+      /· book until move 2 \(…Nc6\) · the whole game stayed in book$/,
+    );
+    unmount();
+    // Every first move of the table is book, so "no book moves" is shown with a crafted focus.
+    render(
+      <OpeningFocusView
+        focus={{ lastBookPly: 0, leftBy: 'white', leavePly: 1, bookMoveInstead: [{ san: 'e4' }] }}
+      />,
+    );
+    expect(screen.getByRole('region', { name: 'Opening' }).textContent).toBe(
+      'OpeningNo book moves · White left the book with 1. e4 (book: e4)',
+    );
+  });
+
+  it('no Opening block for a custom start position', () => {
+    act(() =>
+      useGameStore.getState().loadPgn('[FEN "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"]\n\n1. e4 Kd7'),
+    );
+    useReviewStore.setState({ status: 'done', summary: scholarSummary(), moveDetails: {} });
+    render(<ReviewPanel />);
+    expect(screen.queryByRole('region', { name: 'Opening' })).toBeNull();
   });
 });

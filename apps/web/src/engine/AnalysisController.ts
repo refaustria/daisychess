@@ -55,6 +55,13 @@ export interface AnalysisControllerOptions {
 
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+/** A fresh engine may succeed (browser engine degraded after running out of memory; ADR-015). */
+const isRetryable = (err: unknown): boolean =>
+  (err as { retryable?: unknown } | null)?.retryable === true;
+/** No automatic recreation (browser engine disabled after its degraded retry failed too). */
+const isFinal = (err: unknown): boolean =>
+  (err as { retryable?: unknown } | null)?.retryable === false;
+
 /**
  * Keeps one engine analysing the current position. Framework-free; the Zustand store
  * (`store/analysisStore.ts`) feeds it positions/settings and receives results via callbacks.
@@ -85,6 +92,10 @@ export class AnalysisController {
   private loaded = false;
   /** Identifies the current engine instance; bumped when it is dropped. */
   private engineToken = 0;
+  /** A retryable failure already recreated the engine once (reset when an engine loads). */
+  private recreated = false;
+  /** Error that must not be retried automatically (only {@link retry} tries again). */
+  private finalError: string | null = null;
 
   constructor(opts: AnalysisControllerOptions) {
     this.opts = opts;
@@ -154,9 +165,10 @@ export class AnalysisController {
     if (this.enabled && this.status !== 'error') this.start();
   }
 
-  /** Recreates the engine after an error and resumes analysis. */
+  /** Recreates the engine after an error and resumes analysis (also after a final error). */
   retry(): void {
     if (this.disposed || !this.enabled) return;
+    this.finalError = null;
     this.start();
   }
 
@@ -197,6 +209,11 @@ export class AnalysisController {
 
   private start(): void {
     if (this.disposed || !this.enabled || this.fen === null) return;
+    if (this.status === 'error' && this.finalError !== null) {
+      // Re-enabling (e.g. after a review) must not spawn the failing engine again: show the error.
+      this.setStatus('error', this.finalError);
+      return;
+    }
     this.clearTimer();
     const gen = ++this.gen;
     const fen = this.fen;
@@ -264,6 +281,7 @@ export class AnalysisController {
       if (Object.keys(options).length > 0) await engine.setOptions(options);
       if (token === this.engineToken) {
         this.loaded = true;
+        this.recreated = false;
         this.opts.callbacks.onEngine({
           engineName: engine.engineName,
           capabilities: engine.capabilities?.(),
@@ -304,6 +322,13 @@ export class AnalysisController {
     this.gen++;
     this.clearTimer();
     this.dropEngine();
+    if (isRetryable(err) && !this.recreated && this.enabled) {
+      // Out of memory mid-search: one fresh (smaller) engine instead of an error.
+      this.recreated = true;
+      this.start();
+      return;
+    }
+    this.finalError = isFinal(err) ? errorMessage(err) : null;
     this.setStatus('error', errorMessage(err));
   }
 

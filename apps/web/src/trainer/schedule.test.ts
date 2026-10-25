@@ -10,6 +10,7 @@ import {
   recordResult,
   reviewEntry,
   saveSchedule,
+  scheduleStats,
   serializeSchedule,
   TRAINER_KEY,
   type KeyValueStorage,
@@ -38,6 +39,8 @@ describe('reviewEntry', () => {
       interval: 1,
       lapses: 0,
       successes: 1,
+      lastAt: NOW,
+      lastMistakes: 0,
     });
   });
 
@@ -55,7 +58,14 @@ describe('reviewEntry', () => {
     let e = reviewEntry(undefined, true, NOW);
     e = reviewEntry(e, true, NOW);
     e = reviewEntry(e, false, NOW + 5);
-    expect(e).toEqual({ due: NOW + 5, interval: 1, lapses: 1, successes: 2 });
+    expect(e).toEqual({
+      due: NOW + 5,
+      interval: 1,
+      lapses: 1,
+      successes: 2,
+      lastAt: NOW + 5,
+      lastMistakes: 1,
+    });
     expect(isDue(e, NOW + 5)).toBe(true);
     // Right again afterwards: back to 2.5 days.
     expect(reviewEntry(e, true, NOW).interval).toBe(2.5);
@@ -67,7 +77,14 @@ describe('reviewEntry', () => {
       interval: 1,
       lapses: 1,
       successes: 0,
+      lastAt: NOW,
+      lastMistakes: 1,
     });
+  });
+
+  it('stores the mistakes of the last drill', () => {
+    expect(reviewEntry(undefined, false, NOW, 3)).toMatchObject({ lastAt: NOW, lastMistakes: 3 });
+    expect(recordResult({}, 'k', true, NOW, 0).k).toMatchObject({ lastMistakes: 0 });
   });
 
   it('caps the interval', () => {
@@ -95,6 +112,14 @@ describe('recordResult / dueKeys', () => {
     ]);
     expect(dueKeys({}, NOW)).toEqual([]);
   });
+
+  it('scheduleStats counts trained and due variations', () => {
+    expect(scheduleStats({}, NOW)).toEqual({ trained: 0, due: 0 });
+    let s = recordResult({}, 'a', false, NOW, 2);
+    s = recordResult(s, 'b', true, NOW, 0);
+    expect(scheduleStats(s, NOW)).toEqual({ trained: 2, due: 1 });
+    expect(scheduleStats(s, NOW + DAY_MS)).toEqual({ trained: 2, due: 2 });
+  });
 });
 
 describe('parse / serialize / storage', () => {
@@ -114,9 +139,13 @@ describe('parse / serialize / storage', () => {
       str: { due: '1', interval: 2, lapses: 0, successes: 1 },
       nul: null,
       huge: { due: 1, interval: 1e12, lapses: 1.7, successes: 2.2 },
+      last: { due: 1, interval: 1, lapses: 0, successes: 1, lastAt: 5, lastMistakes: 2.6 },
+      badLast: { due: 1, interval: 1, lapses: 0, successes: 1, lastAt: 'x', lastMistakes: -1 },
     });
     expect(parseSchedule(raw)).toEqual({
       good: { due: 1, interval: 2, lapses: 0, successes: 1 },
+      last: { due: 1, interval: 1, lapses: 0, successes: 1, lastAt: 5, lastMistakes: 2 },
+      badLast: { due: 1, interval: 1, lapses: 0, successes: 1 },
       huge: { due: 1, interval: MAX_INTERVAL_DAYS, lapses: 1, successes: 2 },
     });
   });
