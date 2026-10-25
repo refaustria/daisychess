@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';
-import { START_FEN, type MoveRecord } from '../store/gameStore';
+import { START_FEN, useGameStore, type MoveRecord } from '../store/gameStore';
 import { annotatePgn, evalComment } from './annotatePgn';
-import { scholarSummary } from './testFixtures';
+import { SCHOLAR_TIMED_PGN, scholarSummary } from './testFixtures';
 
 function scholarMoves(): MoveRecord[] {
   const c = new Chess();
@@ -58,5 +58,27 @@ describe('annotatePgn', () => {
     expect(pgn).toContain(`[FEN "${fen}"]`);
     expect(pgn).toContain('[SetUp "1"]');
     expect(pgn).toContain('1... e5 *');
+  });
+
+  it('writes %clk back and round-trips through loadPgn (M22-1)', () => {
+    const st = useGameStore.getState;
+    st().loadPgn(SCHOLAR_TIMED_PGN);
+    const { headers, startFen, moves } = st();
+    const plain = annotatePgn(headers, startFen, moves);
+    expect(plain).toContain('1. e4 { [%clk 0:01:00] } 1... e5 { [%clk 0:01:00] }');
+    expect(plain).toContain('[TimeControl "60+0"]');
+    const reviewed = annotatePgn(headers, startFen, moves, scholarSummary());
+    expect(reviewed).toContain('3... Nf6 $4 { [%eval #1] [%clk 0:00:05] best was g6 }');
+    for (const pgn of [plain, reviewed]) {
+      st().loadPgn(pgn);
+      expect(st().moves.map((m) => m.clock)).toEqual(moves.map((m) => m.clock));
+      expect(st().timeControl).toEqual({ initialMs: 60_000, incrementMs: 0 });
+    }
+    st().reset();
+  });
+
+  it('keeps tenths in %clk', () => {
+    const m = scholarMoves().slice(0, 1).map((x) => ({ ...x, clock: { remainingMs: 175_400 } }));
+    expect(annotatePgn({}, START_FEN, m)).toContain('1. e4 { [%clk 0:02:55.4] } *');
   });
 });

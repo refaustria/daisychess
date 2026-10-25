@@ -150,3 +150,15 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M21-1 | Rename ChessLab → DaisyChess everywhere: UI (title, header with logo), README/docs/runbook, daisy SVG logo + favicons/apple-touch-icon, package scope `@daisychess/*`, storage keys `daisychess.*` with one-time migration, systemd unit `daisychess-server` (deploy script retires the old unit), lichess OAuth client id; domain unchanged | senior | done |
+
+## M22 — Clock times from imported games (requested 2026-10-25)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M22-1 | Parse `%clk`/`%emt` from PGN (lichess with clocks=true, chess.com), keep per-ply clock data in the game store; player bars show the remaining time at the displayed ply; review shows time spent per move, a time graph, and flags mistakes made in time trouble; summary per player (avg time, time-trouble errors) | senior | done |
+
+## M23 — Human-like engine: Lc0 + Maia (decided 2026-10-25)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M23-1 | Server: build/fetch Lc0 (CPU backend, no AVX2) + Maia 1100–1900 weights (pinned, checksummed, fetch script), engine pool entries `maia-<elo>`, protocol additions (engine list with `style: human`, `nodes` limit), ADR-019 | architect | in progress |
+| M23-2 | Web: Maia levels as opponent in Play and as drill opponent (server only, fallback message without token), strength picker "Human-like (Maia 1500)" | senior | todo |
+| M23-3 | Review hint: per mistake, Maia's most likely move at the player's level (rating from PGN headers or chosen), "typical at 1500" note; time-trouble aware (M22) | senior | todo |

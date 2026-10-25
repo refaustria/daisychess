@@ -345,3 +345,48 @@ button:disabled {
   color: var(--text-muted);
   font-size: 0.8rem;
 }
+
+/* M22-1: clock data of imported games. */
+.timeBadge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--warning);
+  border-radius: 999px;
+  color: var(--warning);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.timeLine {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeStats {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeStats th,
+.timeStats td {
+  padding: 0.2rem 0.3rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.timeStats td button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

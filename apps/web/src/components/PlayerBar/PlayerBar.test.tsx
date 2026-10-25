@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLichessAuth } from '../../lichess/auth';
 import type { LiveGame } from '../../live/LiveGameController';
 import { resetLive, useLiveStore } from '../../live/liveStore';
+import { SCHOLAR_TIMED_PGN } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
 import { PlayerBar, playerBarLabel, useBoardPlayers } from './PlayerBar';
 
@@ -26,6 +27,28 @@ afterEach(() => {
 });
 
 describe('PlayerBar', () => {
+  it('imported game with %clk: static clocks follow the displayed ply (M22-1)', () => {
+    act(() => {
+      useGameStore.getState().loadPgn(SCHOLAR_TIMED_PGN);
+      useGameStore.getState().goTo(0);
+    });
+    render(<Bars />);
+    const white = () => screen.getByTestId('pgn-clock-white');
+    const black = () => screen.getByTestId('pgn-clock-black');
+    expect(white().textContent).toBe('1:00');
+    expect(black().textContent).toBe('1:00');
+    act(() => useGameStore.getState().goTo(4));
+    expect(white().textContent).toBe('0:58');
+    expect(black().textContent).toBe('0:40');
+    act(() => useGameStore.getState().goTo(6));
+    expect(black().textContent).toBe('0:05.0');
+    expect(black().dataset.state).toBe('idle');
+    // Low time relative to the 1-minute initial time (min(20 s, 6 s)).
+    expect(black().className).toMatch(/clockLow/);
+    expect(white().className).not.toMatch(/clockLow/);
+    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe('Black: Bob, 0:05.0');
+  });
+
   it('name, subtitle and a large clock; aria-label summarises the bar', () => {
     render(
       <PlayerBar

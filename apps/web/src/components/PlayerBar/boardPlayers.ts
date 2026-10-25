@@ -1,5 +1,6 @@
 import type { ClockState } from '../../clock/Clock';
 import type { GameClock } from '../../clock/gameClock';
+import { hasClockData, initialTimeOf, remainingAt } from '../../clock/gameTimes';
 import { isRunning, remainingMs, toMove, type LiveGame } from '../../live/LiveGameController';
 import type { LiveStatus } from '../../live/liveStore';
 import type { PlayMode, PlaySetup } from '../../play/playStore';
@@ -44,7 +45,12 @@ export interface BoardPlayersInput {
     setup: Pick<PlaySetup, 'strength'>;
     clock: GameClock | null;
   };
-  game: Pick<GameState, 'headers' | 'startFen' | 'moves'>;
+  /**
+   * The board's game. `ply` (displayed position, default: the tip) and `timeControl` drive the
+   * static clocks of an imported game with `%clk` data (M22-1).
+   */
+  game: Pick<GameState, 'headers' | 'startFen' | 'moves'> &
+    Partial<Pick<GameState, 'ply' | 'timeControl'>>;
   /** Clock source of the live game (`Date.now()`, the live store's time base). */
   now: number;
   /**
@@ -141,12 +147,33 @@ const header = (h: Record<string, string>, key: string): string | undefined => {
   return v && v !== '?' && v !== '-' ? v : undefined;
 };
 
-function pgnPlayers(headers: Record<string, string>): BoardPlayers {
+/**
+ * Static clock of an imported game at the displayed ply: the side's remaining time after its most
+ * recent move (initial time before its first move); never ticking, low-time colour relative to
+ * the initial time.
+ */
+function pgnClock(game: BoardPlayersInput['game'], side: Orientation): PlayerClockInfo | undefined {
+  if (!hasClockData(game.moves)) return undefined;
+  const ms = remainingAt(game, game.ply ?? game.moves.length, side);
+  if (ms === undefined) return undefined;
+  const initialMs = initialTimeOf(game, side);
+  return {
+    ms,
+    state: 'idle',
+    ...(initialMs !== undefined ? { initialMs } : {}),
+    testId: `pgn-clock-${side}`,
+  };
+}
+
+function pgnPlayers(game: BoardPlayersInput['game']): BoardPlayers {
+  const { headers } = game;
   const one = (side: 'White' | 'Black'): PlayerInfo => {
     const elo = header(headers, `${side}Elo`);
     const title = header(headers, `${side}Title`);
     const subtitle = [title, elo].filter(Boolean).join(' ');
-    return { name: header(headers, side) ?? side, subtitle: subtitle || undefined };
+    const info: PlayerInfo = { name: header(headers, side) ?? side, subtitle: subtitle || undefined };
+    const clock = pgnClock(game, side === 'White' ? 'white' : 'black');
+    return clock ? { ...info, clock } : info;
   };
   return { white: one('White'), black: one('Black') };
 }
@@ -154,7 +181,8 @@ function pgnPlayers(headers: Record<string, string>): BoardPlayers {
 /**
  * The two players shown in the bars above and below the board. Priority: an injected `friend`
  * game > a live lichess game (playing or just finished) > a local engine game (playing or just
- * finished) > the PGN headers (White/Black, Elo), defaulting to "White"/"Black".
+ * finished) > the PGN headers (White/Black, Elo), defaulting to "White"/"Black", with static
+ * clocks at the displayed ply when the imported game has `%clk`/`%emt` data.
  */
 export function selectBoardPlayers(input: BoardPlayersInput): BoardPlayers & {
   source: BoardPlayersSource;
@@ -165,5 +193,5 @@ export function selectBoardPlayers(input: BoardPlayersInput): BoardPlayers & {
     return { ...livePlayers(live.game, live.username, input.now), source: 'live' };
   }
   if (play.mode !== 'idle') return { ...playPlayers(input), source: 'play' };
-  return { ...pgnPlayers(input.game.headers), source: 'pgn' };
+  return { ...pgnPlayers(input.game), source: 'pgn' };
 }

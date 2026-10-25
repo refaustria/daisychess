@@ -47,6 +47,49 @@ const input = (over: Partial<BoardPlayersInput> = {}): BoardPlayersInput => ({
   ...over,
 });
 
+describe('selectBoardPlayers: PGN clocks (M22-1)', () => {
+  const AFTER_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+  const AFTER_NF3 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2';
+  const moves: MoveRecord[] = [
+    { ...e4, clock: { remainingMs: 300_000, spentMs: 0 } },
+    { san: 'e5', from: 'e7', to: 'e5', fen: AFTER_E5, clock: { remainingMs: 295_000 } },
+    { san: 'Nf3', from: 'g1', to: 'f3', fen: AFTER_NF3, clock: { remainingMs: 25_000 } },
+  ];
+  const timeControl = { initialMs: 300_000, incrementMs: 0 };
+  const at = (ply: number, over: Partial<BoardPlayersInput['game']> = {}) =>
+    selectBoardPlayers(input({ game: { headers: {}, startFen: START_FEN, moves, ply, timeControl, ...over } }));
+
+  it('initial time before the first move, then the value after the side’s latest move', () => {
+    expect(at(0).white.clock).toEqual({ ms: 300_000, state: 'idle', initialMs: 300_000, testId: 'pgn-clock-white' });
+    expect(at(0).black.clock?.ms).toBe(300_000);
+    expect(at(1).black.clock?.ms).toBe(300_000);
+    expect(at(2).black.clock?.ms).toBe(295_000);
+    expect(at(2).white.clock?.ms).toBe(300_000);
+    expect(at(3).white.clock?.ms).toBe(25_000);
+    expect(at(3).black.clock?.ms).toBe(295_000);
+    expect(at(3).source).toBe('pgn');
+  });
+
+  it('defaults to the tip; without a time control the first value is the initial time', () => {
+    const p = at(0, { ply: undefined, timeControl: undefined });
+    expect(p.white.clock?.ms).toBe(25_000);
+    expect(p.white.clock?.initialMs).toBe(300_000);
+    expect(at(0, { timeControl: undefined }).black.clock?.ms).toBe(295_000);
+  });
+
+  it('no clocks without clock data or outside the PGN source', () => {
+    expect(at(2, { moves: [e4] }).white.clock).toBeUndefined();
+    const play = selectBoardPlayers(
+      input({
+        play: { mode: 'playing', playerColor: 'white', setup: { strength: '1500' }, clock: null },
+        game: { headers: {}, startFen: START_FEN, moves, ply: 2, timeControl },
+      }),
+    );
+    expect(play.source).toBe('play');
+    expect(play.white.clock).toBeUndefined();
+  });
+});
+
 describe('selectBoardPlayers', () => {
   it('defaults to White/Black without a game or headers', () => {
     const p = selectBoardPlayers(input());

@@ -50,15 +50,23 @@ export function buildSchedule(summary: ReviewSummary): TourStep[] {
 
 export const dwellFor = (step: TourStep): number => (step.kind ? LONG_DWELL_MS : SHORT_DWELL_MS);
 
-/** Text of a highlight, e.g. `12. Nxe5?? Blunder (−3.10): better was Bxf7+`. */
-export function highlightText(details: MoveDetails, step: TourStep): string {
+/**
+ * Text of a highlight, e.g. `12. Nxe5?? Blunder (−3.10): better was Bxf7+`; a mistake/blunder in
+ * `timeTrouble` (plies, from the imported game's clocks) gets ` (in time trouble)`.
+ */
+export function highlightText(
+  details: MoveDetails,
+  step: TourStep,
+  timeTrouble: ReadonlySet<number> = new Set(),
+): string {
   const d = details[step.ply];
   if (!d) return '';
   const info = CLASS_INFO[d.classification];
   const head = `${d.moveLabel} ${d.playedSan}${info.glyph}`;
   if (step.kind === 'great') return `${head} Great move: punishes the previous mistake`;
   const better = d.bestSan ? `: better was ${d.bestSan}` : '';
-  return `${head} ${info.label} (${d.swing})${better}`;
+  const trouble = timeTrouble.has(step.ply) ? ' (in time trouble)' : '';
+  return `${head} ${info.label} (${d.swing})${better}${trouble}`;
 }
 
 export type TourStatus = 'idle' | 'playing' | 'paused' | 'finished' | 'stopped';

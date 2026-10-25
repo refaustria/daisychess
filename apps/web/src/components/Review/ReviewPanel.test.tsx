@@ -6,7 +6,7 @@ import { loadOpenings } from '../../openings';
 import { usePlayStore } from '../../play/playStore';
 import { buildMoveDetails } from '../../review/details';
 import { gameToBatch, useReviewStore } from '../../review/reviewStore';
-import { scholarSummary } from '../../review/testFixtures';
+import { SCHOLAR_TIMED_PGN, scholarSummary } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
 import { OpeningFocusView } from './OpeningFocusBlock';
 import { ReviewPanel, reviewingLabel } from './ReviewPanel';
@@ -303,5 +303,37 @@ describe('ReviewPanel', () => {
     useReviewStore.setState({ status: 'done', summary: scholarSummary(), moveDetails: {} });
     render(<ReviewPanel />);
     expect(screen.queryByRole('region', { name: 'Opening' })).toBeNull();
+  });
+
+  it('done with clock data: time graph, per-player time summary, badge in the mistakes list', () => {
+    act(() => useGameStore.getState().loadPgn(SCHOLAR_TIMED_PGN));
+    const summary = scholarSummary();
+    const moveDetails = buildMoveDetails(summary, gameToBatch(useGameStore.getState()), []);
+    useReviewStore.setState({ status: 'done', summary, moveDetails });
+    render(<ReviewPanel />);
+    expect(screen.getByTestId('time-graph').getAttribute('aria-label')).toBe(
+      'Clock graph over 7 moves: White ends with 0:49, Black with 0:05 remaining.',
+    );
+    // White: 0 + 2 + 8 + 1 s over 4 moves; Black: 0 + 20 + 35 s over 3 moves.
+    expect(screen.getByTestId('time-avg-white').textContent).toBe('0:02.7');
+    expect(screen.getByTestId('time-avg-black').textContent).toBe('0:18');
+    expect(screen.getByTestId('time-trouble-white').textContent).toBe('0');
+    expect(screen.getByTestId('time-trouble-black').textContent).toBe('1');
+    fireEvent.click(screen.getByRole('button', { name: /Longest think of Black: 0:35 on 3\.\.\. Nf6/ }));
+    expect(useGameStore.getState().ply).toBe(6);
+    const black = screen.getByRole('region', { name: 'Black highlights' });
+    expect(black.querySelector('[data-testid="time-trouble-badge"]')).toBeTruthy();
+    const white = screen.getByRole('region', { name: 'White highlights' });
+    expect(white.querySelector('[data-testid="time-trouble-badge"]')).toBeNull();
+    // The commentary at the blunder shows the badge as well.
+    expect(screen.getByTestId('move-card').textContent).toContain('time trouble');
+  });
+
+  it('done without clock data: no time graph or time summary', () => {
+    act(() => useGameStore.getState().loadPgn(PGN));
+    useReviewStore.setState({ status: 'done', summary: scholarSummary(), moveDetails: {} });
+    render(<ReviewPanel />);
+    expect(screen.queryByTestId('time-graph')).toBeNull();
+    expect(screen.queryByTestId('time-summary')).toBeNull();
   });
 });

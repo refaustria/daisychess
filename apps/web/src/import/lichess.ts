@@ -49,7 +49,7 @@ function mapGame(raw: unknown): OnlineGame | null {
     black: player(g.players?.black),
     result: resultOf(g),
     date: new Date(g.createdAt).toISOString(),
-    pgnUrl: `${GAME_URL}${g.id}?clocks=false&evals=false`,
+    pgnUrl: `${GAME_URL}${g.id}?clocks=true&evals=false`,
   };
   if (typeof g.speed === 'string') game.speed = g.speed;
   if (g.clock && typeof g.clock.initial === 'number') {
@@ -66,7 +66,7 @@ export async function fetchLichessGames(username: string, opts: FetchOptions = {
   const doFetch = opts.fetch ?? defaultFetch;
   const url =
     `https://lichess.org/api/games/user/${encodeURIComponent(username)}` +
-    `?max=${max}&pgnInJson=false&clocks=false&evals=false&opening=true`;
+    `?max=${max}&pgnInJson=false&clocks=true&evals=false&opening=true`;
   const res = await request('lichess', url, 'application/x-ndjson', doFetch, `User "${username}"`);
   const text = await res.text();
   const games: OnlineGame[] = [];
@@ -85,7 +85,7 @@ export async function fetchLichessGames(username: string, opts: FetchOptions = {
 }
 
 export async function fetchLichessPgn(game: OnlineGame, opts: FetchOptions = {}): Promise<string> {
-  const url = game.pgnUrl ?? `${GAME_URL}${encodeURIComponent(game.id)}?clocks=false&evals=false`;
+  const url = game.pgnUrl ?? `${GAME_URL}${encodeURIComponent(game.id)}?clocks=true&evals=false`;
   const res = await request('lichess', url, 'application/x-chess-pgn', opts.fetch ?? defaultFetch, 'Game');
   const pgn = await res.text();
   if (!pgn.trim()) throw new OnlineImportError('bad-response', 'Unexpected response from lichess');

@@ -6,8 +6,12 @@ import { CLASS_INFO, bestMoveSan, moveNumberLabel } from '../../review/format';
 import { useHumanGameLockReason } from '../../live/lock';
 import { cachedReviewLabel, covers } from '../../review/reviewCache';
 import { REVIEW_PRESETS, useReviewStore, type ReviewEngineInfo } from '../../review/reviewStore';
+import { hasClockData } from '../../clock/gameTimes';
+import { formatDuration, isTimeTrouble, sideTimeStats } from '../../review/timeUsage';
 import { useGameStore } from '../../store/gameStore';
 import { EvalGraph } from './EvalGraph';
+import { TimeGraph } from './TimeGraph';
+import { TimeTroubleBadge } from './TimeTroubleBadge';
 import { MoveCommentary } from './MoveCommentary';
 import { OpeningFocusBlock } from './OpeningFocusBlock';
 import { ReviewTour } from './ReviewTour';
@@ -58,9 +62,11 @@ function playerName(headers: Record<string, string>, color: 'white' | 'black'): 
 function MoveItem({ move, showBest }: { move: ReviewedMove; showBest: boolean }) {
   const startFen = useGameStore((s) => s.startFen);
   const moves = useGameStore((s) => s.moves);
+  const timeControl = useGameStore((s) => s.timeControl);
   const goTo = useGameStore((s) => s.goTo);
   const info = CLASS_INFO[move.classification];
   const best = showBest ? bestMoveSan(startFen, moves, move) : undefined;
+  const trouble = isTimeTrouble({ startFen, moves, timeControl }, move);
   const loss = Math.round(move.winProbLoss);
   return (
     <li>
@@ -72,6 +78,7 @@ function MoveItem({ move, showBest }: { move: ReviewedMove; showBest: boolean })
             {info.glyph}
             {loss >= 1 && ` (\u2212${loss}%)`}
           </span>
+          {trouble && <TimeTroubleBadge />}
         </span>
         {best && <span className={styles.best}>best was {best}</span>}
       </button>
@@ -118,12 +125,85 @@ function Highlights({ summary }: { summary: ReviewSummary }) {
   );
 }
 
+/** Per player: average time per move, longest think (jumps there), mistakes in time trouble. */
+function TimeSummary({ summary }: { summary: ReviewSummary }) {
+  const headers = useGameStore((s) => s.headers);
+  const startFen = useGameStore((s) => s.startFen);
+  const moves = useGameStore((s) => s.moves);
+  const timeControl = useGameStore((s) => s.timeControl);
+  const goTo = useGameStore((s) => s.goTo);
+  const stats = useMemo(
+    () => sideTimeStats({ startFen, moves, timeControl }, summary),
+    [startFen, moves, timeControl, summary],
+  );
+  const colors = ['white', 'black'] as const;
+  return (
+    <table className={styles.timeStats} data-testid="time-summary">
+      <caption className={styles.muted}>Time usage</caption>
+      <thead>
+        <tr>
+          <th scope="col">Clock</th>
+          {colors.map((c) => (
+            <th key={c} scope="col">
+              {playerName(headers, c)}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Average per move</th>
+          {colors.map((c) => {
+            const avg = stats[c].avgMs;
+            return (
+              <td key={c} data-testid={`time-avg-${c}`}>
+                {avg !== undefined ? formatDuration(avg) : '–'}
+              </td>
+            );
+          })}
+        </tr>
+        <tr>
+          <th scope="row">Longest think</th>
+          {colors.map((c) => {
+            const l = stats[c].longest;
+            return (
+              <td key={c} data-testid={`time-longest-${c}`}>
+                {l ? (
+                  <button
+                    type="button"
+                    onClick={() => goTo(l.ply)}
+                    aria-label={`Longest think of ${c === 'white' ? 'White' : 'Black'}: ${formatDuration(l.ms)} on ${moveNumberLabel(startFen, l.ply)} ${moves[l.ply - 1]?.san ?? ''}, go to move`}
+                  >
+                    {formatDuration(l.ms)} ({moveNumberLabel(startFen, l.ply)} {moves[l.ply - 1]?.san})
+                  </button>
+                ) : (
+                  '–'
+                )}
+              </td>
+            );
+          })}
+        </tr>
+        <tr>
+          <th scope="row">Mistakes in time trouble</th>
+          {colors.map((c) => (
+            <td key={c} data-testid={`time-trouble-${c}`}>
+              {stats[c].timeTroubleMistakes}
+            </td>
+          ))}
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
 function Done({ summary }: { summary: ReviewSummary }) {
   const headers = useGameStore((s) => s.headers);
   const startFen = useGameStore((s) => s.startFen);
   const moves = useGameStore((s) => s.moves);
   const ply = useGameStore((s) => s.ply);
+  const timeControl = useGameStore((s) => s.timeControl);
   const goTo = useGameStore((s) => s.goTo);
+  const timed = hasClockData(moves);
   const [copied, setCopied] = useState(false);
   const pgn = useMemo(
     () => annotatePgn(headers, startFen, moves, summary),
@@ -179,6 +259,12 @@ function Done({ summary }: { summary: ReviewSummary }) {
         </tbody>
       </table>
       <EvalGraph summary={summary} ply={ply} onSeek={goTo} />
+      {timed && (
+        <>
+          <TimeGraph game={{ startFen, moves, timeControl }} ply={ply} onSeek={goTo} />
+          <TimeSummary summary={summary} />
+        </>
+      )}
       <h2 className={styles.h}>Highlights</h2>
       <Highlights summary={summary} />
       <div className={styles.row}>

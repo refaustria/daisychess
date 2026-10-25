@@ -1,5 +1,8 @@
 import { Chess, type PieceSymbol } from 'chess.js';
 import { create } from 'zustand';
+import { parsePgnClocks, type MoveClock, type TimeControl } from '../import/clockComments';
+
+export type { MoveClock, TimeControl };
 
 export interface MoveRecord {
   san: string;
@@ -8,6 +11,11 @@ export interface MoveRecord {
   /** FEN after the move. */
   fen: string;
   promotion?: string;
+  /**
+   * Clock data from the imported PGN (`%clk` / `%emt` comments, M22-1). Only `loadPgn` sets it;
+   * moves made on the board have none.
+   */
+  clock?: MoveClock;
 }
 
 export type Orientation = 'white' | 'black';
@@ -21,6 +29,8 @@ export interface GameState {
   ply: number;
   orientation: Orientation;
   headers: Record<string, string>;
+  /** Live time control of the loaded PGN (`TimeControl` header); only `loadPgn` sets it. */
+  timeControl?: TimeControl | undefined;
 }
 
 export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -31,6 +41,7 @@ const initialState = (): GameState => ({
   ply: 0,
   orientation: 'white',
   headers: {},
+  timeControl: undefined,
 });
 
 export function currentFen(s: Pick<GameState, 'startFen' | 'moves' | 'ply'>): string {
@@ -174,18 +185,25 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const clean: Record<string, string> = {};
     for (const [k, v] of Object.entries(headers)) if (v != null) clean[k] = v;
     const startFen = history[0]?.before ?? chess.fen();
-    const moves: MoveRecord[] = history.map((m) => ({
-      san: m.san,
-      from: m.from,
-      to: m.to,
-      fen: m.after,
-      ...(m.promotion ? { promotion: m.promotion } : {}),
-    }));
+    const startTurn = startFen.split(' ')[1] === 'b' ? 'b' : 'w';
+    const { timeControl, clocks } = parsePgnClocks(pgn, clean, history.length, startTurn);
+    const moves: MoveRecord[] = history.map((m, i) => {
+      const clock = clocks[i];
+      return {
+        san: m.san,
+        from: m.from,
+        to: m.to,
+        fen: m.after,
+        ...(m.promotion ? { promotion: m.promotion } : {}),
+        ...(clock ? { clock } : {}),
+      };
+    });
     set({
       startFen,
       moves,
       ply: moves.length,
       headers: clean,
+      timeControl,
       orientation: get().orientation,
     });
     return true;

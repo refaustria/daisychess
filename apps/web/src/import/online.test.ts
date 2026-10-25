@@ -54,7 +54,7 @@ describe('lichess client', () => {
     const f = mock(res(ndjson));
     const games = await fetchLichessGames('Alice', { fetch: f });
     expect(f).toHaveBeenCalledWith(
-      'https://lichess.org/api/games/user/Alice?max=20&pgnInJson=false&clocks=false&evals=false&opening=true',
+      'https://lichess.org/api/games/user/Alice?max=20&pgnInJson=false&clocks=true&evals=false&opening=true',
       { headers: { Accept: 'application/x-ndjson' } },
     );
     expect(games).toHaveLength(2);
@@ -69,7 +69,7 @@ describe('lichess client', () => {
       timeControl: '3+2',
       opening: "King's Pawn Game",
     });
-    expect(games[0]?.pgnUrl).toBe('https://lichess.org/game/export/abc12345?clocks=false&evals=false');
+    expect(games[0]?.pgnUrl).toBe('https://lichess.org/game/export/abc12345?clocks=true&evals=false');
     expect(games[1]).toMatchObject({ white: { name: 'Stockfish level 3' }, result: '1/2-1/2', timeControl: '15+10' });
   });
 
@@ -214,5 +214,25 @@ describe('lichess with the login', () => {
       vi.unstubAllGlobals();
       resetLichessAuth();
     }
+  });
+});
+
+describe('clock times in imported games (M22-1)', () => {
+  it('requests lichess PGNs with clocks and without evals, also without a listed pgnUrl', async () => {
+    const f = mock(res('1. e4 { [%clk 0:03:00] } *'));
+    const game = { id: 'abc 1', site: 'lichess', white: { name: 'a' }, black: { name: 'b' }, result: '*', date: '' } as const;
+    await fetchLichessPgn(game, { fetch: f });
+    expect(f.mock.calls[0]?.[0]).toBe('https://lichess.org/game/export/abc%201?clocks=true&evals=false');
+  });
+
+  it('keeps the %clk comments of chess.com PGNs untouched', async () => {
+    const pgn =
+      '[Event "Live Chess"]\n[TimeControl "180+2"]\n\n1. e4 {[%clk 0:02:59.9]} 1... e5 {[%clk 0:02:58.2]} *';
+    const archives = JSON.stringify({ archives: ['https://api.chess.com/pub/player/ann/games/2026/10'] });
+    const month = JSON.stringify({ games: [cc({ pgn })] });
+    const [g] = await fetchChessComGames('ann', { fetch: mock(res(archives), res(month)) });
+    const text = await fetchOnlineGamePgn(g!, { fetch: vi.fn<FetchLike>() });
+    expect(text).toContain('{[%clk 0:02:59.9]}');
+    expect(text).toContain('[TimeControl "180+2"]');
   });
 });

@@ -52,3 +52,13 @@ export function scholarSummary(): ReviewSummary {
   for (const m of moves) summary[m.mover].counts[m.classification]++;
   return summary;
 }
+
+/**
+ * The game of {@link scholarSummary} with lichess-style clocks (1+0): Black blunders 3... Nf6
+ * after a 35 s think with 5 s left (time trouble).
+ */
+export const SCHOLAR_TIMED_PGN =
+  '[White "Ann"]\n[Black "Bob"]\n[TimeControl "60+0"]\n\n' +
+  '1. e4 { [%clk 0:01:00] } 1... e5 { [%clk 0:01:00] } 2. Bc4 { [%clk 0:00:58] } ' +
+  '2... Nc6 { [%clk 0:00:40] } 3. Qh5 { [%clk 0:00:50] } 3... Nf6 { [%clk 0:00:05] } ' +
+  '4. Qxf7# { [%clk 0:00:49] } 1-0';

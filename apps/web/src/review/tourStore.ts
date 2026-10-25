@@ -12,6 +12,7 @@ import {
   type TourStep,
   type TourTimer,
 } from './tour';
+import { timeTroublePlies } from './timeUsage';
 
 /** Identity of the game on the board (start position + moves). */
 export function gameKey(s: Pick<GameState, 'startFen' | 'moves'>): string {
@@ -59,6 +60,7 @@ export const useTourStore = create<TourStore>()((set, get) => ({
     if (summary.moves.length !== game.moves.length) return;
     controller?.stop();
     const schedule = buildSchedule(summary);
+    const trouble = timeTroublePlies(game, summary);
     const notable = schedule.filter((s) => s.kind);
     const reachedAt = (i: number) => schedule.slice(0, i + 1).filter((s) => s.kind).length;
     const c = new TourController(
@@ -67,7 +69,7 @@ export const useTourStore = create<TourStore>()((set, get) => ({
         onStep: (step: TourStep, i: number) => {
           tourPly = step.ply;
           useGameStore.getState().goTo(step.ply);
-          set({ reached: reachedAt(i), text: step.kind ? highlightText(moveDetails, step) : '' });
+          set({ reached: reachedAt(i), text: step.kind ? highlightText(moveDetails, step, trouble) : '' });
         },
         onStatus: (status) => {
           if (status === 'playing' || status === 'paused') {

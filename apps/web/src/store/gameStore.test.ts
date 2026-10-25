@@ -162,3 +162,40 @@ describe('actions', () => {
     expect(isPromotionMove(st(), 'a7', 'a8')).toBe(false); // blocked
   });
 });
+
+describe('loadPgn clock data (M22-1)', () => {
+  const PGN =
+    '[TimeControl "180+2"]\n\n1. e4 { [%clk 0:03:00] } 1... e5 { [%clk 0:03:00] } 2. Nf3 { [%clk 0:02:50] } 2... Nc6 *';
+
+  it('sets per-move clocks and the time control', () => {
+    expect(st().loadPgn(PGN)).toBe(true);
+    const s = st();
+    expect(s.timeControl).toEqual({ initialMs: 180_000, incrementMs: 2_000 });
+    expect(s.moves.map((m) => m.clock)).toEqual([
+      { remainingMs: 180_000, spentMs: 0 },
+      { remainingMs: 180_000, spentMs: 0 },
+      { remainingMs: 170_000, spentMs: 12_000 },
+      undefined,
+    ]);
+    expect('clock' in s.moves[3]!).toBe(false);
+  });
+
+  it('moves made on the board have no clock; reset and loadFen clear the time control', () => {
+    st().loadPgn(PGN);
+    st().goTo(3);
+    expect(st().makeMove('f8', 'c5')).toBe(true);
+    expect(st().moves[3]?.clock).toBeUndefined();
+    expect(st().moves[2]?.clock).toEqual({ remainingMs: 170_000, spentMs: 12_000 });
+    st().reset();
+    expect(st().timeControl).toBeUndefined();
+    st().loadPgn(PGN);
+    st().loadFen('8/8/8/8/8/8/8/K1k5 w - - 0 1');
+    expect(st().timeControl).toBeUndefined();
+  });
+
+  it('a PGN without clock data leaves the moves unchanged', () => {
+    st().loadPgn('1. e4 e5 *');
+    expect(st().moves.every((m) => m.clock === undefined)).toBe(true);
+    expect(st().timeControl).toBeUndefined();
+  });
+});

@@ -46,6 +46,12 @@ describe('schedule', () => {
     );
     expect(highlightText(details, { ply: 7, kind: 'great' })).toContain('Great move');
     expect(highlightText(details, { ply: 99, kind: 'great' })).toBe('');
+    expect(highlightText(details, { ply: 6, kind: 'blunder' }, new Set([6]))).toMatch(
+      /^3\.\.\. Nf6\?\? Blunder \(.+\): better was g6 \(in time trouble\)$/,
+    );
+    expect(highlightText(details, { ply: 6, kind: 'blunder' }, new Set([5]))).not.toContain(
+      'time trouble',
+    );
   });
 });
 

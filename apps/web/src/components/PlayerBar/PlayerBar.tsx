@@ -87,6 +87,8 @@ export function useBoardPlayers(): BoardPlayers & {
   const headers = useGameStore((s) => s.headers);
   const startFen = useGameStore((s) => s.startFen);
   const moves = useGameStore((s) => s.moves);
+  const ply = useGameStore((s) => s.ply);
+  const timeControl = useGameStore((s) => s.timeControl);
   const orientation = useGameStore((s) => s.orientation);
   // A room (waiting, playing or just finished) is shown until the user leaves it or starts
   // another game.
@@ -104,7 +106,7 @@ export function useBoardPlayers(): BoardPlayers & {
   const players = selectBoardPlayers({
     live: { status: live.status, game: live.game, username },
     play,
-    game: { headers, startFen, moves },
+    game: { headers, startFen, moves, ply, timeControl },
     now,
     ...(friend ? { friend } : {}),
   });

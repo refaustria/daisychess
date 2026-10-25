@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildMoveDetails } from '../../review/details';
 import { gameToBatch } from '../../review/reviewStore';
-import { scholarSummary } from '../../review/testFixtures';
+import { SCHOLAR_TIMED_PGN, scholarSummary } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
 import { usePreviewStore } from '../../store/previewStore';
 import { MoveCommentary } from './MoveCommentary';
@@ -94,5 +94,38 @@ describe('MoveCommentary', () => {
       useGameStore.getState().makeMove('h5', 'g6');
     });
     expect(card().textContent).toContain('not part of the reviewed game');
+  });
+});
+
+describe('MoveCommentary with clock data (M22-1)', () => {
+  function setupTimed() {
+    act(() => {
+      useGameStore.getState().loadPgn(SCHOLAR_TIMED_PGN);
+    });
+    const summary = scholarSummary();
+    const details = buildMoveDetails(summary, gameToBatch(useGameStore.getState()), []);
+    render(<MoveCommentary summary={summary} details={details} />);
+  }
+
+  it('shows the time used and left, and flags the blunder in time trouble', () => {
+    setupTimed();
+    act(() => useGameStore.getState().goTo(6));
+    expect(screen.getByTestId('move-card-time').textContent).toBe(
+      'Used 0:35 (88% of remaining) · 0:05 left',
+    );
+    expect(screen.getByTestId('time-trouble-badge').textContent).toBe('time trouble');
+    // The inaccuracy at ply 5 (50 s left) is neither a mistake nor in time trouble.
+    act(() => useGameStore.getState().goTo(5));
+    expect(screen.getByTestId('move-card-time').textContent).toBe(
+      'Used 0:08 (14% of remaining) · 0:50 left',
+    );
+    expect(screen.queryByTestId('time-trouble-badge')).toBeNull();
+  });
+
+  it('shows no time line without clock data', () => {
+    setup();
+    act(() => useGameStore.getState().goTo(6));
+    expect(screen.queryByTestId('move-card-time')).toBeNull();
+    expect(screen.queryByTestId('time-trouble-badge')).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
 import { buildMoveDetails } from './details';
 import { gameToBatch, useReviewStore } from './reviewStore';
-import { scholarSummary } from './testFixtures';
+import { SCHOLAR_TIMED_PGN, scholarSummary } from './testFixtures';
 import { LONG_DWELL_MS, SHORT_DWELL_MS } from './tour';
 import { gameKey, installReviewTour, setTourTimer, useTourStore } from './tourStore';
 
@@ -61,6 +61,15 @@ afterEach(() => {
 });
 
 describe('tourStore', () => {
+  it('appends "(in time trouble)" to a blunder made with little time left (M22-1)', () => {
+    useGameStore.getState().loadPgn(SCHOLAR_TIMED_PGN);
+    useGameStore.getState().goTo(0);
+    finishReview();
+    for (let i = 0; i < 5; i++) t.fire();
+    expect(useGameStore.getState().ply).toBe(6);
+    expect(useTourStore.getState().text).toMatch(/^3\.\.\. Nf6\?\? Blunder.* \(in time trouble\)$/);
+  });
+
   it('starts when the review is done and drives the game ply', () => {
     finishReview();
     expect(useTourStore.getState().status).toBe('playing');

@@ -3,9 +3,11 @@ import { explainMove, findJump, type MoveDetail, type MoveDetails } from '../../
 import { CLASS_INFO } from '../../review/format';
 import { alternativesText } from '../../review/openingFocus';
 import { useOpeningFocus } from '../../review/useOpeningFocus';
+import { isTimeTrouble, moveTime, timeUsedText } from '../../review/timeUsage';
 import { useGameStore } from '../../store/gameStore';
 import { usePreviewStore } from '../../store/previewStore';
 import styles from './ReviewPanel.module.css';
+import { TimeTroubleBadge } from './TimeTroubleBadge';
 
 const MINUS = '−';
 
@@ -16,9 +18,23 @@ export function classLabel(d: Pick<MoveDetail, 'classification' | 'winProbLoss'>
   return loss >= 1 ? `${label} (${MINUS}${loss}%)` : label;
 }
 
+/** Clock data of the move from the imported game (M22-1): time line and time-trouble flag. */
+function useMoveTime(detail: MoveDetail): { text?: string; trouble: boolean } {
+  const startFen = useGameStore((s) => s.startFen);
+  const moves = useGameStore((s) => s.moves);
+  const timeControl = useGameStore((s) => s.timeControl);
+  const game = { startFen, moves, timeControl };
+  const text = timeUsedText(moveTime(game, detail.ply));
+  return {
+    ...(text !== undefined ? { text } : {}),
+    trouble: isTimeTrouble(game, detail),
+  };
+}
+
 function Body({ detail }: { detail: MoveDetail }) {
   const preview = usePreviewStore((s) => s.start);
   const info = CLASS_INFO[detail.classification];
+  const time = useMoveTime(detail);
   return (
     <>
       <p className={styles.cardTitle}>
@@ -30,7 +46,13 @@ function Body({ detail }: { detail: MoveDetail }) {
         <span className={styles.cardClass} style={{ color: info.color }}>
           {classLabel(detail)}
         </span>
+        {time.trouble && <TimeTroubleBadge />}
       </p>
+      {time.text && (
+        <p className={styles.timeLine} data-testid="move-card-time">
+          {time.text}
+        </p>
+      )}
       {detail.bestSan && (
         <div className={styles.better} data-testid="move-card-better">
           <span>

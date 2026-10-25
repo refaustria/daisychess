@@ -1,4 +1,5 @@
 import type { ReviewSummary, Score } from '@daisychess/engine-core';
+import { formatClkComment } from '../import/clockComments';
 import type { MoveRecord } from '../store/gameStore';
 import { bestMoveSan, moveNumberLabel } from './format';
 
@@ -17,7 +18,7 @@ const clean = (s: string): string => s.replace(/[{}]/g, '');
 /**
  * Builds a PGN of the game. With a review summary it adds `[%eval]` comments (White POV, after
  * the move), NAGs for inaccuracies/mistakes/blunders, "best was ..." comments and an accuracy
- * comment before the first move.
+ * comment before the first move. Clock times of an imported game are written back as `[%clk]`.
  */
 export function annotatePgn(
   headers: Readonly<Record<string, string>>,
@@ -48,12 +49,16 @@ export function annotatePgn(
     tokens.push(m.san);
     needNumber = false;
     const r = summary?.moves.find((x) => x.ply === ply);
-    if (!r) return;
-    const nag = NAGS[r.classification];
-    if (nag) tokens.push(nag);
-    const ev = evalComment(r.evalAfter);
-    const parts: string[] = ev ? [`[%eval ${ev}]`] : [];
-    if (r.classification === 'mistake' || r.classification === 'blunder') {
+    const parts: string[] = [];
+    if (r) {
+      const nag = NAGS[r.classification];
+      if (nag) tokens.push(nag);
+      const ev = evalComment(r.evalAfter);
+      if (ev) parts.push(`[%eval ${ev}]`);
+    }
+    const clk = m.clock?.remainingMs;
+    if (clk !== undefined) parts.push(`[%clk ${formatClkComment(clk)}]`);
+    if (r && (r.classification === 'mistake' || r.classification === 'blunder')) {
       const best = bestMoveSan(startFen, moves, r);
       if (best) parts.push(`best was ${clean(best)}`);
     }
