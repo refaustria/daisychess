@@ -485,3 +485,12 @@ Fixed by `packages/engine-core/src/link.ts`, `tokens.ts` and the additive `welco
 - Source builds of Stockfish require `hexdump` (bsdextrautils) or the NNUE net is silently not embedded; `scripts/build-stockfish.sh` enforces this.
 - Files: `docker/node.Dockerfile`, `docker/docker-compose.node.yml`, `.github/workflows/release-node.yml` (tags `node-v*`, native amd64/arm64 runners, provenance + SBOM). arm64 is first verified by the release workflow.
 - The root `.dockerignore` now excludes `.env.*` (except examples), `apps/server/data` and `*.sqlite*` from every build context.
+
+### ADR-020 — routing notes (M24-6, 2026-10-25)
+- `Connection` routes at `hello` via `AnalysisRouter` (`LocalRouter` standalone, `HubRouter` hub); denied welcomes carry `analysisDenied`; relay loss → terminals then close 1012.
+- Tiers: small = 1 session/token, 2 threads, 60 s movetime; standard = 2 sessions, 10 min; full = node limits, no per-token cap. Combined with node limits via `minLimits`; missing threads/hash are filled from defaults clamped to the route.
+- A listed private node that is online but full is still routed (node answers `no_capacity`) instead of `node_offline`.
+- Budget in ms; a `poolFallback` player token is budgeted only for engine time on nodes it does not list.
+- Fair-play room check moved into `Connection` (covers relayed channels).
+- Hub env: `HUB_LOCAL_NAME` (welcome.node.name of the hub's own engines), `HUB_LOCAL_POOL_SHARE` (0 = keep the hub's engines out of the pool).
+- Open: per-IP bad-token counter (§4.1) and closing connections on token revoke (M24-9).

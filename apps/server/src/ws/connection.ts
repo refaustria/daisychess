@@ -5,18 +5,25 @@ import {
   ServerMessageSchema,
   SessionIdSchema,
   parseClientMessage,
-  type EngineDescriptor,
+  type AnalyzeMessage,
+  type ClientMessage,
   type ErrorMessage,
-  type Limits,
+  type HelloMessage,
   type ProtocolErrorCode,
+  type ReleaseMessage,
   type ServerMessage,
+  type StopMessage,
+  type WelcomeMessage,
 } from '@daisychess/engine-core';
 import type { PoolLogger } from '../engines/EnginePool.js';
-import type { IpSessionLedger } from './clientIp.js';
 import type { RoomClient, RoomManager } from '../rooms/RoomManager.js';
 import type { ReviewService } from '../review/ReviewService.js';
-import type { AnalysisBackend } from '../sessions/AnalysisBackend.js';
-import { ClientSessions } from '../sessions/ClientSessions.js';
+import type { AnalysisChannel } from '../sessions/AnalysisChannel.js';
+import {
+  deniedWithValidToken,
+  type AnalysisRouter,
+  type RouteResult,
+} from '../sessions/AnalysisRouter.js';
 import { allowRate, type RateLimit } from '../sessions/rateLimit.js';
 import { tokenMatches } from './token.js';
 
@@ -24,30 +31,21 @@ export { tokenMatches };
 export type { RateLimit };
 
 export interface ConnectionOptions {
-  /** Where analysis sessions lease their engines (`LocalBackend` over the pool). */
-  backend: AnalysisBackend;
-  limits: Limits;
-  /** Engines as announced in `welcome` (disabled ones are rejected with `unknown_engine`). */
-  engines: readonly EngineDescriptor[];
+  /**
+   * Decides at `hello` where this connection's analysis runs (ADR-020 relay layering §2):
+   * `LocalRouter` (standalone) or `HubRouter` (ROLE=hub). A denied route gives the restricted
+   * welcome (no engines, `capabilities.analysis: false`, `analysisDenied`, `analyze` →
+   * `unauthorized`); rooms and review reads keep working.
+   */
+  router: AnalysisRouter;
   serverVersion: string;
   logger: PoolLogger;
-  /** A session without a running search releases its lease after this long. */
-  sessionIdleMs: number;
-  /** Time an engine gets to answer `stop` with `bestmove` before it is considered hung. */
-  stopTimeoutMs?: number;
   /** Close the socket if no `hello` arrives within this time. */
   handshakeTimeoutMs?: number;
-  /** `analyze` messages per window (ADR-006 / M3-2: 20 per second). */
-  analyzeRateLimit?: RateLimit;
   /** All messages per window; exceeding it closes the connection. */
   messageRateLimit?: RateLimit;
   /** `info` messages are dropped (never terminal messages) while the socket buffers more than this. */
   maxBufferedBytes?: number;
-  /**
-   * When set (non-empty), a `hello` whose `token` does not equal it gets a restricted welcome
-   * (ADR-010/013): no engines, `capabilities.analysis: false`, `analyze` → `unauthorized`.
-   */
-  accessToken?: string | null;
   /** Rooms of this server (ADR-013). */
   rooms: RoomManager;
   /** `room.*` messages per window. Default 10 per second. */
@@ -60,29 +58,37 @@ export interface ConnectionOptions {
   reviewPutRateLimit?: RateLimit;
 }
 
-/** Who a connection is accounted to for the per-IP session cap. */
+/** Who a connection is accounted to (per-IP caps live in the router's channels). */
 export interface ConnectionPeer {
   /** Resolved client address (see `resolveClientIp`). */
   ip: string;
-  /** Shared by all connections of one server. */
-  ledger: IpSessionLedger;
 }
+
+/** Messages buffered while an asynchronous route is pending (beyond: `rate_limited`). */
+const MAX_PENDING_WHILE_ROUTING = 64;
+
+type ChannelMessage = AnalyzeMessage | StopMessage | ReleaseMessage;
 
 let nextConnectionId = 1;
 
 /**
- * One WebSocket client (ADR-006): handshake, access token, Origin-independent rate limits, rooms
- * and the review store. Analysis messages (`analyze`/`stop`/`release`) are delegated to a
- * transport-agnostic {@link ClientSessions}, which owns sessions, searches, leases, ordering and
- * the terminal-message guarantee.
+ * One WebSocket client (ADR-006): handshake, routing, Origin-independent rate limits, rooms and
+ * the review store. At `hello` the {@link AnalysisRouter} decides the route; its
+ * {@link AnalysisChannel} (`ClientSessions` on local engines, an accounted relay to a node on the
+ * hub) then owns sessions, searches, ordering and the terminal-message guarantee. When the
+ * channel is lost (its node went away) the socket is closed with 1012 after the terminal
+ * messages went out, and the client reconnects to a fresh route (ADR-020 §3).
  */
 export class Connection implements RoomClient {
   readonly id = nextConnectionId++;
   private handshaken = false;
-  /** False on a token-protected server when this connection's `hello.token` was missing/wrong. */
-  private analysisAllowed = true;
+  /** The routed channel; null before `hello` and on a denied route (`analyze` → `unauthorized`). */
+  private analysis: AnalysisChannel | null = null;
+  /** The token proved valid (review writes allowed): routed, or denied for capacity reasons. */
+  private tokenValid = false;
+  /** Non-null while an asynchronous route is pending: messages that arrived meanwhile. */
+  private pending: ClientMessage[] | null = null;
   private closed = false;
-  private readonly analysis: ClientSessions;
   private readonly messageTimes: number[] = [];
   private readonly roomTimes: number[] = [];
   private readonly reviewGetTimes: number[] = [];
@@ -113,22 +119,6 @@ export class Connection implements RoomClient {
     this.maxBufferedBytes = opts.maxBufferedBytes ?? 1024 * 1024;
     this.log = opts.logger;
     this.closedPromise = new Promise((r) => (this.resolveClosed = r));
-    this.analysis = new ClientSessions(
-      (msg) => this.send(msg),
-      { ip: peer.ip, id: this.id },
-      {
-        backend: opts.backend,
-        limits: opts.limits,
-        engines: opts.engines,
-        logger: opts.logger,
-        ledger: peer.ledger,
-        sessionIdleMs: opts.sessionIdleMs,
-        ...(opts.stopTimeoutMs !== undefined ? { stopTimeoutMs: opts.stopTimeoutMs } : {}),
-        ...(opts.analyzeRateLimit ? { analyzeRateLimit: opts.analyzeRateLimit } : {}),
-        forbidden: () =>
-          this.opts.rooms.isPlaying(this) ? 'no analysis while you play in a room' : null,
-      },
-    );
 
     this.handshakeTimer = setTimeout(() => {
       this.handshakeTimer = null;
@@ -171,7 +161,7 @@ export class Connection implements RoomClient {
   }
 
   get sessionCount(): number {
-    return this.analysis.sessionCount;
+    return this.analysis?.sessionCount ?? 0;
   }
 
   /** Client address (see `resolveClientIp`). */
@@ -186,7 +176,7 @@ export class Connection implements RoomClient {
 
   /** Fair play: a game started in this connection's room; its engine sessions are dropped. */
   onGameStarted(): void {
-    this.analysis.retireAll();
+    this.analysis?.retireAll();
   }
 
   // -------------------------------------------------------------------------------------------
@@ -212,46 +202,7 @@ export class Connection implements RoomClient {
     }
     const msg = parsed.message;
     if (msg.type === 'hello') {
-      if (this.handshaken) {
-        this.sendError('invalid_message', 'duplicate hello');
-        return;
-      }
-      if (msg.protocolVersion !== PROTOCOL_VERSION) {
-        this.sendError(
-          'protocol_mismatch',
-          `server speaks protocol ${PROTOCOL_VERSION}, client sent ${msg.protocolVersion}`,
-        );
-        this.close(1008, 'protocol mismatch');
-        return;
-      }
-      const required = this.opts.accessToken;
-      if (required && !tokenMatches(msg.token, required)) {
-        // Restricted mode (ADR-013): rooms work, analysis does not. Never log the token itself,
-        // only whether one was sent.
-        this.analysisAllowed = false;
-        this.log.info(
-          { conn: this.id, tokenSent: msg.token !== undefined },
-          'handshake without a valid access token: restricted to rooms',
-        );
-      }
-      this.handshaken = true;
-      if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
-      this.handshakeTimer = null;
-      this.log.debug({ conn: this.id, client: msg.client }, 'handshake');
-      this.send({
-        type: 'welcome',
-        protocolVersion: PROTOCOL_VERSION,
-        serverVersion: this.opts.serverVersion,
-        limits: { ...this.opts.limits },
-        engines: this.analysisAllowed
-          ? this.opts.engines.map((e) => ({ ...e, defaults: { ...e.defaults } }))
-          : [],
-        capabilities: {
-          analysis: this.analysisAllowed,
-          rooms: true,
-          reviewStore: this.opts.review.enabled,
-        },
-      });
+      this.onHello(msg);
       return;
     }
     if (!this.handshaken) {
@@ -259,9 +210,118 @@ export class Connection implements RoomClient {
       this.sendError('handshake_required', 'send hello first', ids?.sessionId, ids?.searchId);
       return;
     }
+    if (this.pending) {
+      // The route is still being decided; keep the order of everything sent after `hello`.
+      if (this.pending.length >= MAX_PENDING_WHILE_ROUTING) {
+        const ids = msg.type === 'analyze' ? msg : undefined;
+        this.sendError(
+          'rate_limited',
+          'too many messages before welcome',
+          ids?.sessionId,
+          ids?.searchId,
+        );
+        return;
+      }
+      this.pending.push(msg);
+      return;
+    }
+    this.dispatch(msg);
+  }
+
+  private onHello(msg: HelloMessage): void {
+    if (this.handshaken) {
+      this.sendError('invalid_message', 'duplicate hello');
+      return;
+    }
+    if (msg.protocolVersion !== PROTOCOL_VERSION) {
+      this.sendError(
+        'protocol_mismatch',
+        `server speaks protocol ${PROTOCOL_VERSION}, client sent ${msg.protocolVersion}`,
+      );
+      this.close(1008, 'protocol mismatch');
+      return;
+    }
+    this.handshaken = true;
+    if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
+    this.handshakeTimer = null;
+    this.log.debug({ conn: this.id, client: msg.client }, 'handshake');
+    let result: RouteResult | Promise<RouteResult>;
+    try {
+      result = this.opts.router.route(msg, { ip: this.peer.ip, connId: this.id });
+    } catch (err) {
+      this.routeFailed(err);
+      return;
+    }
+    if (isPromise(result)) {
+      this.pending = [];
+      result.then(
+        (r) => this.completeHello(r),
+        (err: unknown) => this.routeFailed(err),
+      );
+      return;
+    }
+    this.completeHello(result);
+  }
+
+  private routeFailed(err: unknown): void {
+    this.log.error({ conn: this.id, err: (err as Error)?.message }, 'routing failed');
+    this.pending = null;
+    if (!this.closed) {
+      this.sendError('internal_error', 'routing failed');
+      this.close(1011, 'internal error');
+    }
+  }
+
+  /** Sends the welcome composed from the route, opens the channel, replays buffered messages. */
+  private completeHello(result: RouteResult): void {
+    if (this.closed) return;
+    const welcome: WelcomeMessage = {
+      type: 'welcome',
+      protocolVersion: PROTOCOL_VERSION,
+      serverVersion: this.opts.serverVersion,
+      limits: { ...(result.ok ? result.route.limits : this.opts.router.restrictedLimits) },
+      engines: result.ok
+        ? result.route.engines.map((e) => ({ ...e, defaults: { ...e.defaults } }))
+        : [],
+      capabilities: {
+        analysis: result.ok,
+        rooms: true,
+        reviewStore: this.opts.review.enabled,
+      },
+    };
+    if (result.ok && result.route.node) welcome.node = { ...result.route.node };
+    if (!result.ok) {
+      welcome.analysisDenied = result.reason;
+      this.log.debug({ conn: this.id, reason: result.reason }, 'analysis denied at hello');
+    }
+    this.tokenValid = result.ok || deniedWithValidToken(result.reason);
+    this.send(welcome);
+    if (result.ok) {
+      try {
+        this.analysis = result.route.open((m) => this.send(m), { ip: this.peer.ip, id: this.id });
+      } catch (err) {
+        this.routeFailed(err);
+        return;
+      }
+      const channel = this.analysis;
+      void channel.lost?.then(() => {
+        if (this.closed || this.analysis !== channel) return;
+        this.log.info({ conn: this.id }, 'analysis channel lost: closing 1012');
+        this.close(1012, 'engine node lost');
+      });
+    }
+    const pending = this.pending;
+    this.pending = null;
+    for (const m of pending ?? []) {
+      if (this.closed) return;
+      this.dispatch(m);
+    }
+  }
+
+  private dispatch(msg: ClientMessage): void {
     switch (msg.type) {
       case 'analyze':
-        if (!this.analysisAllowed) {
+        if (!this.analysis) {
           this.sendError(
             'unauthorized',
             'access token required or wrong',
@@ -270,11 +330,21 @@ export class Connection implements RoomClient {
           );
           return;
         }
-        this.analysis.handle(msg);
+        // Fair play (ADR-013), for every kind of channel: checked before anything else.
+        if (this.opts.rooms.isPlaying(this)) {
+          this.sendError(
+            'forbidden',
+            'no analysis while you play in a room',
+            msg.sessionId,
+            msg.searchId,
+          );
+          return;
+        }
+        this.handleChannel(msg);
         break;
       case 'stop':
       case 'release':
-        this.analysis.handle(msg);
+        this.handleChannel(msg);
         break;
       case 'ping':
         this.send(msg.t === undefined ? { type: 'pong' } : { type: 'pong', t: msg.t });
@@ -314,8 +384,22 @@ export class Connection implements RoomClient {
     }
   }
 
+  /**
+   * `stop`/`release` without a channel behave as on a server where the session never existed
+   * (`release` is silent, `stop` → `session_not_found`), as `ClientSessions` answers them.
+   */
+  private handleChannel(msg: ChannelMessage): void {
+    if (this.analysis) {
+      this.analysis.handle(msg);
+      return;
+    }
+    if (msg.type === 'stop') {
+      this.sendError('session_not_found', `no session "${msg.sessionId}"`, msg.sessionId);
+    }
+  }
+
   private reviewContext(): { id: number; ip: string; analysisAllowed: boolean } {
-    return { id: this.id, ip: this.peer.ip, analysisAllowed: this.analysisAllowed };
+    return { id: this.id, ip: this.peer.ip, analysisAllowed: this.tokenValid };
   }
 
   // -------------------------------------------------------------------------------------------
@@ -379,10 +463,17 @@ export class Connection implements RoomClient {
     this.closed = true;
     if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
     this.handshakeTimer = null;
+    this.pending = null;
     this.opts.rooms.disconnect(this);
-    void this.analysis.close().then(() => this.resolveClosed());
+    const channel = this.analysis;
+    if (channel) void channel.close().then(() => this.resolveClosed());
+    else this.resolveClosed();
     this.log.debug({ conn: this.id }, 'connection closed');
   }
+}
+
+function isPromise<T>(v: T | Promise<T>): v is Promise<T> {
+  return typeof (v as { then?: unknown } | null)?.then === 'function';
 }
 
 function rawToString(data: RawData): string {

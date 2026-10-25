@@ -6,14 +6,18 @@ import { loadConfig, type ServerConfig } from './config.js';
 import { EnginePool, type EnginePoolOptions, type SpawnEngine } from './engines/EnginePool.js';
 import { loadEngineRegistry, type EngineConfig, type EngineRegistry } from './engines/registry.js';
 import { attachWebSocketServer, type WsServerHandle, type WsServerOptions } from './ws/server.js';
-import type { ConnectionOptions } from './ws/connection.js';
 import { ReviewStore } from './review/ReviewStore.js';
+import { ClientSessions } from './sessions/ClientSessions.js';
 import { LocalBackend } from './sessions/LocalBackend.js';
+import { UnlimitedLedger } from './sessions/UnlimitedLedger.js';
 import { NodeLink, type NodeLinkOptions } from './node/NodeLink.js';
 import { HubStore } from './hub/store/HubStore.js';
 import { HubTokenService } from './hub/tokens.js';
 import { NodeRegistry } from './hub/NodeRegistry.js';
 import { LinkServer, type LinkServerOptions } from './hub/LinkServer.js';
+import { HubRouter, type HubRouterOptions, type LocalNode } from './hub/Router.js';
+import type { BudgetSource, UsageSink } from './hub/AccountingChannel.js';
+import type { IpSessionLedger } from './ws/clientIp.js';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -33,7 +37,7 @@ export interface BuildAppOptions {
   /** Connection tuning (timeouts, rate limits) for tests. */
   connection?: Partial<
     Pick<
-      ConnectionOptions,
+      WsServerOptions,
       | 'stopTimeoutMs'
       | 'handshakeTimeoutMs'
       | 'analyzeRateLimit'
@@ -68,6 +72,8 @@ export interface BuildAppOptions {
       | 'closeTimeoutMs'
     >
   >;
+  /** `ROLE=hub`: router tuning for tests (clock, sticky and failure windows). */
+  hubRouter?: Partial<Pick<HubRouterOptions, 'now' | 'stickyMs' | 'failurePenaltyMs'>>;
   /** `ROLE=hub`: `/link` tuning for tests (ping cadence, clocks, limits). */
   hub?: Partial<
     Pick<
@@ -89,6 +95,8 @@ export interface HubParts {
   tokens: HubTokenService;
   registry: NodeRegistry;
   link: LinkServer;
+  /** Set once `/ws` is attached. */
+  router: HubRouter | null;
 }
 
 declare module 'fastify' {
@@ -131,11 +139,6 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   });
   if (config.node) return buildNode(app, opts, config, config.node, pool, descriptors);
   const hub = config.role === 'hub' ? await buildHub(app, opts, config) : null;
-  if (hub) {
-    app.log.warn(
-      'ROLE=hub: /link accepts nodes; player routing is not implemented yet (M24-6), /ws serves the local engines as standalone',
-    );
-  }
 
   const reviewStore = await openReviewStore(app, config);
   const ws = attachWebSocketServer(app, {
@@ -155,7 +158,15 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     reviewPutPerIpPerDay: config.reviewStore.putPerIpPerDay,
     ...(opts.roomManager ? { roomManager: opts.roomManager } : {}),
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
-    ...(hub ? { upgradeRoutes: { [hub.link.path]: hub.link.handleUpgrade.bind(hub.link) } } : {}),
+    ...(hub
+      ? {
+          upgradeRoutes: { [hub.link.path]: hub.link.handleUpgrade.bind(hub.link) },
+          router: ({ ledger }: { ledger: IpSessionLedger }) => {
+            hub.router = createHubRouter(app, opts, config, hub, pool, descriptors, ledger);
+            return hub.router;
+          },
+        }
+      : {}),
   });
   app.decorate('daisychess', { pool, ws, config });
   if (hub) app.decorate('daisychessHub', hub);
@@ -174,14 +185,34 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     clientAddresses: ws.ipSessions.addresses,
     rooms: ws.rooms.stats(),
     reviewStore: ws.review.stats(),
-    ...(hub ? { role: 'hub', nodes: hub.link.stats() } : {}),
+    ...(hub ? { role: 'hub', nodes: hub.link.stats(), router: hub.router?.stats() ?? null } : {}),
   }));
+
+  // Hub retention: usage aggregates, portal sessions, spot-checks (ADR-020 §6), daily.
+  let purgeTimer: ReturnType<typeof setInterval> | null = null;
+  if (hub) {
+    const purge = () => {
+      try {
+        const purged = hub.tokens.purge();
+        app.log.info({ component: 'hub', purged }, 'hub store purged');
+      } catch (err) {
+        app.log.warn({ component: 'hub', err: (err as Error).message }, 'hub store purge failed');
+      }
+    };
+    app.addHook('onReady', async () => {
+      purge();
+      purgeTimer = setInterval(purge, 24 * 3_600_000);
+      purgeTimer.unref();
+    });
+  }
 
   // Close WebSockets (players first, then node links) before the HTTP server stops, then kill
   // every engine process.
   app.addHook('preClose', async () => {
+    if (purgeTimer) clearInterval(purgeTimer);
     await ws.close();
     await hub?.link.close();
+    hub?.router?.dispose();
   });
   app.addHook('onClose', async () => {
     await pool.shutdown();
@@ -322,7 +353,68 @@ async function buildHub(
     maxMessagesPerSecond: config.link.maxMessagesPerSecond,
     trustedProxies: config.trustedProxies,
   });
-  return { store, tokens, registry, link };
+  return { store, tokens, registry, link, router: null };
+}
+
+/**
+ * The hub's router (ADR-020 §4, M24-6) over the node registry and the built-in node `local`
+ * (this process's pool as `ClientSessions` with an unlimited ledger; the router's
+ * `AccountingChannel` counts per IP — in the server's `IpSessionLedger` — and per token).
+ * Usage goes to the hub store; the daily pool budget is read from it.
+ */
+function createHubRouter(
+  app: FastifyInstance,
+  opts: BuildAppOptions,
+  config: ServerConfig,
+  hub: HubParts,
+  pool: EnginePool,
+  descriptors: EngineDescriptor[],
+  ledger: IpSessionLedger,
+): HubRouter {
+  const logger = app.log.child({ component: 'router' });
+  const backend = new LocalBackend(pool);
+  const unlimited = new UnlimitedLedger();
+  const tuning = opts.connection ?? {};
+  const local: LocalNode = {
+    name: config.hubRouter.localName,
+    engines: descriptors,
+    limits: config.limits,
+    poolShare: config.hubRouter.localPoolShare,
+    available: () => !pool.isClosed,
+    hasFreeSlot: () => !pool.isClosed && pool.sessions < config.maxSessions,
+    open: (deliver, peer, limits) =>
+      new ClientSessions(deliver, peer, {
+        backend,
+        limits,
+        engines: descriptors,
+        logger: app.log.child({ component: 'ws' }),
+        ledger: unlimited,
+        sessionIdleMs: config.sessionIdleMs,
+        ...(tuning.stopTimeoutMs !== undefined ? { stopTimeoutMs: tuning.stopTimeoutMs } : {}),
+        ...(tuning.analyzeRateLimit ? { analyzeRateLimit: tuning.analyzeRateLimit } : {}),
+      }),
+  };
+  const usage: UsageSink = {
+    search: (u) => hub.tokens.addEngineTime(u.tokenId, u.engineMs, { nodeId: u.nodeId, now: u.at }),
+    session: (u) => hub.tokens.recordSession(u.tokenId, u.nodeId, u.at),
+  };
+  const budget: BudgetSource = {
+    remainingMs: (tokenId, now) => hub.tokens.remainingPoolBudgetMs(tokenId, now),
+  };
+  return new HubRouter({
+    ...opts.hubRouter,
+    tokens: hub.tokens,
+    registry: hub.registry,
+    local,
+    operatorName: (id) => hub.store.getOperator(id)?.username,
+    ipLedger: ledger,
+    usage,
+    budget,
+    sessionIdleMs: config.sessionIdleMs,
+    restrictedLimits: config.limits,
+    ...(tuning.analyzeRateLimit ? { analyzeRateLimit: tuning.analyzeRateLimit } : {}),
+    logger,
+  });
 }
 
 /** Opens the review store (ADR-017) unless disabled; a failure only disables the feature. */

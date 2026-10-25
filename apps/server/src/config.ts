@@ -164,6 +164,11 @@ export const EnvSchema = z.object({
   POOL_DAILY_BUDGET_MIN: int(0, 1_440, 30),
   /** Days of `usage_daily` aggregates kept (the current UTC day counts as one). */
   USAGE_RETENTION_DAYS: int(1, 3_650, 90),
+  // Hub routing (ADR-020 §4, M24-6); only read by ROLE=hub.
+  /** `welcome.node.name` of the hub's built-in node `local` (its own engines). */
+  HUB_LOCAL_NAME: z.string().trim().min(1).max(32).default('local'),
+  /** Sessions of the hub's own pool donated to the shared pool (0 = `local` is not in the pool; ≤ MAX_SESSIONS). */
+  HUB_LOCAL_POOL_SHARE: int(0, 256, 2),
   // Hub link endpoint `/link` (ADR-020 §3, M24-5); only read by ROLE=hub.
   /** Nodes older than this are refused with `node_outdated` (`major.minor.patch[-pre]`). */
   NODE_MIN_VERSION: z
@@ -210,6 +215,14 @@ export interface HubSettings {
   usageRetentionDays: number;
 }
 
+/** Hub routing (ADR-020 §4, M24-6), env `HUB_LOCAL_*`. */
+export interface HubRouterSettings {
+  /** `welcome.node.name` of the built-in node `local`. */
+  localName: string;
+  /** Pool share of `local` (already capped at MAX_SESSIONS). */
+  localPoolShare: number;
+}
+
 /** Server-side review store (ADR-017), env `REVIEW_*`. */
 export interface ReviewStoreSettings {
   enabled: boolean;
@@ -249,6 +262,8 @@ export interface ServerConfig {
   hub: HubSettings;
   /** The hub's `/link` endpoint; only used with ROLE=hub. */
   link: LinkSettings;
+  /** Hub routing; only used with ROLE=hub. */
+  hubRouter: HubRouterSettings;
 }
 
 export type ServerRole = 'standalone' | 'hub' | 'node';
@@ -405,6 +420,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         : path.join(PACKAGE_DIR, 'data', 'hub.sqlite'),
       poolDailyBudgetMin: e.POOL_DAILY_BUDGET_MIN,
       usageRetentionDays: e.USAGE_RETENTION_DAYS,
+    },
+    hubRouter: {
+      localName: e.HUB_LOCAL_NAME,
+      localPoolShare: Math.min(e.HUB_LOCAL_POOL_SHARE, e.MAX_SESSIONS),
     },
     link: {
       minNodeVersion: e.NODE_MIN_VERSION,

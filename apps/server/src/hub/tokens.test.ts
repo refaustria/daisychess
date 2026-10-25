@@ -495,6 +495,31 @@ describe.skipIf(!sqlite)('HubTokenService', () => {
       expect(off.remainingBudgetMs(pool.id, T0)).toBeNull();
     });
 
+    it('remainingPoolBudgetMs: pool use of player tokens (poolFallback) counts, own nodes are free', () => {
+      const node = annaNode().record;
+      const player = svc.mintToken(
+        { operatorId: anna, kind: 'player', nodeIds: [node.id], poolFallback: true },
+        T0,
+      ).record;
+      expect(svc.remainingPoolBudgetMs(player.id, T0)).toBe(30 * MIN);
+      // Time on the token's own node does not touch the pool budget.
+      svc.addEngineTime(player.id, 60 * MIN, { now: T0, nodeId: node.id });
+      expect(svc.remainingPoolBudgetMs(player.id, T0)).toBe(30 * MIN);
+      // Time on any other node (the pool) does; yesterday's does not.
+      svc.addEngineTime(player.id, 12 * MIN, { now: T0, nodeId: 'poolnode' });
+      svc.addEngineTime(player.id, 29 * MIN, { now: T0 - DAY, nodeId: 'poolnode' });
+      expect(svc.remainingPoolBudgetMs(player.id, T0)).toBe(18 * MIN);
+      svc.addEngineTime(player.id, 20 * MIN, { now: T0, nodeId: LOCAL_NODE_ID });
+      expect(svc.remainingPoolBudgetMs(player.id, T0)).toBe(0);
+      // Pool tokens behave as remainingBudgetMs; legacy and budget off: none.
+      const pool = svc.mintToken({ operatorId: bob, kind: 'pool' }, T0).record;
+      svc.addEngineTime(pool.id, 5 * MIN, { now: T0, nodeId: 'poolnode' });
+      expect(svc.remainingPoolBudgetMs(pool.id, T0)).toBe(25 * MIN);
+      expect(svc.remainingPoolBudgetMs(LEGACY_TOKEN_ID, T0)).toBeNull();
+      expect(svc.remainingPoolBudgetMs('missing0', T0)).toBe(0);
+      expect(service({ poolDailyBudgetMin: 0 }).remainingPoolBudgetMs(player.id, T0)).toBeNull();
+    });
+
     it('records sessions and purges usage beyond the retention window', () => {
       const pool = svc.mintToken({ operatorId: bob, kind: 'pool' }, T0).record;
       svc.recordSession(pool.id, 'nnnnnnnn', T0);

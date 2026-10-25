@@ -9,15 +9,35 @@ import { IpSessionLedger, resolveClientIp, type TrustedProxies } from './clientI
 import { RoomManager, type RoomConfig, type RoomManagerOptions } from '../rooms/RoomManager.js';
 import { ReviewService } from '../review/ReviewService.js';
 import type { ReviewStore } from '../review/ReviewStore.js';
+import type { EngineDescriptor, Limits } from '@daisychess/engine-core';
 import type { EnginePool } from '../engines/EnginePool.js';
 import type { AnalysisBackend } from '../sessions/AnalysisBackend.js';
+import type { AnalysisRouter } from '../sessions/AnalysisRouter.js';
 import { LocalBackend } from '../sessions/LocalBackend.js';
+import type { RateLimit } from '../sessions/rateLimit.js';
+import { LocalRouter } from './LocalRouter.js';
 
-export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'review' | 'backend'> {
+export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'review' | 'router'> {
   /** This server's engine pool; analysis runs on it through a {@link LocalBackend}. */
   pool: EnginePool;
   /** Overrides the backend built over `pool` (tests, ADR-020 roles). */
   backend?: AnalysisBackend;
+  limits: Limits;
+  /** Engines as announced in `welcome` (disabled ones are rejected with `unknown_engine`). */
+  engines: readonly EngineDescriptor[];
+  /** A session without a running search releases its lease after this long. */
+  sessionIdleMs: number;
+  /** Time an engine gets to answer `stop` with `bestmove` before it is considered hung. */
+  stopTimeoutMs?: number;
+  /** `analyze` messages per window (ADR-006 / M3-2: 20 per second). */
+  analyzeRateLimit?: RateLimit;
+  /** Standalone access token (ADR-010/013), see `LocalRouter`. */
+  accessToken?: string | null;
+  /**
+   * Builds the router of every connection (ROLE=hub: `HubRouter`) over the server's per-IP
+   * ledger. Default: a {@link LocalRouter} over `pool` with `accessToken`.
+   */
+  router?: (ctx: { ledger: IpSessionLedger }) => AnalysisRouter;
   /** Room policy (ADR-013). */
   roomConfig: RoomConfig;
   /** Review store (ADR-017); null when disabled or it failed to open. Closed with the server. */
@@ -47,6 +67,8 @@ export type UpgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer
 
 export interface WsServerHandle {
   readonly connections: ReadonlySet<Connection>;
+  /** The router of every connection. */
+  readonly router: AnalysisRouter;
   /** Engine sessions per client address. */
   readonly ipSessions: IpSessionLedger;
   /** "Play a friend" rooms (ADR-013). */
@@ -83,13 +105,35 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     putPerIpPerDay: opts.reviewPutPerIpPerDay,
     logger: opts.logger,
   });
-  const { pool, backend, upgradeRoutes, ...rest } = opts;
+  const router =
+    opts.router?.({ ledger }) ??
+    new LocalRouter({
+      backend: opts.backend ?? new LocalBackend(opts.pool),
+      limits: opts.limits,
+      engines: opts.engines,
+      logger: opts.logger,
+      ledger,
+      sessionIdleMs: opts.sessionIdleMs,
+      accessToken: opts.accessToken ?? null,
+      ...(opts.stopTimeoutMs !== undefined ? { stopTimeoutMs: opts.stopTimeoutMs } : {}),
+      ...(opts.analyzeRateLimit ? { analyzeRateLimit: opts.analyzeRateLimit } : {}),
+    });
   const connOpts: ConnectionOptions = {
-    ...rest,
-    backend: backend ?? new LocalBackend(pool),
+    router,
+    serverVersion: opts.serverVersion,
+    logger: opts.logger,
     rooms,
     review,
+    ...(opts.handshakeTimeoutMs !== undefined
+      ? { handshakeTimeoutMs: opts.handshakeTimeoutMs }
+      : {}),
+    ...(opts.messageRateLimit ? { messageRateLimit: opts.messageRateLimit } : {}),
+    ...(opts.maxBufferedBytes !== undefined ? { maxBufferedBytes: opts.maxBufferedBytes } : {}),
+    ...(opts.roomRateLimit ? { roomRateLimit: opts.roomRateLimit } : {}),
+    ...(opts.reviewGetRateLimit ? { reviewGetRateLimit: opts.reviewGetRateLimit } : {}),
+    ...(opts.reviewPutRateLimit ? { reviewPutRateLimit: opts.reviewPutRateLimit } : {}),
   };
+  const { upgradeRoutes } = opts;
   let closing = false;
 
   const reject = (socket: Duplex, status: string) => {
@@ -138,7 +182,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
       opts.trustedProxies ?? [],
     );
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const conn = new Connection(ws, connOpts, { ip, ledger });
+      const conn = new Connection(ws, connOpts, { ip });
       connections.add(conn);
       opts.logger.info({ conn: conn.id, ip }, 'websocket connected');
       void conn.whenClosed().then(() => {
@@ -163,6 +207,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
 
   return {
     connections,
+    router,
     ipSessions: ledger,
     rooms,
     review,

@@ -15,4 +15,10 @@ export interface AnalysisChannel {
   retireAll(): void;
   /** Stops and releases everything; idempotent; nothing is delivered afterwards. */
   close(): Promise<void>;
+  /**
+   * Resolves once when the channel died underneath its connection (the node was lost or refused
+   * the client, ADR-020 §3) after the terminal messages were delivered; the `Connection` then
+   * closes the socket with 1012. Absent for channels that cannot be lost (local engines).
+   */
+  readonly lost?: Promise<void>;
 }

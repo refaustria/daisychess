@@ -435,6 +435,28 @@ export class HubTokenService {
     return Math.max(0, budget - this.store.engineMsOn(tokenId, utcDay(now)));
   }
 
+  /**
+   * Engine time left today (UTC) for a connection routed **through the pool** (ADR-020
+   * implementation notes M24-3/4: the budget applies to pool tokens and to player tokens while
+   * they use the pool via `poolFallback`), ≥ 0. A pool token: as {@link remainingBudgetMs}. A
+   * player token: the budget minus today's engine time on nodes it does not list (its pool use;
+   * time on its own nodes is free). Null = no budget (off, legacy). Unknown token: 0.
+   */
+  remainingPoolBudgetMs(tokenId: string, now: number = Date.now()): number | null {
+    const budget = this.dailyBudgetMs;
+    if (budget === null || tokenId === LEGACY_TOKEN_ID) return null;
+    const token = this.store.getToken(tokenId);
+    if (!token) return 0;
+    if (token.kind !== 'player') return this.remainingBudgetMs(tokenId, now);
+    const own = new Set(token.nodeIds);
+    const day = utcDay(now);
+    let used = 0;
+    for (const row of this.store.listUsage({ sinceDay: day, tokenIds: [tokenId] })) {
+      if (row.day === day && !own.has(row.nodeId)) used += row.engineMs;
+    }
+    return Math.max(0, budget - used);
+  }
+
   /** Retention (`USAGE_RETENTION_DAYS`) plus the other expiring rows; see `HubStore.purgeExpired`. */
   purge(now: number = Date.now()): ReturnType<HubStore['purgeExpired']> {
     return this.store.purgeExpired(now, this.opts.usageRetentionDays);
