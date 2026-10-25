@@ -93,6 +93,7 @@ export function Admin() {
               <th scope="col">Pool</th>
               <th scope="col">Last seen</th>
               <th scope="col">State</th>
+              <th scope="col">Pool ban</th>
             </tr>
           </thead>
           <tbody>
@@ -110,7 +111,7 @@ export function Admin() {
                   <select
                     aria-label={`State of ${n.name}`}
                     value={n.state}
-                    onChange={(e) => void run(() => api.adminNodeState(n.id, e.target.value as NodeState), nodes.reload)}
+                    onChange={(e) => void run(() => api.adminNodeState(n.id, { state: e.target.value as NodeState }), nodes.reload)}
                   >
                     {STATES.map((s) => (
                       <option key={s} value={s}>
@@ -118,6 +119,16 @@ export function Admin() {
                       </option>
                     ))}
                   </select>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    aria-label={`${n.poolBanned ? 'Lift pool ban of' : 'Ban from pool:'} ${n.name}`}
+                    onClick={() => void run(() => api.adminNodeState(n.id, { poolBanned: !n.poolBanned }), nodes.reload)}
+                  >
+                    {n.poolBanned ? 'Lift pool ban' : 'Ban from pool'}
+                  </button>
+                  {n.poolBanned && n.poolBanReason && <div className={ui.muted}>{n.poolBanReason}</div>}
                 </td>
               </tr>
             ))}

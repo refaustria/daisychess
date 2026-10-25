@@ -77,7 +77,7 @@ export interface PortalApi {
   adminOperators(): Promise<AdminOperator[]>;
   adminNodes(): Promise<AdminNodeView[]>;
   adminDisableOperator(id: string, disabled: boolean): Promise<void>;
-  adminNodeState(id: string, state: NodeState): Promise<NodeView>;
+  adminNodeState(id: string, change: { state?: NodeState; poolBanned?: boolean }): Promise<NodeView>;
 }
 
 export interface ApiOptions {
@@ -143,6 +143,6 @@ export function createApi(opts: ApiOptions = {}): PortalApi {
     adminDisableOperator: async (oid, disabled) => {
       await call('POST', `/admin/operators/${id(oid)}/disable`, { disabled });
     },
-    adminNodeState: async (nid, state) => (await call<{ node: NodeView }>('POST', `/admin/nodes/${id(nid)}/state`, { state })).node,
+    adminNodeState: async (nid, change) => (await call<{ node: NodeView }>('POST', `/admin/nodes/${id(nid)}/state`, change)).node,
   };
 }

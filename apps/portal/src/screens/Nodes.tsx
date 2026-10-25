@@ -85,6 +85,12 @@ export function Nodes() {
                   </th>
                   <td>
                     <Badge status={nodeStatusLabel(n)} />
+                    {n.state === 'suspect' && n.suspectUntil !== null && <div className={ui.muted}>suspect until {formatDate(n.suspectUntil)}</div>}
+                    {n.poolBanned && (
+                      <div>
+                        <Badge status="banned" /> <span className={ui.muted}>Banned from pool (spot-check failures)</span>
+                      </div>
+                    )}
                     {n.rotationOverlapUntil !== null && <div className={ui.muted}>old token valid until {formatDate(n.rotationOverlapUntil)}</div>}
                   </td>
                   <td>{n.live?.version ?? n.lastVersion ?? '-'}</td>
@@ -250,6 +256,7 @@ function NodeForm(props: {
   const [share, setShare] = useState(String(props.initial?.poolShare ?? 1));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const banned = props.initial?.poolBanned ?? false;
 
   const submit = (e: FormEvent): void => {
     e.preventDefault();
@@ -272,12 +279,17 @@ function NodeForm(props: {
           <input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} required />
         </label>
         <label className={ui.check}>
-          <input type="checkbox" checked={pool} onChange={(e) => setPool(e.target.checked)} />
+          <input type="checkbox" checked={pool} onChange={(e) => setPool(e.target.checked)} disabled={banned} />
           Offer spare capacity to the shared pool
         </label>
+        {banned && (
+          <p className={ui.muted} role="note">
+            This node is banned from the pool because of spot-check failures{props.initial?.poolBanReason ? ` (${props.initial.poolBanReason})` : ''}. Contact the hub administrator to have the ban lifted.
+          </p>
+        )}
         <label className={ui.field}>
           <span className={ui.label}>Pool share (sessions donated to the pool)</span>
-          <input type="number" min={0} max={256} value={share} onChange={(e) => setShare(e.target.value)} disabled={!pool} />
+          <input type="number" min={0} max={256} value={share} onChange={(e) => setShare(e.target.value)} disabled={!pool || banned} />
         </label>
         {error && (
           <p role="alert" className={ui.error}>

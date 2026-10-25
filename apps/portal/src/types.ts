@@ -27,6 +27,9 @@ export interface NodeView {
   poolShare: number;
   state: NodeState;
   suspectCount: number;
+  suspectUntil: number | null;
+  poolBanned: boolean;
+  poolBanReason: string | null;
   createdAt: number;
   lastSeenAt: number | null;
   lastVersion: string | null;

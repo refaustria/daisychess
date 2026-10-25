@@ -9,6 +9,7 @@ const TONE: Record<string, string> = {
   expired: ui.muted ?? '',
   revoked: ui.bad ?? '',
   disabled: ui.bad ?? '',
+  banned: ui.bad ?? '',
 };
 
 /** Status as text plus colour (never colour alone). */

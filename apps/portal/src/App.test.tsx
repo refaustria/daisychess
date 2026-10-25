@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { PENDING_STORAGE_KEY, PORTAL_CLIENT_ID } from './auth/lichess';
-import { ADMIN_ME, ADMIN_NODES, ME, OPERATORS, hubMock, node, token } from './test/hubMock';
+import { ADMIN_ME, ADMIN_NODES, ME, OPERATORS, hubMock, node, token, type Call } from './test/hubMock';
 
 const LICHESS_TOKEN = 'lio_secret_access_token_123';
 const unauthorized = { status: 401, json: { error: 'unauthorized', message: 'log in first' } };
@@ -110,6 +110,24 @@ describe('nodes', () => {
     expect(within(row).getByText('0.50')).toBeTruthy();
     expect(within(row).getByText('1 / 4')).toBeTruthy();
     expect(within(screen.getByText('old').closest('tr')!).getByText('suspect')).toBeTruthy();
+  });
+
+  it('shows suspect-until and the pool ban, and locks the pool toggle while banned', async () => {
+    const until = Date.UTC(2026, 10, 1, 12, 0);
+    const hub = hubMock({
+      ...base,
+      'GET /nodes': { nodes: [node({ state: 'suspect', suspectUntil: until, pool: true, poolShare: 2, poolBanned: true, poolBanReason: 'spot-check failures' })] },
+    });
+    render(<App fetchImpl={hub.fetchImpl} />);
+    const row = (await screen.findByText('garage')).closest('tr')!;
+    expect(within(row).getByText(/suspect until 2026-11-01 12:00 UTC/)).toBeTruthy();
+    expect(within(row).getByText('banned')).toBeTruthy();
+    expect(within(row).getByText('Banned from pool (spot-check failures)')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit garage' }));
+    const dlg = screen.getByRole('dialog');
+    expect((within(dlg).getByLabelText(/shared pool/) as HTMLInputElement).disabled).toBe(true);
+    expect((within(dlg).getByLabelText(/Pool share/) as HTMLInputElement).disabled).toBe(true);
+    expect(within(dlg).getByRole('note').textContent).toMatch(/banned from the pool/);
   });
 
   it('shows an error with retry when loading fails', async () => {
@@ -325,6 +343,27 @@ describe('usage, admin, account', () => {
     await waitFor(() => expect(hub.calls.find((c) => c.path === '/admin/operators/op2/disable')!.body).toEqual({ disabled: true }));
     await userEvent.selectOptions(await screen.findByLabelText('State of garage'), 'suspect');
     await waitFor(() => expect(hub.calls.find((c) => c.path === '/admin/nodes/n1/state')!.body).toEqual({ state: 'suspect' }));
+  });
+
+  it('lets administrators ban a node from the pool and lift the ban', async () => {
+    let banned = false;
+    const hub = hubMock({
+      'GET /me': ADMIN_ME,
+      'GET /nodes': { nodes: [] },
+      'GET /admin/operators': { operators: OPERATORS },
+      'GET /admin/nodes': () => ({ json: { nodes: [{ ...ADMIN_NODES[0]!, poolBanned: banned }] } }),
+      'POST /admin/nodes/n1/state': (c: Call) => {
+        banned = (c.body as { poolBanned: boolean }).poolBanned;
+        return { json: { node: node({ poolBanned: banned }) } };
+      },
+    });
+    render(<App fetchImpl={hub.fetchImpl} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Admin' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Ban from pool: garage' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Lift pool ban of garage' }));
+    await screen.findByRole('button', { name: 'Ban from pool: garage' });
+    const posts = hub.calls.filter((c) => c.method === 'POST').map((c) => c.body);
+    expect(posts).toEqual([{ poolBanned: true }, { poolBanned: false }]);
   });
 
   it('shows account facts, the deletion note, and logs out', async () => {
