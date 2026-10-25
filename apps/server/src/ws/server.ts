@@ -28,6 +28,11 @@ export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'revi
   roomManager?: Omit<RoomManagerOptions, 'config' | 'logger'>;
   /** URL path that accepts upgrades. Default `/ws`. */
   path?: string;
+  /**
+   * Other upgrade paths served on the same HTTP server (ROLE=hub: `/link` → `LinkServer`).
+   * Routed before the Origin check, which applies to {@link path} only.
+   */
+  upgradeRoutes?: Readonly<Record<string, UpgradeHandler>>;
   /** Interval of WebSocket pings; a connection that missed one pong is terminated. Default 30 s. */
   heartbeatMs?: number;
   /** Browser `Origin` policy (ADR-008). Default: same host as the request. */
@@ -37,6 +42,8 @@ export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'revi
   /** Peers besides loopback whose `X-Real-IP` is trusted. Default: none. */
   trustedProxies?: TrustedProxies;
 }
+
+export type UpgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
 export interface WsServerHandle {
   readonly connections: ReadonlySet<Connection>;
@@ -76,7 +83,7 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     putPerIpPerDay: opts.reviewPutPerIpPerDay,
     logger: opts.logger,
   });
-  const { pool, backend, ...rest } = opts;
+  const { pool, backend, upgradeRoutes, ...rest } = opts;
   const connOpts: ConnectionOptions = {
     ...rest,
     backend: backend ?? new LocalBackend(pool),
@@ -97,6 +104,14 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
       pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
     } catch {
       reject(socket, '400 Bad Request');
+      return;
+    }
+    const route =
+      pathname !== path && upgradeRoutes && Object.hasOwn(upgradeRoutes, pathname)
+        ? upgradeRoutes[pathname]
+        : undefined;
+    if (route) {
+      route(req, socket, head);
       return;
     }
     if (pathname !== path) {

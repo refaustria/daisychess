@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   DEFAULT_LIMITS,
   LINK_BOUNDS,
+  LINK_DEFAULTS,
   MAX_TOKEN_LENGTH,
   PROTOCOL_BOUNDS,
   parseToken,
@@ -154,7 +155,7 @@ export const EnvSchema = z.object({
     .optional(),
   /** `1` allows a plain `ws://` HUB_URL to a non-loopback host (development only, ADR-020 §5). */
   DAISYCHESS_INSECURE: z.enum(['0', '1']).default('0'),
-  // Hub store (ADR-020 §6, M24-4); only read by ROLE=hub (wired in M24-6).
+  // Hub store (ADR-020 §6, M24-4); only read by ROLE=hub.
   /** SQLite file of the hub; relative paths resolve against the working directory. Default apps/server/data/hub.sqlite */
   HUB_STORE_PATH: z.string().min(1).optional(),
   /** Alias of HUB_STORE_PATH (the name used in the M24-4 brief); both set must agree. */
@@ -163,7 +164,44 @@ export const EnvSchema = z.object({
   POOL_DAILY_BUDGET_MIN: int(0, 1_440, 30),
   /** Days of `usage_daily` aggregates kept (the current UTC day counts as one). */
   USAGE_RETENTION_DAYS: int(1, 3_650, 90),
+  // Hub link endpoint `/link` (ADR-020 §3, M24-5); only read by ROLE=hub.
+  /** Nodes older than this are refused with `node_outdated` (`major.minor.patch[-pre]`). */
+  NODE_MIN_VERSION: z
+    .string()
+    .regex(LINK_BOUNDS.versionPattern, 'must be major.minor.patch[-prerelease]')
+    .default('0.0.0'),
+  /** `node.welcome.latestNodeVersion` (nodes below it log "a newer node is available"). Default: this server's version. */
+  NODE_LATEST_VERSION: z
+    .string()
+    .regex(LINK_BOUNDS.versionPattern, 'must be major.minor.patch[-prerelease]')
+    .optional(),
+  /** Concurrent `/link` sockets per client address (handshaking or registered). */
+  LINK_MAX_PER_IP: int(1, 1_000, 5),
+  /** `node.welcome.heartbeatMs` (node.status cadence) and the hub's ping interval on `/link`. */
+  LINK_HEARTBEAT_MS: int(
+    LINK_BOUNDS.heartbeatMs.min,
+    LINK_BOUNDS.heartbeatMs.max,
+    LINK_DEFAULTS.heartbeatMs,
+  ),
+  /** `node.welcome.drainMs`: how long a draining node may finish running searches. */
+  LINK_DRAIN_MS: int(LINK_BOUNDS.drainMs.min, LINK_BOUNDS.drainMs.max, LINK_DEFAULTS.drainMs),
+  /** A `/link` socket without a valid `node.hello` is closed after this many ms. */
+  LINK_HELLO_TIMEOUT_MS: int(1_000, 60_000, LINK_DEFAULTS.helloTimeoutMs),
+  /** Frames per second accepted from one node link. */
+  LINK_MAX_MSGS_PER_S: int(1, 100_000, LINK_DEFAULTS.maxMessagesPerSecond),
 });
+
+/** The hub's `/link` endpoint (ADR-020 §3, M24-5), env `NODE_MIN_VERSION`, `LINK_*`. */
+export interface LinkSettings {
+  minNodeVersion: string;
+  /** Null: the hub's own version. */
+  latestNodeVersion: string | null;
+  maxPerIp: number;
+  heartbeatMs: number;
+  drainMs: number;
+  helloTimeoutMs: number;
+  maxMessagesPerSecond: number;
+}
 
 /** Hub persistence and token policy (ADR-020, M24-4), env `HUB_STORE_PATH` etc. */
 export interface HubSettings {
@@ -207,8 +245,10 @@ export interface ServerConfig {
   role: ServerRole;
   /** Node side of the link; non-null exactly when `role === 'node'`. */
   node: NodeSettings | null;
-  /** Hub store and token policy; only used with ROLE=hub (M24-6). */
+  /** Hub store and token policy; only used with ROLE=hub. */
   hub: HubSettings;
+  /** The hub's `/link` endpoint; only used with ROLE=hub. */
+  link: LinkSettings;
 }
 
 export type ServerRole = 'standalone' | 'hub' | 'node';
@@ -365,6 +405,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         : path.join(PACKAGE_DIR, 'data', 'hub.sqlite'),
       poolDailyBudgetMin: e.POOL_DAILY_BUDGET_MIN,
       usageRetentionDays: e.USAGE_RETENTION_DAYS,
+    },
+    link: {
+      minNodeVersion: e.NODE_MIN_VERSION,
+      latestNodeVersion: e.NODE_LATEST_VERSION ?? null,
+      maxPerIp: e.LINK_MAX_PER_IP,
+      heartbeatMs: e.LINK_HEARTBEAT_MS,
+      drainMs: e.LINK_DRAIN_MS,
+      helloTimeoutMs: e.LINK_HELLO_TIMEOUT_MS,
+      maxMessagesPerSecond: e.LINK_MAX_MSGS_PER_S,
     },
   };
 }

@@ -10,6 +10,10 @@ import type { ConnectionOptions } from './ws/connection.js';
 import { ReviewStore } from './review/ReviewStore.js';
 import { LocalBackend } from './sessions/LocalBackend.js';
 import { NodeLink, type NodeLinkOptions } from './node/NodeLink.js';
+import { HubStore } from './hub/store/HubStore.js';
+import { HubTokenService } from './hub/tokens.js';
+import { NodeRegistry } from './hub/NodeRegistry.js';
+import { LinkServer, type LinkServerOptions } from './hub/LinkServer.js';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -64,6 +68,27 @@ export interface BuildAppOptions {
       | 'closeTimeoutMs'
     >
   >;
+  /** `ROLE=hub`: `/link` tuning for tests (ping cadence, clocks, limits). */
+  hub?: Partial<
+    Pick<
+      LinkServerOptions,
+      | 'pingIntervalMs'
+      | 'missedPongsToDrop'
+      | 'closeTimeoutMs'
+      | 'now'
+      | 'relay'
+      | 'invalidFrameLimit'
+      | 'unknownCidLimit'
+    >
+  >;
+}
+
+/** `ROLE=hub` parts (ADR-020): the hub store, token service, online nodes and `/link`. */
+export interface HubParts {
+  store: HubStore;
+  tokens: HubTokenService;
+  registry: NodeRegistry;
+  link: LinkServer;
 }
 
 declare module 'fastify' {
@@ -72,6 +97,8 @@ declare module 'fastify' {
     daisychess: { pool: EnginePool; ws: WsServerHandle; config: ServerConfig };
     /** `ROLE=node` only (ADR-020 §7): the pool and the outbound hub link. */
     daisychessNode: { pool: EnginePool; link: NodeLink; config: ServerConfig };
+    /** `ROLE=hub` only: store, tokens, node registry and the `/link` server (M24-5). */
+    daisychessHub: HubParts;
   }
 }
 
@@ -103,8 +130,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     logger: app.log.child({ component: 'pool' }),
   });
   if (config.node) return buildNode(app, opts, config, config.node, pool, descriptors);
-  if (config.role === 'hub') {
-    app.log.warn('ROLE=hub is not implemented yet (M24-6); running as standalone');
+  const hub = config.role === 'hub' ? await buildHub(app, opts, config) : null;
+  if (hub) {
+    app.log.warn(
+      'ROLE=hub: /link accepts nodes; player routing is not implemented yet (M24-6), /ws serves the local engines as standalone',
+    );
   }
 
   const reviewStore = await openReviewStore(app, config);
@@ -125,8 +155,10 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     reviewPutPerIpPerDay: config.reviewStore.putPerIpPerDay,
     ...(opts.roomManager ? { roomManager: opts.roomManager } : {}),
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
+    ...(hub ? { upgradeRoutes: { [hub.link.path]: hub.link.handleUpgrade.bind(hub.link) } } : {}),
   });
   app.decorate('daisychess', { pool, ws, config });
+  if (hub) app.decorate('daisychessHub', hub);
 
   // Public liveness probe (nginx proxies exactly `/health`): no capacity details, which would
   // tell anyone whether other people are analysing right now (docs/SECURITY.md).
@@ -142,14 +174,18 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     clientAddresses: ws.ipSessions.addresses,
     rooms: ws.rooms.stats(),
     reviewStore: ws.review.stats(),
+    ...(hub ? { role: 'hub', nodes: hub.link.stats() } : {}),
   }));
 
-  // Close WebSockets before the HTTP server stops, then kill every engine process.
+  // Close WebSockets (players first, then node links) before the HTTP server stops, then kill
+  // every engine process.
   app.addHook('preClose', async () => {
     await ws.close();
+    await hub?.link.close();
   });
   app.addHook('onClose', async () => {
     await pool.shutdown();
+    hub?.store.close();
   });
 
   app.log.info(
@@ -244,6 +280,49 @@ function buildNode(
     'engine node configured',
   );
   return app;
+}
+
+/**
+ * `ROLE=hub` (ADR-020 §6, §3): opens the hub store (required: a hub without it cannot verify
+ * node tokens, so a failure aborts the start), the token service and the `/link` server. Player
+ * routing over the registry is M24-6.
+ */
+async function buildHub(
+  app: FastifyInstance,
+  opts: BuildAppOptions,
+  config: ServerConfig,
+): Promise<HubParts> {
+  const log = app.log.child({ component: 'hub' });
+  const store = await HubStore.open({ path: config.hub.storePath }, log);
+  let tokens: HubTokenService;
+  try {
+    tokens = new HubTokenService(store, {
+      accessToken: config.accessToken,
+      poolDailyBudgetMin: config.hub.poolDailyBudgetMin,
+      usageRetentionDays: config.hub.usageRetentionDays,
+    });
+  } catch (err) {
+    store.close();
+    throw err;
+  }
+  const registry = new NodeRegistry(log);
+  const link = new LinkServer({
+    ...opts.hub,
+    auth: tokens,
+    seen: store,
+    registry,
+    logger: app.log.child({ component: 'link' }),
+    hubVersion: SERVER_VERSION,
+    minNodeVersion: config.link.minNodeVersion,
+    latestNodeVersion: config.link.latestNodeVersion ?? SERVER_VERSION,
+    heartbeatMs: config.link.heartbeatMs,
+    drainMs: config.link.drainMs,
+    helloTimeoutMs: config.link.helloTimeoutMs,
+    maxPerIp: config.link.maxPerIp,
+    maxMessagesPerSecond: config.link.maxMessagesPerSecond,
+    trustedProxies: config.trustedProxies,
+  });
+  return { store, tokens, registry, link };
 }
 
 /** Opens the review store (ADR-017) unless disabled; a failure only disables the feature. */
