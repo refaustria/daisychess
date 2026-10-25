@@ -46,7 +46,7 @@ let registry: NodeRegistry;
 let app: FastifyInstance;
 let clock: number;
 let logs: string[];
-let links: { closeNode: ReturnType<typeof vi.fn> };
+let links: { closeNode: ReturnType<typeof vi.fn>; evictShared: ReturnType<typeof vi.fn> };
 let conns: {
   closeTokenConnections: ReturnType<typeof vi.fn>;
   tokenConnections: ReturnType<typeof vi.fn>;
@@ -66,7 +66,7 @@ async function setup(over: Partial<PortalOptions> = {}): Promise<void> {
     usageRetentionDays: 90,
   });
   registry = new NodeRegistry(silent);
-  links = { closeNode: vi.fn(() => true) };
+  links = { closeNode: vi.fn(() => true), evictShared: vi.fn(() => 0) };
   conns = { closeTokenConnections: vi.fn(() => 0), tokenConnections: vi.fn(() => 0) };
   accounts = new Map([
     ['lio_anna', { id: 'anna', username: 'Anna' }],
@@ -1021,5 +1021,71 @@ describe.skipIf(!sqlite)('portal API: administrator (M24-9)', () => {
       (await req('POST', `/admin/nodes/${id}/state`, { cookie: admin, body: { state: 'bogus' } }))
         .statusCode,
     ).toBe(400);
+  });
+
+  it('pool ban (M24-12): shown to the operator, not overridable by them, lifted by the admin only', async () => {
+    const anna = await login('anna');
+    const admin = await login('bojan');
+    const created = (
+      await req('POST', '/nodes', { cookie: anna, body: { name: 'a', pool: true, poolShare: 2 } })
+    ).json();
+    remember(created.nodeToken);
+    const id = created.node.id;
+    connect(id, store.getOperatorByLichessId('anna')!.id);
+    expect(created.node).toMatchObject({ poolBanned: false, poolBanReason: null });
+
+    // The automatic ban after spot-check failures (Reputation) is a store change.
+    store.setNodeReputation(id, { state: 'normal', suspectCount: 3, suspectUntil: T0 });
+    store.setPoolBan(id, { at: T0, reason: 'spot-check failures' });
+    registry.applySettings(id, store.getNode(id)!);
+    const seen = (await req('GET', `/nodes/${id}`, { cookie: anna })).json().node;
+    expect(seen).toMatchObject({
+      state: 'normal',
+      suspectCount: 3,
+      poolBanned: true,
+      poolBanReason: 'spot-check failures',
+      live: { inPool: false },
+    });
+    // The operator's pool switch cannot lift it.
+    const patched = await req('PATCH', `/nodes/${id}`, { cookie: anna, body: { pool: true } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().node).toMatchObject({
+      pool: true,
+      poolBanned: true,
+      live: { inPool: false },
+    });
+    expect(registry.poolCandidates()).toEqual([]);
+    // Nor can the operator use the admin route.
+    expect(
+      (await req('POST', `/admin/nodes/${id}/state`, { cookie: anna, body: { poolBanned: false } }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await req('POST', `/admin/nodes/${id}/state`, { cookie: admin, body: {} })).statusCode,
+    ).toBe(400);
+
+    const lifted = await req('POST', `/admin/nodes/${id}/state`, {
+      cookie: admin,
+      body: { poolBanned: false },
+    });
+    expect(lifted.json()).toMatchObject({
+      node: { poolBanned: false, poolBanReason: null, suspectCount: 0, live: { inPool: true } },
+      linkClosed: false,
+    });
+    expect(registry.poolCandidates().map((n) => n.nodeId)).toEqual([id]);
+    expect(links.evictShared).not.toHaveBeenCalled();
+
+    // An administrator's ban evicts the node's pool players; the link stays.
+    const banned = await req('POST', `/admin/nodes/${id}/state`, {
+      cookie: admin,
+      body: { poolBanned: true },
+    });
+    expect(banned.json()).toMatchObject({
+      node: { poolBanned: true, poolBanReason: 'hub administrator', state: 'normal' },
+      linkClosed: false,
+    });
+    expect(links.evictShared).toHaveBeenCalledWith(id, expect.any(String));
+    expect(links.closeNode).not.toHaveBeenCalled();
+    expect(tokens.verifyNodeToken(created.nodeToken, T0)).toMatchObject({ kind: 'node' });
   });
 });

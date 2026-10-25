@@ -24,6 +24,7 @@ import {
   tierLimits,
   type HubRouterOptions,
   type LocalNode,
+  type PoolSearchSample,
   type RoutableNode,
   type RouterRegistry,
 } from './Router.js';
@@ -556,5 +557,86 @@ describe('HubRouter: pool scheduling', () => {
     expect(out).toEqual([
       expect.objectContaining({ code: 'no_capacity', message: 'daily pool budget exhausted' }),
     ]);
+  });
+});
+
+describe('HubRouter: spot-check sampling (M24-12)', () => {
+  const finish = (c: FakeChannel, sessionId: string, searchId = 1) => {
+    c.deliver({
+      type: 'info',
+      sessionId,
+      searchId,
+      info: { depth: 14, multipv: 1, score: { cp: 31 }, pv: ['e2e4'] },
+    });
+    c.deliver({
+      type: 'bestmove',
+      sessionId,
+      searchId,
+      bestMove: { move: 'e2e4' },
+      reason: 'completed',
+    });
+  };
+
+  it('offers finished searches of shared routes to remote nodes only', () => {
+    const offered: PoolSearchSample[] = [];
+    const n = node('poolnode', { pool: true, poolShare: 4 });
+    registry.nodes.push(n);
+    tokens.set('pool', {
+      kind: 'token',
+      record: token('pooltok1', { kind: 'pool', tier: 'standard' }),
+    });
+    tokens.set('priv', {
+      kind: 'token',
+      record: token('privtok1', { nodeIds: ['poolnode'] }),
+    });
+    const r = router({ spotCheck: { offer: (s) => offered.push(s) } });
+
+    // Private route to the same node: never sampled.
+    const priv = open(routed(r.route(hello('priv'), peer)));
+    priv.handle(analyze('s1'));
+    finish(n.channels[0]!, 's1');
+    expect(offered).toEqual([]);
+
+    // Pool route: the finished search is offered with the node's descriptor.
+    const pool = open(routed(r.route(hello('pool'), peer)));
+    pool.handle(analyze('s2'));
+    finish(n.channels[1]!, 's2');
+    expect(offered).toEqual([
+      {
+        nodeId: 'poolnode',
+        descriptor: ENGINES[0],
+        engine: 'sf',
+        fen: FEN,
+        depth: 14,
+        bestMove: 'e2e4',
+        score: { cp: 31 },
+        reason: 'completed',
+      },
+    ]);
+  });
+
+  it('never offers `local` (also on pool routes) and counts player searches on it', () => {
+    const offered: PoolSearchSample[] = [];
+    local = makeLocal(2);
+    tokens.set('pool', {
+      kind: 'token',
+      record: token('pooltok1', { kind: 'pool', tier: 'standard' }),
+    });
+    tokens.set('legacy', {
+      kind: 'token',
+      record: token(LEGACY_TOKEN_ID, { nodeIds: [LOCAL_NODE_ID] }),
+    });
+    const r = router({ spotCheck: { offer: (s) => offered.push(s) } });
+    const pool = open(routed(r.route(hello('pool'), peer)));
+    pool.handle(analyze('s1'));
+    expect(r.localSearches).toBe(1);
+    const own = open(routed(r.route(hello('legacy'), peer)));
+    own.handle(analyze('s2'));
+    expect(r.stats().localSearches).toBe(2);
+    finish(local.channels[0]!, 's1');
+    expect(r.localSearches).toBe(1);
+    void own.close();
+    expect(r.localSearches).toBe(0);
+    expect(offered).toEqual([]);
   });
 });

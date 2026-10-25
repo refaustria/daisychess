@@ -17,6 +17,7 @@ import { NodeRegistry } from './hub/NodeRegistry.js';
 import { LinkServer, type LinkServerOptions } from './hub/LinkServer.js';
 import { HubRouter, type HubRouterOptions, type LocalNode } from './hub/Router.js';
 import type { BudgetSource, UsageSink } from './hub/AccountingChannel.js';
+import { Reputation, SpotChecker, createPoolChecker } from './hub/SpotCheck.js';
 import type { IpSessionLedger } from './ws/clientIp.js';
 import { DEFAULT_BAD_TOKEN_LIMIT } from './ws/badTokens.js';
 import { registerPortalRoutes, type PortalOptions } from './hub/portal/routes.js';
@@ -78,6 +79,8 @@ export interface BuildAppOptions {
   >;
   /** `ROLE=hub`: router tuning for tests (clock, sticky and failure windows). */
   hubRouter?: Partial<Pick<HubRouterOptions, 'now' | 'stickyMs' | 'failurePenaltyMs'>>;
+  /** `ROLE=hub`: spot-check injection for tests (sampling randomness, clock). */
+  spotCheck?: { random?: () => number; now?: () => number };
   /** `ROLE=hub`: portal API injection for tests (lichess fetcher, clock, rate limits). */
   portal?: Partial<
     Pick<PortalOptions, 'fetchAccount' | 'now' | 'random' | 'loginRateLimit' | 'apiRateLimit'>
@@ -105,6 +108,10 @@ export interface HubParts {
   link: LinkServer;
   /** Set once `/ws` is attached. */
   router: HubRouter | null;
+  /** Spot-check reputation of nodes (M24-12). */
+  reputation: Reputation;
+  /** Pool spot-checks (M24-12); set together with the router. */
+  spotCheck: SpotChecker | null;
 }
 
 declare module 'fastify' {
@@ -172,7 +179,16 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
           badTokenLimit: opts.connection?.badTokenLimit ?? DEFAULT_BAD_TOKEN_LIMIT,
           upgradeRoutes: { [hub.link.path]: hub.link.handleUpgrade.bind(hub.link) },
           router: ({ ledger }: { ledger: IpSessionLedger }) => {
-            hub.router = createHubRouter(app, opts, config, hub, pool, descriptors, ledger);
+            hub.router = createHubRouter(
+              app,
+              opts,
+              config,
+              hub,
+              pool,
+              registry,
+              descriptors,
+              ledger,
+            );
             return hub.router;
           },
         }
@@ -219,11 +235,19 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     clientAddresses: ws.ipSessions.addresses,
     rooms: ws.rooms.stats(),
     reviewStore: ws.review.stats(),
-    ...(hub ? { role: 'hub', nodes: hub.link.stats(), router: hub.router?.stats() ?? null } : {}),
+    ...(hub
+      ? {
+          role: 'hub',
+          nodes: hub.link.stats(),
+          router: hub.router?.stats() ?? null,
+          spotchecks: hub.spotCheck?.stats() ?? null,
+        }
+      : {}),
   }));
 
   // Hub retention: usage aggregates, portal sessions, spot-checks (ADR-020 §6), daily.
   let purgeTimer: ReturnType<typeof setInterval> | null = null;
+  let cooldownTimer: ReturnType<typeof setInterval> | null = null;
   if (hub) {
     const purge = () => {
       try {
@@ -237,6 +261,20 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       purge();
       purgeTimer = setInterval(purge, 24 * 3_600_000);
       purgeTimer.unref();
+      // Suspect nodes whose cool-down ended go back to the pool (M24-12).
+      const sweep = () => {
+        try {
+          hub.reputation.expireCooldowns(Date.now());
+        } catch (err) {
+          app.log.warn(
+            { component: 'spotcheck', err: (err as Error).message },
+            'spot-check cool-down sweep failed',
+          );
+        }
+      };
+      sweep();
+      cooldownTimer = setInterval(sweep, 5 * 60_000);
+      cooldownTimer.unref();
     });
   }
 
@@ -244,6 +282,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   // every engine process.
   app.addHook('preClose', async () => {
     if (purgeTimer) clearInterval(purgeTimer);
+    if (cooldownTimer) clearInterval(cooldownTimer);
+    await hub?.spotCheck?.close();
     await ws.close();
     await hub?.link.close();
     hub?.router?.dispose();
@@ -387,7 +427,26 @@ async function buildHub(
     maxMessagesPerSecond: config.link.maxMessagesPerSecond,
     trustedProxies: config.trustedProxies,
   });
-  return { store, tokens, registry, link, router: null };
+  const spot = config.spotCheck;
+  const reputation = new Reputation(
+    store,
+    {
+      apply: (node) => registry.applySettings(node.id, node),
+      evictShared: (node) => {
+        const n = link.evictShared(node.id, 'engine node removed from the pool');
+        if (n > 0) log.info({ node: node.id, evicted: n }, 'spot-check: pool players moved off');
+      },
+    },
+    app.log.child({ component: 'spotcheck' }),
+    {
+      window: spot.window,
+      minChecks: spot.minChecks,
+      maxDisagreeRate: spot.maxDisagreeRate,
+      cooldownMs: spot.cooldownMs,
+      maxEpisodes: spot.maxEpisodes,
+    },
+  );
+  return { store, tokens, registry, link, router: null, reputation, spotCheck: null };
 }
 
 /**
@@ -402,6 +461,7 @@ function createHubRouter(
   config: ServerConfig,
   hub: HubParts,
   pool: EnginePool,
+  engines: EngineRegistry,
   descriptors: EngineDescriptor[],
   ledger: IpSessionLedger,
 ): HubRouter {
@@ -435,8 +495,34 @@ function createHubRouter(
   const budget: BudgetSource = {
     remainingMs: (tokenId, now) => hub.tokens.remainingPoolBudgetMs(tokenId, now),
   };
-  return new HubRouter({
+  let router: HubRouter | null = null;
+  const spot = config.spotCheck;
+  const spotCheck = new SpotChecker({
+    config: {
+      rate: spot.rate,
+      maxPerHour: spot.maxPerHour,
+      toleranceCp: spot.toleranceCp,
+      scoreToleranceCp: spot.scoreToleranceCp,
+      minDepth: spot.minDepth,
+      maxDepth: spot.maxDepth,
+      movetimeMs: spot.movetimeMs,
+    },
+    local: createPoolChecker(pool, {
+      maxSessions: config.maxSessions,
+      maxInstances: (id) => engines.engines.find((e) => e.id === id)?.maxInstances ?? 0,
+      playerSearches: () => router?.localSearches ?? 0,
+      logger: app.log.child({ component: 'spotcheck' }),
+    }),
+    localEngines: descriptors,
+    reputation: hub.reputation,
+    logger: app.log.child({ component: 'spotcheck' }),
+    ...(opts.spotCheck?.random ? { random: opts.spotCheck.random } : {}),
+    ...(opts.spotCheck?.now ? { now: opts.spotCheck.now } : {}),
+  });
+  hub.spotCheck = spotCheck;
+  router = new HubRouter({
     ...opts.hubRouter,
+    spotCheck,
     tokens: hub.tokens,
     registry: hub.registry,
     local,
@@ -449,6 +535,7 @@ function createHubRouter(
     ...(tuning.analyzeRateLimit ? { analyzeRateLimit: tuning.analyzeRateLimit } : {}),
     logger,
   });
+  return router;
 }
 
 /** Opens the review store (ADR-017) unless disabled; a failure only disables the feature. */

@@ -306,9 +306,22 @@ export class RelaySessions implements AnalysisChannel {
     this.die();
   }
 
+  /**
+   * The hub withdraws this client from the node (M24-12: the node left the pool): asks the node
+   * to drop it (`client.close`, best effort, not awaited — its late `client.closed` is ignored)
+   * and then ends the channel exactly like a node loss (terminals, {@link lost} → 1012). True
+   * when the channel was open.
+   */
+  evict(message: string): boolean {
+    if (this.st !== 'open') return false;
+    this.link.send({ type: 'client.close', cid: this.cid });
+    this.die(message);
+    return true;
+  }
+
   // -------------------------------------------------------------------------------------------
 
-  private die(): void {
+  private die(message = 'engine node lost'): void {
     const searches = this.tracker.openSearchList();
     const withSearch = new Set(searches.map((s) => s.sessionId));
     const sessions = this.tracker.openSessions.filter((id) => !withSearch.has(id));
@@ -317,10 +330,10 @@ export class RelaySessions implements AnalysisChannel {
     this.infoWindows.clear();
     this.pendingStops.clear();
     for (const s of searches) {
-      this.emit(errorMsg('engine_crashed', 'engine node lost', s.sessionId, s.searchId));
+      this.emit(errorMsg('engine_crashed', message, s.sessionId, s.searchId));
     }
     for (const sessionId of sessions) {
-      this.emit(errorMsg('engine_crashed', 'engine node lost', sessionId));
+      this.emit(errorMsg('engine_crashed', message, sessionId));
     }
     this.log.info(
       {

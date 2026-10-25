@@ -161,17 +161,27 @@ export class NodeRegistry {
   /**
    * Portal / administrator change of a connected node (M24-9): name, pool setting, pool share and
    * moderation state take effect for the next routing decision without a reconnect. Effective
-   * pool membership = the node's own switch && the portal setting && `state === 'normal'`.
-   * Returns false when the node is not connected.
+   * pool membership = the node's own switch && the portal setting && `state === 'normal'` && no
+   * pool ban (M24-12). Returns false when the node is not connected.
    */
   applySettings(
     nodeId: string,
-    settings: { name: string; pool: boolean; poolShare: number; state: string },
+    settings: {
+      name: string;
+      pool: boolean;
+      poolShare: number;
+      state: string;
+      poolBannedAt?: number | null;
+    },
   ): boolean {
     const entry = this.nodes.get(nodeId);
     if (!entry) return false;
     entry.name = settings.name;
-    entry.pool = (entry.nodePool ?? entry.pool) && settings.pool && settings.state === 'normal';
+    entry.pool =
+      (entry.nodePool ?? entry.pool) &&
+      settings.pool &&
+      settings.state === 'normal' &&
+      (settings.poolBannedAt ?? null) === null;
     entry.poolShare = settings.poolShare;
     this.emit({ type: 'status', node: entry });
     return true;

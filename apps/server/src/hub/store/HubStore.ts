@@ -82,7 +82,19 @@ export interface NodeRecord {
   revokedAt: number | null;
   /** While set and in the future, the previous credential is still accepted (rotation overlap). */
   prevExpiresAt: number | null;
+  /**
+   * Permanently out of the pool since (M24-12, repeated spot-check failures); the link and
+   * private tokens keep working. Only the administrator can lift it. Null = not banned.
+   */
+  poolBannedAt: number | null;
+  /** Why ({@link POOL_BAN_SPOTCHECK} or {@link POOL_BAN_ADMIN}); null when not banned. */
+  poolBanReason: string | null;
 }
+
+/** `pool_ban_reason` of an automatic ban after repeated spot-check episodes (M24-12). */
+export const POOL_BAN_SPOTCHECK = 'spot-check failures';
+/** `pool_ban_reason` of a ban set by the hub administrator in the portal. */
+export const POOL_BAN_ADMIN = 'hub administrator';
 
 export interface TokenRecord {
   id: string;
@@ -246,6 +258,8 @@ function toNode(r: Row): NodeRecord {
     lastSeenAt: numOrNull(r.last_seen_at),
     revokedAt: numOrNull(r.revoked_at),
     prevExpiresAt: numOrNull(r.prev_expires_at),
+    poolBannedAt: numOrNull(r.pool_banned_at),
+    poolBanReason: strOrNull(r.pool_ban_reason),
   };
 }
 
@@ -267,7 +281,8 @@ function toToken(r: Row): TokenRecord {
 
 /** Columns of the public records (no hashes). */
 const NODE_COLS = `id, operator_id, name, pool, pool_share, state, suspect_count, suspect_until,
-  max_sessions_seen, last_version, created_at, last_seen_at, revoked_at, prev_expires_at`;
+  max_sessions_seen, last_version, created_at, last_seen_at, revoked_at, prev_expires_at,
+  pool_banned_at, pool_ban_reason`;
 const TOKEN_COLS = `id, operator_id, kind, label, node_ids, pool_fallback, tier, expires_at,
   revoked_at, created_at, last_used_at`;
 const OPERATOR_COLS = `id, lichess_id, username, admin, created_at, last_login_at, disabled_at,
@@ -476,6 +491,52 @@ export class HubStore {
       'UPDATE nodes SET secret_hash = ?, secret_hash_prev = ?, prev_expires_at = ? WHERE id = ?',
     ).run(cred.secretHash, cred.secretHashPrev, cred.prevExpiresAt, id);
     return this.getNode(id);
+  }
+
+  /**
+   * Spot-check reputation of a node (M24-12): moderation state, number of suspect episodes and
+   * the end of the current (or last) cool-down. Unscoped (hub internals only).
+   */
+  setNodeReputation(
+    id: string,
+    rep: { state: NodeState; suspectCount: number; suspectUntil: number | null },
+  ): NodeRecord | undefined {
+    if (!this.getNode(id)) return undefined;
+    this.stmt('UPDATE nodes SET state = ?, suspect_count = ?, suspect_until = ? WHERE id = ?').run(
+      rep.state,
+      rep.suspectCount,
+      rep.suspectUntil,
+      id,
+    );
+    return this.getNode(id);
+  }
+
+  /** Sets (`at` + `reason`) or lifts (`null`) a node's permanent pool ban (M24-12). Unscoped. */
+  setPoolBan(id: string, ban: { at: number; reason: string } | null): NodeRecord | undefined {
+    if (!this.getNode(id)) return undefined;
+    this.stmt('UPDATE nodes SET pool_banned_at = ?, pool_ban_reason = ? WHERE id = ?').run(
+      ban?.at ?? null,
+      ban?.reason ?? null,
+      id,
+    );
+    return this.getNode(id);
+  }
+
+  /** One spot-check result (M24-12): node, time and verdict only — never a position or token. */
+  insertSpotcheck(nodeId: string, at: number, agreed: boolean): void {
+    this.stmt('INSERT INTO spotchecks (node_id, at, agreed) VALUES (?, ?, ?)').run(
+      nodeId,
+      at,
+      b(agreed),
+    );
+  }
+
+  /** Verdicts (true = agreed) of the node's latest `limit` spot-checks at or after `since`, newest first. */
+  recentSpotchecks(nodeId: string, since: number, limit: number): boolean[] {
+    const rows = this.stmt(
+      'SELECT agreed FROM spotchecks WHERE node_id = ? AND at >= ? ORDER BY at DESC, id DESC LIMIT ?',
+    ).all(nodeId, since, limit);
+    return rows.map((r) => num(r.agreed) === 1);
   }
 
   /** Immediate revocation; idempotent (keeps the first `revoked_at`). */

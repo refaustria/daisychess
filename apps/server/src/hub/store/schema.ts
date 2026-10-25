@@ -89,8 +89,19 @@ CREATE TABLE spotchecks (
 CREATE INDEX spotchecks_node ON spotchecks(node_id, at);
 `;
 
+/**
+ * M24-12: permanent pool exclusion after repeated spot-check failures. Distinct from `state`
+ * (`disabled` stops the node entirely; a pool ban keeps the link and private tokens working)
+ * and from `pool` (the operator's own setting, which cannot lift the ban).
+ */
+const V2 = `
+ALTER TABLE nodes ADD COLUMN pool_banned_at INTEGER;
+ALTER TABLE nodes ADD COLUMN pool_ban_reason TEXT;
+`;
+
 export const HUB_MIGRATIONS: readonly Migration[] = Object.freeze([
   { version: 1, name: 'initial', sql: V1 },
+  { version: 2, name: 'pool ban', sql: V2 },
 ]);
 
 /** Bookkeeping table; created outside the versioned migrations. */

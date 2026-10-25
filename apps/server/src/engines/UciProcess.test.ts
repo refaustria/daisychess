@@ -50,6 +50,21 @@ describe('UciProcess', () => {
     expect(p.searching).toBe(false);
   });
 
+  it('restricts the root with searchmoves (M24-12) and rejects malformed moves before sending', async () => {
+    const p = make();
+    await p.start();
+    const infos: EngineInfo[] = [];
+    p.position('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+    const res = await p.go({ depth: 2, searchmoves: ['d2d4'] }, (i) => infos.push(i));
+    expect(res.bestMove).toEqual({ move: 'd2d4' });
+    expect(infos.at(-1)).toMatchObject({ depth: 2, score: { cp: -6 }, pv: ['d2d4'] });
+    expect(() => p.go({ depth: 2, searchmoves: ['e2e4 quit'] })).toThrow(/invalid searchmoves/);
+    expect(() => p.go({ depth: 2, searchmoves: ['e9e4'] })).toThrow(/invalid searchmoves/);
+    expect(p.searching).toBe(false);
+    // An empty list is no restriction.
+    expect((await p.go({ depth: 1, searchmoves: [] })).bestMove?.move).toBe('e2e4');
+  });
+
   it('sets allowed options once (cached) and waits for readyok', async () => {
     const p = make();
     await p.start();

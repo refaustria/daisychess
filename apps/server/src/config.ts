@@ -172,6 +172,31 @@ export const EnvSchema = z.object({
   HUB_LOCAL_NAME: z.string().trim().min(1).max(32).default('local'),
   /** Sessions of the hub's own pool donated to the shared pool (0 = `local` is not in the pool; ≤ MAX_SESSIONS). */
   HUB_LOCAL_POOL_SHARE: int(0, 256, 2),
+  // Spot-checks and reputation of pool nodes (ADR-020 §5, M24-12); only read by ROLE=hub.
+  /** Fraction (0…1) of eligible pool searches re-run on `local`; 0 = off. */
+  SPOTCHECK_RATE: z.coerce.number().min(0).max(1).default(0.02),
+  /** Checks started per rolling hour (bounds `local` CPU spent on checks). */
+  SPOTCHECK_MAX_PER_HOUR: int(0, 3_600, 20),
+  /** Max centipawns a node's move may be worse than `local`'s best at the same depth. */
+  SPOTCHECK_TOLERANCE_CP: int(0, 10_000, 50),
+  /** Max |reported − local| centipawns of the node's score; 0 = no score check. */
+  SPOTCHECK_SCORE_TOLERANCE_CP: int(0, 100_000, 200),
+  /** Pool searches below this reported depth are never checked. */
+  SPOTCHECK_MIN_DEPTH: int(1, 245, 10),
+  /** `local` checks at most this deep (the node's depth, capped). */
+  SPOTCHECK_MAX_DEPTH: int(1, 245, 16),
+  /** Time cap of one local check search; a check that misses the depth is inconclusive. */
+  SPOTCHECK_MOVETIME_MS: int(100, 120_000, 5_000),
+  /** Rolling reputation window (latest checks of the last 24 h). */
+  SPOTCHECK_WINDOW: int(1, 1_000, 50),
+  /** Checks in the window before a node can be marked suspect. */
+  SPOTCHECK_MIN_CHECKS: int(1, 1_000, 10),
+  /** Disagreement rate (0…1) above which a node becomes suspect. */
+  SPOTCHECK_MAX_DISAGREE_RATE: z.coerce.number().min(0).max(1).default(0.2),
+  /** Cool-down of a suspect episode in hours (then back to normal on probation). */
+  SPOTCHECK_COOLDOWN_H: int(1, 24 * 365, 24),
+  /** The suspect episode with this number disables the node instead. */
+  SPOTCHECK_MAX_EPISODES: int(1, 1_000, 3),
   // Hub link endpoint `/link` (ADR-020 §3, M24-5); only read by ROLE=hub.
   /** Nodes older than this are refused with `node_outdated` (`major.minor.patch[-pre]`). */
   NODE_MIN_VERSION: z
@@ -294,6 +319,22 @@ export interface HubRouterSettings {
   localPoolShare: number;
 }
 
+/** Spot-checks and reputation (ADR-020 §5, M24-12), env `SPOTCHECK_*`. */
+export interface SpotCheckSettings {
+  rate: number;
+  maxPerHour: number;
+  toleranceCp: number;
+  scoreToleranceCp: number;
+  minDepth: number;
+  maxDepth: number;
+  movetimeMs: number;
+  window: number;
+  minChecks: number;
+  maxDisagreeRate: number;
+  cooldownMs: number;
+  maxEpisodes: number;
+}
+
 /** Server-side review store (ADR-017), env `REVIEW_*`. */
 export interface ReviewStoreSettings {
   enabled: boolean;
@@ -335,6 +376,8 @@ export interface ServerConfig {
   link: LinkSettings;
   /** Hub routing; only used with ROLE=hub. */
   hubRouter: HubRouterSettings;
+  /** Pool spot-checks; only used with ROLE=hub. */
+  spotCheck: SpotCheckSettings;
   /** Operator portal API; only used with ROLE=hub. */
   portal: PortalSettings;
 }
@@ -438,6 +481,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       'Invalid server configuration: HUB_STORE_PATH and HUB_DB_PATH are both set and differ',
     );
   }
+  if (e.SPOTCHECK_MIN_CHECKS > e.SPOTCHECK_WINDOW) {
+    throw new Error(
+      `Invalid server configuration: SPOTCHECK_MIN_CHECKS (${e.SPOTCHECK_MIN_CHECKS}) must not exceed SPOTCHECK_WINDOW (${e.SPOTCHECK_WINDOW})`,
+    );
+  }
   const hubStorePath = e.HUB_STORE_PATH ?? e.HUB_DB_PATH;
   return {
     port: e.PORT,
@@ -497,6 +545,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     hubRouter: {
       localName: e.HUB_LOCAL_NAME,
       localPoolShare: Math.min(e.HUB_LOCAL_POOL_SHARE, e.MAX_SESSIONS),
+    },
+    spotCheck: {
+      rate: e.SPOTCHECK_RATE,
+      maxPerHour: e.SPOTCHECK_MAX_PER_HOUR,
+      toleranceCp: e.SPOTCHECK_TOLERANCE_CP,
+      scoreToleranceCp: e.SPOTCHECK_SCORE_TOLERANCE_CP,
+      minDepth: e.SPOTCHECK_MIN_DEPTH,
+      maxDepth: e.SPOTCHECK_MAX_DEPTH,
+      movetimeMs: e.SPOTCHECK_MOVETIME_MS,
+      window: e.SPOTCHECK_WINDOW,
+      minChecks: e.SPOTCHECK_MIN_CHECKS,
+      maxDisagreeRate: e.SPOTCHECK_MAX_DISAGREE_RATE,
+      cooldownMs: e.SPOTCHECK_COOLDOWN_H * 3_600_000,
+      maxEpisodes: e.SPOTCHECK_MAX_EPISODES,
     },
     portal: {
       publicOrigin: e.PUBLIC_ORIGIN ?? null,

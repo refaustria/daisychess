@@ -77,6 +77,8 @@ export interface PortalConnections {
 /** Node links (`LinkServer` satisfies it). */
 export interface PortalLinks {
   closeNode(nodeId: string, reason: LinkCloseReason, message?: string): boolean;
+  /** Ends the node's shared (pool) player connections (M24-12); private ones stay. */
+  evictShared(nodeId: string, message: string): number;
 }
 
 export interface PortalOptions {
@@ -196,7 +198,11 @@ const TokenPatchBody = z
   .refine((b) => Object.keys(b).length > 0, 'nothing to change');
 
 const DisableBody = z.object({ disabled: z.boolean() }).strict();
-const NodeStateBody = z.object({ state: z.enum(NODE_STATES) }).strict();
+/** Administrator moderation: the node state and/or the permanent pool ban (M24-12). */
+const NodeStateBody = z
+  .object({ state: z.enum(NODE_STATES).optional(), poolBanned: z.boolean().optional() })
+  .strict()
+  .refine((b) => b.state !== undefined || b.poolBanned !== undefined, 'nothing to change');
 
 // ------------------------------------------------------------------------------------ views
 
@@ -207,6 +213,15 @@ export interface NodeView {
   poolShare: number;
   state: NodeRecord['state'];
   suspectCount: number;
+  /** End of the current (or last) spot-check cool-down (M24-12). */
+  suspectUntil: number | null;
+  /**
+   * Permanently out of the pool (M24-12, e.g. after repeated spot-check failures); its private
+   * tokens keep working. Only the administrator can lift it — `pool` cannot override it.
+   */
+  poolBanned: boolean;
+  /** `spot-check failures` or `hub administrator`; null when not banned. */
+  poolBanReason: string | null;
   createdAt: number;
   lastSeenAt: number | null;
   lastVersion: string | null;
@@ -303,6 +318,9 @@ export async function registerPortalRoutes(
       poolShare: rec.poolShare,
       state: rec.state,
       suspectCount: rec.suspectCount,
+      suspectUntil: rec.suspectUntil,
+      poolBanned: rec.poolBannedAt !== null,
+      poolBanReason: rec.poolBanReason,
       createdAt: rec.createdAt,
       lastSeenAt: rec.lastSeenAt,
       lastVersion: live?.version ?? rec.lastVersion,
@@ -838,19 +856,38 @@ export async function registerPortalRoutes(
         if (!id) return notFound(reply);
         const body = NodeStateBody.safeParse(req.body);
         if (!body.success) return invalid(reply, issues(body.error));
-        const node = tokens.setNodeState(id, body.data.state);
+        const t = now();
+        let node = store.getNode(id);
         if (!node) return notFound(reply);
+        if (body.data.poolBanned !== undefined) {
+          node = tokens.setNodePoolBan(id, body.data.poolBanned, t) ?? node;
+        }
+        if (body.data.state !== undefined) {
+          node = tokens.setNodeState(id, body.data.state, t) ?? node;
+        }
         let linkClosed = false;
+        let evicted = 0;
         if (node.state === 'disabled') {
           linkClosed = links.closeNode(id, 'revoked', 'node disabled by the hub administrator');
         } else {
           registry.applySettings(id, node);
+          // Out of the pool: its pool players reconnect elsewhere; private ones stay.
+          if (node.state === 'suspect' || node.poolBannedAt !== null) {
+            evicted = links.evictShared(id, 'engine node removed from the pool');
+          }
         }
         logger.info(
-          { component: 'portal', admin: ctx.operator.id, node: id, state: node.state },
+          {
+            component: 'portal',
+            admin: ctx.operator.id,
+            node: id,
+            state: node.state,
+            poolBanned: node.poolBannedAt !== null,
+            evicted,
+          },
           'node state changed',
         );
-        return { node: nodeView(node, now()), linkClosed };
+        return { node: nodeView(node, t), linkClosed };
       });
 
       // ---------------------------------------------------------------- helpers (scoped)

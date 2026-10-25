@@ -28,7 +28,17 @@ export interface GoParams {
   nodes?: number;
   /** Search until `stop`. Implied when neither `depth`, `movetime` nor `nodes` is given. */
   infinite?: boolean;
+  /**
+   * `go … searchmoves m1 m2 …`: restrict the root to these UCI moves (hub spot-checks, M24-12,
+   * evaluate a node's move). Server-internal; not reachable from the player protocol. Each move
+   * must match {@link UCI_MOVE_PATTERN} (else `go` throws); legality is the caller's job — an
+   * engine ignores illegal moves and would silently search every move instead.
+   */
+  searchmoves?: readonly string[];
 }
+
+/** A UCI move as `go searchmoves` accepts it (`e2e4`, `e7e8q`). */
+export const UCI_MOVE_PATTERN = /^[a-h][1-8][a-h][1-8][qrbn]?$/;
 
 export interface SearchResult {
   /** null for `bestmove (none)` (mate/stalemate) or an unparsable reply. */
@@ -293,6 +303,13 @@ export class UciProcess {
     if (params.movetime !== undefined) parts.push('movetime', String(Math.trunc(params.movetime)));
     if (params.nodes !== undefined) parts.push('nodes', String(Math.trunc(params.nodes)));
     if (parts.length === 1 || params.infinite) parts.push('infinite');
+    if (params.searchmoves !== undefined && params.searchmoves.length > 0) {
+      for (const m of params.searchmoves) {
+        if (!UCI_MOVE_PATTERN.test(m)) throw new Error(`invalid searchmoves entry "${m}"`);
+      }
+      // Last: every token after `searchmoves` is read as a move.
+      parts.push('searchmoves', ...params.searchmoves);
+    }
     let resolve!: (r: SearchResult) => void;
     let reject!: (e: Error) => void;
     const promise = new Promise<SearchResult>((res, rej) => {

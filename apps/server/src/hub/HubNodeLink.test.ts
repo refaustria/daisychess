@@ -197,4 +197,52 @@ describe('HubNodeLink', () => {
     await a.lost;
     expect(link.clients).toBe(0);
   });
+
+  it('evictShared (M24-12): ends pool relays like a node loss, tells the node, keeps private ones', async () => {
+    const { link, sent, onAbuse } = setup();
+    const poolOut: AnalysisServerMessage[] = [];
+    const privOut: AnalysisServerMessage[] = [];
+    const pool = link.open((m) => poolOut.push(m), peer, POOL);
+    const priv = link.open((m) => privOut.push(m), peer, PRIVATE);
+    const idle = link.open(() => {}, peer, POOL);
+    pool.handle({ type: 'analyze', sessionId: 's', searchId: 3, engine: 'sf', fen: FEN });
+    priv.handle({ type: 'analyze', sessionId: 's', searchId: 1, engine: 'sf', fen: FEN });
+    expect(link.evictShared('engine node removed from the pool')).toBe(2);
+    expect(poolOut).toEqual([
+      {
+        type: 'error',
+        code: 'engine_crashed',
+        message: 'engine node removed from the pool',
+        sessionId: 's',
+        searchId: 3,
+      },
+    ]);
+    await pool.lost;
+    await idle.lost;
+    expect(pool.state).toBe('lost');
+    expect(priv.state).toBe('open');
+    expect(privOut).toEqual([]);
+    expect(sent.filter((m) => m.type === 'client.close').map((m) => m.cid)).toEqual([
+      pool.cid,
+      idle.cid,
+    ]);
+    expect(link.clients).toBe(1);
+    // The node's late acknowledgements are not unknown-cid abuse.
+    link.onFrame({ type: 'client.closed', cid: pool.cid });
+    link.onFrame({ type: 'client.closed', cid: idle.cid });
+    expect(link.stats().unknownCid).toBe(0);
+    expect(onAbuse).not.toHaveBeenCalled();
+    expect(link.evictShared('again')).toBe(0);
+    // The private relay still works.
+    priv.onNodeMessage({
+      type: 'bestmove',
+      sessionId: 's',
+      searchId: 1,
+      bestMove: { move: 'e2e4' },
+      reason: 'completed',
+    });
+    expect(privOut).toHaveLength(1);
+    link.lost();
+    expect(link.evictShared('x')).toBe(0);
+  });
 });

@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_LIMITS, type AnalyzeMessage, type Limits } from '@daisychess/engine-core';
+import {
+  DEFAULT_LIMITS,
+  type AnalyzeMessage,
+  type InfoMessage,
+  type Limits,
+} from '@daisychess/engine-core';
 import type { PoolLogger } from '../engines/EnginePool.js';
 import type { AnalysisChannel } from '../sessions/AnalysisChannel.js';
 import type {
@@ -13,6 +18,7 @@ import {
   TokenSessionLedger,
   type AccountingChannelOptions,
   type BudgetSource,
+  type ObservedSearch,
 } from './AccountingChannel.js';
 
 const silent: PoolLogger = { info() {}, warn() {}, error() {}, debug() {} };
@@ -370,5 +376,121 @@ describe('AccountingChannel: usage and budget', () => {
     expect(admitted).toBe(3); // 0, 4 and 8 s used before: the third overruns by 2 s
     expect(budget.used()).toBe(12_000);
     expect(budget.used() - 10_000).toBeLessThan(5_000 + 2_000);
+  });
+});
+
+describe('AccountingChannel: search observation for spot-checks (M24-12)', () => {
+  const info = (
+    sessionId: string,
+    searchId: number,
+    depth: number,
+    multipv = 1,
+    cp = 20,
+  ): InfoMessage => ({
+    type: 'info',
+    sessionId,
+    searchId,
+    info: { depth, multipv, score: { cp }, pv: ['d2d4'] },
+  });
+
+  it('reports a finished search with the last multipv-1 info and its bestmove', () => {
+    const results: ObservedSearch[] = [];
+    const { ch, inner, out } = make({ onSearchResult: (r) => results.push(r) });
+    ch.handle(analyze('s1', 1, { multipv: 2 }));
+    inner.emit(info('s1', 1, 11, 1, 25));
+    inner.emit(info('s1', 1, 11, 2, -40));
+    inner.emit(info('s1', 1, 12, 1, 18));
+    inner.emit(info('s1', 1, 12, 2, -55));
+    inner.emit({
+      type: 'bestmove',
+      sessionId: 's1',
+      searchId: 1,
+      bestMove: { move: 'd2d4', ponder: 'd7d5' },
+      reason: 'stopped',
+    });
+    expect(results).toEqual([
+      { engine: 'sf', fen: FEN, depth: 12, bestMove: 'd2d4', score: { cp: 18 }, reason: 'stopped' },
+    ]);
+    // The player still sees everything unchanged.
+    expect(out).toHaveLength(5);
+  });
+
+  it('reports nothing without info, for bestmove null, errors, unknown searches or after close', async () => {
+    const results: ObservedSearch[] = [];
+    const { ch, inner } = make({ onSearchResult: (r) => results.push(r) });
+    ch.handle(analyze('s1', 1));
+    inner.emit({
+      type: 'bestmove',
+      sessionId: 's1',
+      searchId: 1,
+      bestMove: { move: 'e2e4' },
+      reason: 'completed',
+    });
+    ch.handle(analyze('s1', 2));
+    inner.emit(info('s1', 2, 15));
+    inner.bestmove('s1', 2); // bestMove null
+    ch.handle(analyze('s1', 3));
+    inner.emit(info('s1', 3, 15));
+    inner.emit({
+      type: 'error',
+      code: 'engine_crashed',
+      message: 'x',
+      sessionId: 's1',
+      searchId: 3,
+    });
+    ch.handle(analyze('s2', 1));
+    inner.emit(info('s2', 1, 15));
+    inner.emit({ type: 'error', code: 'internal_error', message: 'x', sessionId: 's2' });
+    inner.emit({
+      type: 'bestmove',
+      sessionId: 's2',
+      searchId: 1,
+      bestMove: { move: 'e2e4' },
+      reason: 'completed',
+    });
+    inner.emit(info('zz', 9, 15));
+    ch.handle(analyze('s1', 4));
+    inner.emit(info('s1', 4, 15));
+    await ch.close();
+    inner.emit({
+      type: 'bestmove',
+      sessionId: 's1',
+      searchId: 4,
+      bestMove: { move: 'e2e4' },
+      reason: 'completed',
+    });
+    expect(results).toEqual([]);
+  });
+
+  it('keeps no position state without onSearchResult; a throwing sink does not break delivery', () => {
+    const { ch, inner, out } = make({
+      onSearchResult: () => {
+        throw new Error('boom');
+      },
+    });
+    ch.handle(analyze('s1', 1));
+    inner.emit(info('s1', 1, 12));
+    inner.emit({
+      type: 'bestmove',
+      sessionId: 's1',
+      searchId: 1,
+      bestMove: { move: 'd2d4' },
+      reason: 'completed',
+    });
+    expect(out.map((m) => m.type)).toEqual(['info', 'bestmove']);
+    const plain = make();
+    plain.ch.handle(analyze('s1', 1));
+    expect((plain.ch as unknown as { observed: Map<string, unknown> }).observed.size).toBe(0);
+  });
+
+  it('reports the number of open searches as deltas, down to 0 on close', async () => {
+    const deltas: number[] = [];
+    const { ch, inner } = make({ onSearchDelta: (d) => deltas.push(d) });
+    ch.handle(analyze('s1', 1));
+    ch.handle(analyze('s1', 2)); // replaces; the first still owes its terminal
+    inner.bestmove('s1', 1);
+    ch.handle(analyze('s2', 1));
+    await ch.close();
+    expect(deltas).toEqual([1, 1, -1, 1, -2]);
   });
 });

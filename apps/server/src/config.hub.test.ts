@@ -93,3 +93,62 @@ describe('config: portal settings (M24-9)', () => {
     expect(() => loadConfig({ PORTAL_MAX_NODES: '0' })).toThrow(/PORTAL_MAX_NODES/);
   });
 });
+
+describe('config: spot-checks (M24-12)', () => {
+  it('has documented defaults', () => {
+    expect(loadConfig({}).spotCheck).toEqual({
+      rate: 0.02,
+      maxPerHour: 20,
+      toleranceCp: 50,
+      scoreToleranceCp: 200,
+      minDepth: 10,
+      maxDepth: 16,
+      movetimeMs: 5_000,
+      window: 50,
+      minChecks: 10,
+      maxDisagreeRate: 0.2,
+      cooldownMs: 24 * 3_600_000,
+      maxEpisodes: 3,
+    });
+  });
+
+  it('reads SPOTCHECK_* and rejects invalid values', () => {
+    expect(
+      loadConfig({
+        SPOTCHECK_RATE: '0.005',
+        SPOTCHECK_MAX_PER_HOUR: '6',
+        SPOTCHECK_TOLERANCE_CP: '30',
+        SPOTCHECK_SCORE_TOLERANCE_CP: '0',
+        SPOTCHECK_MIN_DEPTH: '12',
+        SPOTCHECK_MAX_DEPTH: '20',
+        SPOTCHECK_MOVETIME_MS: '2000',
+        SPOTCHECK_WINDOW: '30',
+        SPOTCHECK_MIN_CHECKS: '30',
+        SPOTCHECK_MAX_DISAGREE_RATE: '0.25',
+        SPOTCHECK_COOLDOWN_H: '48',
+        SPOTCHECK_MAX_EPISODES: '2',
+      }).spotCheck,
+    ).toEqual({
+      rate: 0.005,
+      maxPerHour: 6,
+      toleranceCp: 30,
+      scoreToleranceCp: 0,
+      minDepth: 12,
+      maxDepth: 20,
+      movetimeMs: 2_000,
+      window: 30,
+      minChecks: 30,
+      maxDisagreeRate: 0.25,
+      cooldownMs: 48 * 3_600_000,
+      maxEpisodes: 2,
+    });
+    expect(() => loadConfig({ SPOTCHECK_RATE: '1.5' })).toThrow(/SPOTCHECK_RATE/);
+    expect(() => loadConfig({ SPOTCHECK_RATE: '-0.1' })).toThrow(/SPOTCHECK_RATE/);
+    expect(() => loadConfig({ SPOTCHECK_MAX_DISAGREE_RATE: '2' })).toThrow(
+      /SPOTCHECK_MAX_DISAGREE_RATE/,
+    );
+    expect(() => loadConfig({ SPOTCHECK_WINDOW: '5', SPOTCHECK_MIN_CHECKS: '6' })).toThrow(
+      /SPOTCHECK_MIN_CHECKS \(6\) must not exceed SPOTCHECK_WINDOW \(5\)/,
+    );
+  });
+});

@@ -1,9 +1,11 @@
 import {
   checkAnalyzeLimits,
   type AnalyzeMessage,
+  type EngineInfo,
   type ErrorMessage,
   type Limits,
   type ProtocolErrorCode,
+  type Score,
 } from '@daisychess/engine-core';
 import type { PoolLogger } from '../engines/EnginePool.js';
 import type { AnalysisChannel } from '../sessions/AnalysisChannel.js';
@@ -27,6 +29,21 @@ export interface UsageSink {
   search(u: { tokenId: string; nodeId: string; engineMs: number; at: number }): void;
   /** One session opened (first `analyze` of a session id) at `at`. */
   session(u: { tokenId: string; nodeId: string; at: number }): void;
+}
+
+/**
+ * A search on this channel that ended with a `bestmove` and a reported score (the spot-check
+ * sampler's input, M24-12). Held in memory only; `fen` never leaves the hub process.
+ */
+export interface ObservedSearch {
+  engine: string;
+  fen: string;
+  /** Depth of the last multipv-1 `info` the node reported. */
+  depth: number;
+  bestMove: string;
+  /** Side-to-move score of that `info` (raw UCI POV). */
+  score: Score;
+  reason: 'completed' | 'stopped' | 'limit';
 }
 
 /** Per-key session slots with a cap per key (tokens: the tier's `sessions`). */
@@ -90,6 +107,14 @@ export interface AccountingChannelOptions {
   onSessionDelta?: (delta: 1 | -1) => void;
   /** A search on this route ended with `engine_crashed` (the scheduler's failure penalty). */
   onEngineFailure?: () => void;
+  /**
+   * Every search that ended with a `bestmove` (non-null) after at least one multipv-1 `info`
+   * (spot-check sampling, M24-12). Only set on shared routes to remote nodes; without it the
+   * channel keeps no per-search position state.
+   */
+  onSearchResult?: (result: ObservedSearch) => void;
+  /** The number of searches still owed a terminal changed (the router's `local` activity). */
+  onSearchDelta?: (delta: number) => void;
   now?: () => number;
 }
 
@@ -111,6 +136,15 @@ const REFUSALS: ReadonlySet<ProtocolErrorCode> = new Set<ProtocolErrorCode>([
   'invalid_message',
   'unauthorized',
 ]);
+
+/** Bound of the per-search observation map (open searches per channel are few). */
+const MAX_OBSERVED = 64;
+
+interface Observation {
+  engine: string;
+  fen: string;
+  info: EngineInfo | null;
+}
 
 /** Slack on top of `maxMovetimeMs` a search may be metered for (the server's wall-clock cap). */
 const METER_SLACK_MS = 2_000;
@@ -142,6 +176,8 @@ export class AccountingChannel implements AnalysisChannel {
   private readonly meterCapMs: number;
   private closed = false;
   private closePromise: Promise<void> | null = null;
+  private readonly observed = new Map<string, Observation>();
+  private reportedSearches = 0;
 
   constructor(
     createInner: (deliver: Deliver) => AnalysisChannel,
@@ -181,6 +217,7 @@ export class AccountingChannel implements AnalysisChannel {
       case 'release':
         this.closeSession(msg.sessionId);
         this.tracker.in(msg);
+        this.syncSearches();
         this.inner.handle(msg);
         return;
     }
@@ -198,6 +235,12 @@ export class AccountingChannel implements AnalysisChannel {
     const now = this.now();
     for (const s of this.tracker.openSearchList()) this.meter(now - s.startedAt, now);
     for (const id of [...this.sessions.keys()]) this.closeSession(id);
+    this.observed.clear();
+    if (this.reportedSearches !== 0) {
+      const delta = -this.reportedSearches;
+      this.reportedSearches = 0;
+      this.notify(() => this.opts.onSearchDelta?.(delta));
+    }
     this.closePromise = this.inner.close();
     return this.closePromise;
   }
@@ -236,6 +279,14 @@ export class AccountingChannel implements AnalysisChannel {
     }
     this.clearIdle(session);
     this.tracker.in(msg);
+    if (this.opts.onSearchResult && this.observed.size < MAX_OBSERVED) {
+      this.observed.set(searchKey(sessionId, searchId), {
+        engine: msg.engine,
+        fen: msg.fen,
+        info: null,
+      });
+    }
+    this.syncSearches();
     this.inner.handle(msg);
   }
 
@@ -308,6 +359,7 @@ export class AccountingChannel implements AnalysisChannel {
   /** Every message from the inner channel passes here before the player sees it. */
   private onOut(msg: AnalysisServerMessage): void {
     if (this.closed) return;
+    if (this.observed.size > 0) this.observe(msg);
     if (msg.type !== 'info' && msg.sessionId !== undefined) {
       const events = this.tracker.out(msg);
       const sessionId = msg.sessionId;
@@ -317,6 +369,7 @@ export class AccountingChannel implements AnalysisChannel {
         this.meter((e.endedAt ?? this.now()) - e.startedAt, e.endedAt ?? this.now());
         if (msg.type === 'bestmove' && session) session.served = true;
       }
+      this.syncSearches();
       if (msg.type === 'error' && msg.code === 'engine_crashed') {
         this.notify(() => this.opts.onEngineFailure?.());
       }
@@ -338,6 +391,44 @@ export class AccountingChannel implements AnalysisChannel {
         'accounting: deliver failed',
       );
     }
+  }
+
+  /** Keeps the last multipv-1 `info` of observed searches and reports finished ones. */
+  private observe(msg: AnalysisServerMessage): void {
+    if (msg.sessionId === undefined) return;
+    if (msg.type === 'info') {
+      const o = this.observed.get(searchKey(msg.sessionId, msg.searchId));
+      if (o && msg.info.multipv === 1) o.info = msg.info;
+      return;
+    }
+    if (msg.searchId === undefined) {
+      // Session-level error: nothing of that session will produce a result any more.
+      const prefix = searchKey(msg.sessionId, '');
+      for (const k of [...this.observed.keys()]) if (k.startsWith(prefix)) this.observed.delete(k);
+      return;
+    }
+    const key = searchKey(msg.sessionId, msg.searchId);
+    const o = this.observed.get(key);
+    if (!o) return;
+    this.observed.delete(key);
+    if (msg.type !== 'bestmove' || !msg.bestMove || !o.info) return;
+    const result: ObservedSearch = {
+      engine: o.engine,
+      fen: o.fen,
+      depth: o.info.depth,
+      bestMove: msg.bestMove.move,
+      score: o.info.score,
+      reason: msg.reason,
+    };
+    this.notify(() => this.opts.onSearchResult?.(result));
+  }
+
+  private syncSearches(): void {
+    const n = this.tracker.openSearchCount;
+    if (n === this.reportedSearches) return;
+    const delta = n - this.reportedSearches;
+    this.reportedSearches = n;
+    this.notify(() => this.opts.onSearchDelta?.(delta));
   }
 
   private armIdle(sessionId: string, session: SessionAcct): void {
@@ -404,4 +495,8 @@ export class AccountingChannel implements AnalysisChannel {
       );
     }
   }
+}
+
+function searchKey(sessionId: string, searchId: number | ''): string {
+  return `${sessionId}\u0000${searchId}`;
 }

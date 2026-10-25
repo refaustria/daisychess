@@ -15,9 +15,11 @@
 //                         position). The command line is echoed as `info string lc0-fake args …`
 //                         right after `id author` so tests can check `--weights=`.
 //   --weights=<path>      accepted (and echoed) in --lc0 mode
+//   --bestmove=<uci>      unrestricted searches report this move (pv and bestmove) instead of e2e4
 // Commands beyond UCI:
 //   crash                 write to stderr and exit(3)
 // Positions: a FEN whose full-move counter is 999 crashes on `go`; 998 ignores `stop`.
+// `go … searchmoves m1 …`: the pv and the bestmove start with m1 and the score is 25 cp lower.
 import { createInterface } from 'node:readline';
 
 const flags = new Map(
@@ -28,13 +30,14 @@ const flags = new Map(
 );
 const num = (k, d) => (flags.has(k) ? Number(flags.get(k)) : d);
 const INFO_INTERVAL = num('info-interval', 5);
+const BESTMOVE = flags.get('bestmove') ?? null;
 const ISREADY_DELAY = num('isready-delay', 0);
 
 const out = (line) => process.stdout.write(line + '\n');
 
 let multipv = 1;
 let fen = 'startpos';
-let search = null; // { timer, depth, reason }
+let search = null; // { timer, depth, reason, restrict }
 let hung = false;
 let ignoreStop = flags.has('ignore-stop');
 const LC0 = flags.has('lc0');
@@ -87,9 +90,12 @@ function fullmove() {
 }
 
 function emitInfo(depth) {
+  const restrict = search?.restrict ?? null;
+  const pv = restrict ?? (BESTMOVE ? BESTMOVE : 'e2e4 e7e5 g1f3');
+  const malus = restrict ? 25 : 0;
   for (let k = 1; k <= multipv; k++) {
     out(
-      `info depth ${depth} seldepth ${depth + 2} multipv ${k} score cp ${10 * depth - k} nodes ${depth * 1000} nps 1000000 time ${depth} pv e2e4 e7e5 g1f3`,
+      `info depth ${depth} seldepth ${depth + 2} multipv ${k} score cp ${10 * depth - k - malus} nodes ${depth * 1000} nps 1000000 time ${depth} pv ${pv}`,
     );
   }
 }
@@ -98,8 +104,10 @@ function finish() {
   if (!search) return;
   clearInterval(search.timer);
   if (search.deadline) clearTimeout(search.deadline);
+  const restrict = search.restrict;
   search = null;
-  out('bestmove e2e4 ponder e7e5');
+  const move = restrict ?? BESTMOVE;
+  out(move ? `bestmove ${move}` : 'bestmove e2e4 ponder e7e5');
 }
 
 function go(args) {
@@ -119,7 +127,13 @@ function go(args) {
   const movetime = mi >= 0 ? Number(args[mi + 1]) : undefined;
   let depth = 0;
   out('info string fake search started');
-  search = { ignore, timer: null, deadline: null };
+  const si = args.indexOf('searchmoves');
+  search = {
+    ignore,
+    timer: null,
+    deadline: null,
+    restrict: si >= 0 ? (args[si + 1] ?? null) : null,
+  };
   search.timer = setInterval(() => {
     depth++;
     out(`info depth ${depth} currmove e2e4 currmovenumber 1`);

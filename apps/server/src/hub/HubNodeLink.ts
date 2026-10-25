@@ -67,6 +67,8 @@ const defaultCid = (): string => randomBytes(12).toString('base64url');
  */
 export class HubNodeLink {
   private readonly relays = new Map<string, RelaySessions>();
+  /** `cid`s of shared (pool) routes, for {@link evictShared}. */
+  private readonly shared = new Set<string>();
   private readonly recent = new Set<string>();
   private readonly unknownTimes: number[] = [];
   private readonly unknownLimit: RateLimit;
@@ -144,6 +146,7 @@ export class HubNodeLink {
       throw new TypeError(`invalid route for client.open: ${valid.error.issues[0]?.message ?? ''}`);
     }
     this.relays.set(cid, relay);
+    if (route.shared) this.shared.add(cid);
     this.opened++;
     this.opts.logger.info(
       {
@@ -173,6 +176,21 @@ export class HubNodeLink {
     else relay.onNodeMessage(msg.msg);
   }
 
+  /**
+   * Ends every shared (pool) relay of this link like a node loss (terminals, then the player's
+   * socket closes 1012) and tells the node to drop those clients; private relays are untouched
+   * (M24-12: the node left the pool). Returns how many relays were ended.
+   */
+  evictShared(message: string): number {
+    if (!this.alive) return 0;
+    let n = 0;
+    for (const cid of [...this.shared]) {
+      const relay = this.relays.get(cid);
+      if (relay?.evict(message)) n++;
+    }
+    return n;
+  }
+
   /** The link is gone: every relay ends its open searches and sessions. Idempotent. */
   lost(): void {
     if (!this.alive) return;
@@ -180,6 +198,7 @@ export class HubNodeLink {
     const relays = [...this.relays.values()];
     for (const relay of relays) relay.onNodeLost();
     this.relays.clear();
+    this.shared.clear();
   }
 
   // -------------------------------------------------------------------------------------------
@@ -196,6 +215,7 @@ export class HubNodeLink {
   private forget(cid: string, relay: RelaySessions): void {
     if (this.relays.get(cid) !== relay) return;
     this.relays.delete(cid);
+    this.shared.delete(cid);
     this.recent.add(cid);
     if (this.recent.size > RECENT_CIDS) {
       const oldest = this.recent.values().next().value;

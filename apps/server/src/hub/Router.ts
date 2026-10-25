@@ -21,6 +21,7 @@ import {
   AccountingChannel,
   TokenSessionLedger,
   type BudgetSource,
+  type ObservedSearch,
   type UsageSink,
 } from './AccountingChannel.js';
 import type { RouteContext } from './HubNodeLink.js';
@@ -101,6 +102,18 @@ export interface PlayerTokenVerifier {
   verifyPlayerToken(raw: unknown, now?: number): PlayerVerifyResult;
 }
 
+/** A finished pool search on a remote node, offered to the spot-checker (M24-12). */
+export interface PoolSearchSample extends ObservedSearch {
+  nodeId: string;
+  /** The node-reported descriptor of `engine` (null when the node did not announce it). */
+  descriptor: EngineDescriptor | null;
+}
+
+/** Where pool search results go for sampling (`SpotChecker`). */
+export interface PoolSearchSink {
+  offer(sample: PoolSearchSample): void;
+}
+
 export interface HubRouterOptions {
   tokens: PlayerTokenVerifier;
   registry: RouterRegistry;
@@ -122,6 +135,11 @@ export interface HubRouterOptions {
   stickyMs?: number;
   /** A node with an `engine_crashed` or an unplanned loss within this long is penalised. Default 10 min. */
   failurePenaltyMs?: number;
+  /**
+   * Spot-check sampling (M24-12): finished searches of **shared** routes to **remote** nodes
+   * only. Private routes and `local` are never offered.
+   */
+  spotCheck?: PoolSearchSink;
   now?: () => number;
 }
 
@@ -135,6 +153,8 @@ export interface HubRouterStats {
   poolLoad: Record<string, number>;
   sticky: number;
   tokenSlots: number;
+  /** Player searches currently running on `local` (the spot-checker's idle test). */
+  localSearches: number;
 }
 
 type Target = { kind: 'local'; local: LocalNode } | { kind: 'remote'; node: RoutableNode };
@@ -172,6 +192,7 @@ export class HubRouter implements AnalysisRouter {
   private readonly stickyMs: number;
   private readonly failurePenaltyMs: number;
   private readonly offRegistry: (() => void) | null;
+  private localSearchCount = 0;
 
   constructor(private readonly opts: HubRouterOptions) {
     this.now = opts.now ?? Date.now;
@@ -222,6 +243,11 @@ export class HubRouter implements AnalysisRouter {
     this.failures.set(nodeId, this.now());
   }
 
+  /** Player searches currently running on `local` (any route: private, legacy or pool). */
+  get localSearches(): number {
+    return this.localSearchCount;
+  }
+
   stats(): HubRouterStats {
     return {
       routes: { ...this.routes },
@@ -229,6 +255,7 @@ export class HubRouter implements AnalysisRouter {
       poolLoad: Object.fromEntries(this.poolLoad),
       sticky: this.sticky.size,
       tokenSlots: this.tokenLedger.tokens,
+      localSearches: this.localSearchCount,
     };
   }
 
@@ -381,6 +408,16 @@ export class HubRouter implements AnalysisRouter {
       }
       return target.node.link.open(d, peer, ctx);
     };
+    const spotCheck = this.opts.spotCheck;
+    const sample =
+      spotCheck && shared && target.kind === 'remote'
+        ? (result: ObservedSearch) =>
+            spotCheck.offer({
+              ...result,
+              nodeId,
+              descriptor: target.node.engines.find((e) => e.id === result.engine) ?? null,
+            })
+        : undefined;
     return new AccountingChannel(createInner, deliver, {
       limits,
       sessionIdleMs: this.opts.sessionIdleMs,
@@ -397,6 +434,10 @@ export class HubRouter implements AnalysisRouter {
       ...(this.opts.analyzeRateLimit ? { analyzeRateLimit: this.opts.analyzeRateLimit } : {}),
       ...(shared ? { onSessionDelta: (d: 1 | -1) => this.addLoad(nodeId, d) } : {}),
       onEngineFailure: () => this.noteFailure(nodeId),
+      ...(sample ? { onSearchResult: sample } : {}),
+      ...(target.kind === 'local'
+        ? { onSearchDelta: (d: number) => (this.localSearchCount += d) }
+        : {}),
       now: this.now,
     });
   }

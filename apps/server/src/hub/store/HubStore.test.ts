@@ -21,6 +21,7 @@ const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 25, 12, 0, 0);
+const LATEST = HUB_MIGRATIONS.length;
 
 let dir: string;
 let file: string;
@@ -94,17 +95,17 @@ describe.skipIf(!sqlite)('HubStore (SQLite)', () => {
   });
 
   describe('migrations', () => {
-    it('applies v1 once; reopening is idempotent and keeps the data', async () => {
+    it('applies every migration once; reopening is idempotent and keeps the data', async () => {
       expect(store.schemaVersion()).toBe(HUB_MIGRATIONS.length);
       store.insertToken(tokenRow());
       store.close();
       store = await open();
-      expect(store.schemaVersion()).toBe(1);
+      expect(store.schemaVersion()).toBe(LATEST);
       expect(store.getToken('tttttttt')?.label).toBe('Anna');
       store.close();
       // A third open with an explicit list of the same migrations applies nothing either.
       store = await open({ migrations: HUB_MIGRATIONS });
-      expect(store.schemaVersion()).toBe(1);
+      expect(store.schemaVersion()).toBe(LATEST);
       expect(store.listTokens()).toHaveLength(1);
     });
 
@@ -117,26 +118,54 @@ describe.skipIf(!sqlite)('HubStore (SQLite)', () => {
 
     it('applies a later migration on reopen, in order', async () => {
       store.close();
-      const v2 = { version: 2, name: 'extra', sql: 'CREATE TABLE extra (a INTEGER);' };
-      store = await open({ migrations: [v2, ...HUB_MIGRATIONS] });
-      expect(store.schemaVersion()).toBe(2);
+      const next = { version: LATEST + 1, name: 'extra', sql: 'CREATE TABLE extra (a INTEGER);' };
+      store = await open({ migrations: [next, ...HUB_MIGRATIONS] });
+      expect(store.schemaVersion()).toBe(LATEST + 1);
       store.close();
-      store = await open({ migrations: [...HUB_MIGRATIONS, v2] });
+      store = await open({ migrations: [...HUB_MIGRATIONS, next] });
+      expect(store.schemaVersion()).toBe(LATEST + 1);
+    });
+
+    it('v2 (M24-12) upgrades a v1 file: nodes keep their data and are not pool-banned', async () => {
+      store.close();
+      for (const f of [file, `${file}-wal`, `${file}-shm`]) rmSync(f, { force: true });
+      store = await open({ migrations: HUB_MIGRATIONS.slice(0, 1) });
+      expect(store.schemaVersion()).toBe(1);
+      store.close();
+      const raw = new sqlite!.DatabaseSync(file);
+      raw
+        .prepare(
+          "INSERT INTO operators (id, lichess_id, username, created_at) VALUES ('op1op1op', 'anna', 'Anna', 0)",
+        )
+        .run();
+      raw
+        .prepare(
+          "INSERT INTO nodes (id, operator_id, name, secret_hash, pool, pool_share, created_at) VALUES ('nnnnnnnn', 'op1op1op', 'box', ?, 1, 2, 0)",
+        )
+        .run(HASH_A);
+      raw.close();
+      store = await open();
       expect(store.schemaVersion()).toBe(2);
+      expect(store.getNode('nnnnnnnn')).toMatchObject({
+        name: 'box',
+        pool: true,
+        poolBannedAt: null,
+        poolBanReason: null,
+      });
     });
 
     it('rolls a failing migration back completely and reports it', async () => {
       store.close();
       const bad = {
-        version: 2,
+        version: LATEST + 1,
         name: 'broken',
         sql: 'CREATE TABLE half (a INTEGER); THIS IS NOT SQL;',
       };
       await expect(open({ migrations: [...HUB_MIGRATIONS, bad] })).rejects.toThrow(
-        /migration 2 \(broken\) failed/,
+        new RegExp(`migration ${LATEST + 1} \\(broken\\) failed`),
       );
       store = await open();
-      expect(store.schemaVersion()).toBe(1);
+      expect(store.schemaVersion()).toBe(LATEST);
       const raw = new sqlite!.DatabaseSync(file);
       expect(
         raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'half'").get(),
@@ -152,7 +181,7 @@ describe.skipIf(!sqlite)('HubStore (SQLite)', () => {
         .run(7, 'future', 0);
       raw.close();
       await expect(open()).rejects.toThrow(
-        /schema version 7 is newer than this server supports \(1\)/,
+        new RegExp(`schema version 7 is newer than this server supports \\(${LATEST}\\)`),
       );
       await expect(open({ migrations: [{ version: 3, name: 'gap', sql: '' }] })).rejects.toThrow(
         /without gaps/,
@@ -227,7 +256,17 @@ describe.skipIf(!sqlite)('HubStore (SQLite)', () => {
         state: 'normal',
         revokedAt: null,
         prevExpiresAt: null,
+        poolBannedAt: null,
+        poolBanReason: null,
       });
+      expect(store.setPoolBan('nnnnnnnn', { at: T0, reason: 'spot-check failures' })).toMatchObject(
+        { poolBannedAt: T0, poolBanReason: 'spot-check failures', pool: true, state: 'normal' },
+      );
+      expect(store.setPoolBan('nnnnnnnn', null)).toMatchObject({
+        poolBannedAt: null,
+        poolBanReason: null,
+      });
+      expect(store.setPoolBan('zzzzzzzz', null)).toBeUndefined();
       expect(store.getNode('nnnnnnnn', { operatorId: 'op2op2op' })).toBeUndefined();
       expect(store.listNodes({ operatorId: 'op2op2op' })).toEqual([]);
       expect(store.listNodes({ operatorId: 'op1op1op' })).toHaveLength(1);

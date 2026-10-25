@@ -253,6 +253,18 @@ export class LinkServer {
     return true;
   }
 
+  /**
+   * Ends the node's **shared** (pool) player connections the same way a node loss does — one
+   * terminal per open search, then the hub closes those sockets with 1012 and the players
+   * reconnect to another pool node — while private connections stay (M24-12: suspect / pool
+   * ban). Returns how many were ended (0 when the node is not connected).
+   */
+  evictShared(nodeId: string, message: string): number {
+    const conn = this.byNode.get(nodeId);
+    if (!conn || conn.state !== 'open' || !conn.hub) return 0;
+    return conn.hub.evictShared(message);
+  }
+
   stats(): LinkServerStats {
     const iso = (t: number) => new Date(t).toISOString();
     let handshaking = 0;
@@ -486,7 +498,9 @@ export class LinkServer {
     conn.nodeId = record.id;
     conn.hub = hub;
     this.byNode.set(record.id, conn);
-    const pool = hello.pool && record.pool && record.state === 'normal';
+    // A pool ban (M24-12) keeps the link and private tokens, never the pool.
+    const pool =
+      hello.pool && record.pool && record.state === 'normal' && record.poolBannedAt === null;
     const sent = this.send(conn, {
       type: 'node.welcome',
       linkVersion: LINK_PROTOCOL_VERSION,

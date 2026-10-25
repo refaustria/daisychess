@@ -51,6 +51,8 @@ const record = (id: string, over: Partial<NodeRecord> = {}): NodeRecord => ({
   lastSeenAt: null,
   revokedAt: null,
   prevExpiresAt: null,
+  poolBannedAt: null,
+  poolBanReason: null,
   ...over,
 });
 

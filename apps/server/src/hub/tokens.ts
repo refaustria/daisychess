@@ -28,6 +28,7 @@ import { tokenMatches } from '../ws/token.js';
 import { cryptoRandom, randomBase32, type RandomSource } from './store/ids.js';
 import {
   NODE_STATES,
+  POOL_BAN_ADMIN,
   utcDay,
   utcDayStart,
   type HubStore,
@@ -377,10 +378,45 @@ export class HubTokenService {
     return this.store.updateToken(id, next, scope);
   }
 
-  /** Administrator: node state `normal | suspect | disabled` (a disabled node stops verifying). */
-  setNodeState(id: string, state: NodeState): NodeRecord | undefined {
+  /**
+   * Administrator: node state `normal | suspect | disabled` (a disabled node stops verifying).
+   * Clearing a node back to `normal` ends its spot-check episode (M24-12): `suspect_until` is
+   * pulled to `now` at the latest, so the reputation window restarts with the next checks and a
+   * manual clear is not undone by the disagreements that caused the flag.
+   */
+  setNodeState(id: string, state: NodeState, now: number = Date.now()): NodeRecord | undefined {
     if (!NODE_STATES.includes(state)) throw new HubInputError('invalid', 'unknown node state');
+    const current = this.store.getNode(id);
+    if (!current) return undefined;
+    if (state === 'normal' && current.state !== 'normal') {
+      return this.store.setNodeReputation(id, {
+        state,
+        suspectCount: current.suspectCount,
+        suspectUntil: Math.min(current.suspectUntil ?? now, now),
+      });
+    }
     return this.store.updateNode(id, { state });
+  }
+
+  /**
+   * Administrator: sets or lifts a node's permanent pool ban (M24-12). Lifting also forgives the
+   * spot-check record — `suspect_count` back to 0 and the reputation window restarted at `now` —
+   * so the node is not banned again by its first new episode. The operator cannot change it.
+   */
+  setNodePoolBan(id: string, banned: boolean, now: number = Date.now()): NodeRecord | undefined {
+    const current = this.store.getNode(id);
+    if (!current) return undefined;
+    if (banned) {
+      if (current.poolBannedAt !== null) return current;
+      return this.store.setPoolBan(id, { at: now, reason: POOL_BAN_ADMIN });
+    }
+    if (current.poolBannedAt === null) return current;
+    this.store.setNodeReputation(id, {
+      state: current.state,
+      suspectCount: 0,
+      suspectUntil: Math.min(current.suspectUntil ?? now, now),
+    });
+    return this.store.setPoolBan(id, null);
   }
 
   /** Deletes a node (see `HubStore.deleteNode`); its credential dies with the row. */
