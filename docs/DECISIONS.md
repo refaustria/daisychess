@@ -509,3 +509,6 @@ Supersedes the numbers sketched in §5 ("0.5 %", "three disagreements within 24 
 - **Players:** when a node becomes suspect or pool-banned (automatically or by the admin), its existing **shared** relay connections end like a node loss — one `engine_crashed` per open search, then 1012 — and the node gets `client.close`; private connections stay.
 - **Privacy / metrics:** `spotchecks` keeps `(node_id, at, agreed)` only (24 h retention); positions live in memory for the duration of one check. `/health/detail.spotchecks` has counters only.
 - Rationale for 50 cp (not 30): engine versions, thread counts and the depth cap make 10–40 cp differences between honest results common; the 20 % rate over ≥ 10 checks absorbs residual noise. To be re-measured on the first real community nodes.
+
+### ADR-004 addendum (2026-10-25)
+Node 20 reached end of life (April 2026) and lacks `node:sqlite` (review store ADR-017, hub store ADR-020). CI now runs on Node 22 and 24 (e2e on 24, like production). Minimum supported runtime for the server: Node 22.13; the web build is unaffected. `engines.node` is raised in M28.

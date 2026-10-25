@@ -216,3 +216,10 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M27-1 | Community site `apps/site` on daisychess.org (+ www → apex): description, all features, community nodes, open source, app-store pages (privacy policy, terms, support, imprint, data deletion, accessibility), gsap + three + Lenis with a 3D pawn, strict CSP, reduced-motion fallback; nginx vhost + deploy script | senior | in progress |
 | M27-2 | Move the web app + portal to play.daisychess.org: origins, CSP, lichess OAuth client ids, setup links, hub URL `wss://hub.daisychess.org/link` (alias on play), nginx vhost, c.referee.at → 301 with one-time localStorage migration | senior | in progress |
 | M27-3 | Production cut-over (nginx, certs, env, ROLE=hub = M24-7) | orchestrator | todo |
+
+## M28 — Maintenance after going public (2026-10-25)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M28-1 | Upgrade Vitest 3 → ≥ 4.1.12 in all packages (dev-only advisories: vitest/@vitest/mocker path traversal + mock injection, tinypool prototype pollution); nothing shipped is affected | worker | todo (after M27, lockfile) |
+| M28-2 | Dependabot version updates config (`.github/dependabot.yml`, weekly, grouped), GitHub Actions minutes now free (public) | worker | todo |
+| M28-3 | Raise `engines.node` to `>=22.13` in all package.json files (CI already on 22/24) | worker | todo |
