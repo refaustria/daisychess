@@ -393,7 +393,7 @@ Unlike `reviews.sqlite` this file is **not reproducible**: a nightly `sqlite3 hu
 ### ADR-020 — owner answers (2026-10-25)
 1. Pool access at launch: operator-issued pool tokens only; anonymous per-device tokens later behind `POOL_ANONYMOUS` (apps).
 2. Operator login: lichess OAuth only.
-3. Domain for hub/portal/`/link`: **open** — keep every hub URL configurable (`HUB_URL`, `PUBLIC_ORIGIN`); decide before M24-7.
+3. Domain: **daisychess.org** (owner, 2026-10-25): site on the apex, app + portal on `play.daisychess.org`, node link `wss://hub.daisychess.org/link` (also served on play).
 4. Pool fairness: per-token concurrent-session caps **and** a daily engine-time budget for pool tokens (`POOL_DAILY_BUDGET_MIN`, default 30, 0 = off).
 5. Release order: Docker node image first, npm CLI after the first community nodes run.
 
