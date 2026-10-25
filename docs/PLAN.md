@@ -144,6 +144,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M20-1 | Persistent review cache (IndexedDB) keyed by game + preset; a loaded game that was reviewed shows its review instantly; no re-run with the same or weaker preset; Deep after Fast only searches what is missing | senior | done |
 | M20-2 | Guided tour after a review: auto-play through the game pausing on great moves, mistakes and blunders with arrows and commentary; play/pause/skip; any user navigation ends the tour | worker | done |
 | M20-3 | Server-side review store (ADR-017): SQLite next to the engine server, keyed by game hash, moves + evaluations only (no headers), `review.get` open / `review.put` token-only, size limit configurable via env `REVIEW_STORE_MAX_BYTES` (default 5 GB, owner decision 2026-10-25) with LRU eviction, so it can be tuned for a public release; client reads local cache first, then server, writes both; shared position evaluations for Deep-after-Fast | architect | done |
+| M20-4 | Engine-load failures during review/drill/play surface as errors (no silent idle, no unhandled rejection), browser→server fallback, WebAssembly SIMD/threads capability probe with picker reasons | senior | done |
 
 ## M21 — Rename to DaisyChess (requested 2026-10-25)
 | ID | Task | Tier | Status |

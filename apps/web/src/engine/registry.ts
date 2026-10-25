@@ -6,6 +6,12 @@ import {
   type MemoryBudget,
 } from './memoryBudget';
 import type { WasmBuild } from './WasmEngineClient';
+import {
+  browserEngineUnsupportedReason,
+  NO_THREADS_REASON,
+  wasmSupport,
+  type WasmSupport,
+} from './wasmSupport';
 
 /**
  * Engine registry of the browser: which engines the user can enable for live analysis.
@@ -42,6 +48,8 @@ export interface RegistryEnv {
   hardwareConcurrency: number;
   /** Memory budget of the device (ADR-015); absent = unconstrained (tests, old callers). */
   budget?: MemoryBudget;
+  /** WebAssembly features of the browser (`wasmSupport.ts`); absent = everything supported. */
+  wasm?: WasmSupport;
 }
 
 /** Server discovery result, cached by the analysis store. */
@@ -94,6 +102,7 @@ export function currentEnv(): RegistryEnv {
     crossOriginIsolated: globalThis.crossOriginIsolated === true,
     hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || 1,
     budget: currentMemoryBudget(),
+    wasm: wasmSupport(),
   };
 }
 
@@ -113,7 +122,19 @@ export function maxWasmThreads(env: RegistryEnv): number {
 
 /** The browser engine used by default: multi-threaded when the page allows it. */
 export function defaultWasmKey(env: RegistryEnv = currentEnv()): EngineKey {
-  return env.crossOriginIsolated ? 'wasm:lite' : 'wasm:lite-single';
+  return env.crossOriginIsolated && env.wasm?.threads !== false ? 'wasm:lite' : 'wasm:lite-single';
+}
+
+/**
+ * Why browser build `build` cannot run on this browser at all (no WebAssembly / SIMD, or no
+ * threads for a multi-threaded build); undefined when the browser supports it. Cross-origin
+ * isolation is a separate check.
+ */
+export function wasmBuildUnsupportedReason(build: WasmBuild, env: RegistryEnv): string | undefined {
+  if (!env.wasm) return undefined;
+  const all = browserEngineUnsupportedReason(env.wasm);
+  if (all) return all;
+  return build !== 'lite-single' && !env.wasm.threads ? NO_THREADS_REASON : undefined;
 }
 
 function stockfishMajor(): string {
@@ -191,7 +212,14 @@ export function browserEngines(env: RegistryEnv = currentEnv()): EngineDescripto
   const isolated = env.crossOriginIsolated;
   const notIsolated = isolated ? {} : { reason: NOT_ISOLATED_REASON };
   const fullBytes = fullBuildBytes();
-  return [
+  // No WebAssembly SIMD (every shipped build needs it) or no threads: unavailable with the reason.
+  const support = (d: EngineDescriptor): EngineDescriptor => {
+    const parsed = parseEngineKey(d.key);
+    const reason =
+      parsed?.backend === 'wasm' ? wasmBuildUnsupportedReason(parsed.build, env) : undefined;
+    return reason ? { ...d, available: false, reason } : d;
+  };
+  const list: EngineDescriptor[] = [
     {
       key: 'wasm:lite',
       backend: 'wasm',
@@ -220,6 +248,7 @@ export function browserEngines(env: RegistryEnv = currentEnv()): EngineDescripto
       ...(fullBytes > 0 ? { downloadBytes: fullBytes } : {}),
     },
   ];
+  return list.map(support);
 }
 
 /**
@@ -317,6 +346,8 @@ export function canEnable(
   if (!parsed) return { ok: false, reason: `Unknown engine "${String(key)}"` };
   if (enabled.includes(key)) return { ok: false, reason: 'Engine is already running' };
   if (parsed.backend === 'wasm') {
+    const unsupported = wasmBuildUnsupportedReason(parsed.build, env);
+    if (unsupported) return { ok: false, reason: unsupported };
     if (parsed.build !== 'lite-single' && !env.crossOriginIsolated) {
       return { ok: false, reason: NOT_ISOLATED_REASON };
     }

@@ -67,6 +67,21 @@ export interface BatchAnalyzerConfig {
   concurrency?: 1;
   /** Shared cache (e.g. kept by the store across runs); a new one is created when omitted. */
   cache?: PositionCache;
+  /**
+   * A search that produces no output (info, end of stream, best move) for this long fails with
+   * {@link EngineStallError} and the engine is told to stop. Undefined/0: no watchdog.
+   */
+  stallMs?: number;
+}
+
+/** The engine stopped answering during a search (see {@link BatchAnalyzerConfig.stallMs}). */
+export class EngineStallError extends Error {
+  constructor(ms: number) {
+    super(
+      `the engine stopped responding (no output for ${ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${ms} ms`})`,
+    );
+    this.name = 'EngineStallError';
+  }
 }
 
 export interface BatchCallbacks {
@@ -123,6 +138,7 @@ export class BatchAnalyzer {
   readonly cache: PositionCache;
   private readonly engine: Engine;
   private readonly options: Required<Pick<BatchOptions, 'pov'>> & BatchOptions;
+  private readonly stallMs: number;
 
   constructor(config: BatchAnalyzerConfig) {
     if (config.concurrency !== undefined && config.concurrency !== 1) {
@@ -140,6 +156,7 @@ export class BatchAnalyzer {
     this.engine = config.engine;
     this.options = { ...o, pov: o.pov ?? 'white' };
     this.cache = config.cache ?? new Map();
+    this.stallMs = config.stallMs ?? 0;
   }
 
   /** Search options sent to the engine for every position. */
@@ -228,9 +245,21 @@ export class BatchAnalyzer {
     const handle = this.engine.analyze(fen, this.searchOptions) as Handle;
     const it = handle[Symbol.asyncIterator]();
     let last: EngineInfo | undefined;
+    // Watchdog: every awaited step must settle within `stallMs` (a silent worker never ends).
+    const step = <T>(p: Promise<T>): Promise<T> => {
+      if (this.stallMs <= 0) return Promise.race([p, aborted]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const stalled = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          void this.engine.stop().catch(() => undefined);
+          reject(new EngineStallError(this.stallMs));
+        }, this.stallMs);
+      });
+      return Promise.race([p, aborted, stalled]).finally(() => clearTimeout(timer));
+    };
     try {
       for (;;) {
-        const r = await Promise.race([it.next(), aborted]);
+        const r = await step(it.next());
         if (r.done) break;
         if ((r.value.multipv ?? 1) === 1) last = r.value;
       }
@@ -239,7 +268,7 @@ export class BatchAnalyzer {
       void Promise.resolve(it.return?.()).catch(() => undefined);
       throw err;
     }
-    const best = handle.bestMove ? await Promise.race([handle.bestMove, aborted]) : null;
+    const best = handle.bestMove ? await step(handle.bestMove) : null;
     if (!last) throw new Error(`Engine returned no evaluation for ${fen}`);
     const score =
       this.options.pov === 'stm' ? scoreToWhitePov(last.score, sideToMove(fen)) : last.score;

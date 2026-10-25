@@ -13,6 +13,7 @@ import {
 import { lockText, useHumanGameLockReason } from '../../live/lock';
 import { REASON_TEXT, type EndReason, type GameResult } from '../../play/outcome';
 import {
+  playEngineUnavailableReason,
   takeBackPlies,
   usePlayStore,
   type ColorChoice,
@@ -192,6 +193,8 @@ const summaryOf = (playerColor: Orientation, setup: PlaySetup): string =>
 /** "Play vs Engine": setup, running game controls and the result. */
 export function PlayPanel() {
   const play = usePlayStore();
+  // No WebAssembly SIMD: the browser engine cannot run (probed once, synchronously).
+  const unavailable = playEngineUnavailableReason();
   const plies = useGameStore((g) => takeBackPlies(g, play.playerColor, play.fromPly));
   const atTip = useGameStore((g) => g.ply === g.moves.length);
   const hasPosition = useGameStore((g) => g.moves.length > 0 || g.startFen !== START_FEN);
@@ -294,11 +297,16 @@ export function PlayPanel() {
             {lockText(lock)}
           </p>
         )}
+        {unavailable && !play.message && (
+          <p className={styles.error} data-testid="play-engine-unavailable">
+            The engine cannot play in this browser: {unavailable}.
+          </p>
+        )}
         {play.message && <p className={styles.error}>{play.message}</p>}
         <button
           type="submit"
           className={styles.primary}
-          disabled={lock === 'live' || lock === 'room'}
+          disabled={lock === 'live' || lock === 'room' || unavailable !== undefined}
           aria-describedby={lock === 'live' || lock === 'room' ? `${id}-locked` : undefined}
         >
           Start
@@ -306,7 +314,7 @@ export function PlayPanel() {
         {hasMoves && (
           <button
             type="button"
-            disabled={lock === 'live' || lock === 'room'}
+            disabled={lock === 'live' || lock === 'room' || unavailable !== undefined}
             onClick={() => play.start({ from: 'current' })}
           >
             Play from here

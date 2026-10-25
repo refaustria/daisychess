@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeReviewEngine } from '../review/fakeEngine';
 import { EnginePool, isEngineFailure, POOL_IDLE_MS, PooledEngine } from './wasmPool';
+import { resetWasmHealth, WasmEngineError, wasmHealth } from './wasmHealth';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -252,5 +253,39 @@ describe('PooledEngine', () => {
     expect(engines[0]!.disposed).toBe(false);
     expect(pool.stats.waiting).toBe(0);
     await expect(drill.load()).rejects.toThrow(/disposed/);
+  });
+});
+
+describe('EnginePool: unsupported browser', () => {
+  afterEach(() => resetWasmHealth());
+
+  it('refuses every acquire with a non-retryable error, never creates an engine', async () => {
+    let created = 0;
+    let reason: string | undefined = 'wasm-simd is not enabled';
+    const pool = new EnginePool({
+      create: () => {
+        created++;
+        return new FakeReviewEngine();
+      },
+      unsupported: () => reason,
+    });
+    await expect(pool.acquire('review')).rejects.toMatchObject({
+      name: 'WasmEngineError',
+      kind: 'unsupported',
+      retryable: false,
+      message: 'wasm-simd is not enabled',
+    });
+    await expect(pool.acquire('drill')).rejects.toBeInstanceOf(WasmEngineError);
+    expect(created).toBe(0);
+    expect(pool.stats).toMatchObject({ alive: false, holder: null, waiting: 0 });
+    expect(wasmHealth().disabled).toBe('wasm-simd is not enabled');
+    // A pooled view (drill, play) gets the same error from its search.
+    const view = new PooledEngine(pool, { purpose: 'play' });
+    await expect(view.load()).rejects.toMatchObject({ kind: 'unsupported' });
+    reason = undefined;
+    const lease = await pool.acquire('review');
+    expect(created).toBe(1);
+    lease.release();
+    await pool.dispose();
   });
 });

@@ -15,6 +15,7 @@ import {
   wasmInstanceStarted,
   wasmInstanceStopped,
 } from './wasmHealth';
+import { wasmSupport, type WasmSupport } from './wasmSupport';
 
 /**
  * Browser builds shipped from the `stockfish` npm package (see vite-plugin-stockfish.ts):
@@ -63,6 +64,8 @@ export interface WasmEngineClientOptions {
    * (512 MiB), none elsewhere (`0` = never).
    */
   maxMemoryPages?: number;
+  /** WebAssembly feature probe (tests); defaults to {@link wasmSupport}. */
+  support?: () => WasmSupport;
 }
 
 export interface WasmEngineCapabilities {
@@ -160,7 +163,9 @@ export class WasmEngineClient implements Engine {
       },
       this.maxThreads,
     );
-    const build = options.build ?? auto.build;
+    // Without shared memory/atomics only the single-threaded build can run.
+    const noThreads = !(options.support ?? wasmSupport)().threads;
+    const build = noThreads ? 'lite-single' : (options.build ?? auto.build);
     this.selected =
       build === 'lite-single'
         ? { build, threads: 1 }
@@ -192,6 +197,11 @@ export class WasmEngineClient implements Engine {
    * instance to `lite-single` and this load is retried once with it; a failure of that smaller
    * configuration disables the browser engine for the session (later loads reject at once without
    * spawning a worker, until `allowWasmRetry`).
+   *
+   * A browser without WebAssembly SIMD (every shipped build needs it) is refused at once with a
+   * non-retryable `WasmEngineError` of kind `unsupported` (message e.g. "wasm-simd is not
+   * enabled") and the browser engine is disabled: no worker is spawned, so no unhandled
+   * `CompileError` in the worker and no 30 s handshake timeout.
    */
   load(): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Engine has been disposed'));
@@ -204,6 +214,11 @@ export class WasmEngineClient implements Engine {
   }
 
   private async loadWithRecovery(): Promise<void> {
+    const unsupported = (this.options.support ?? wasmSupport)().error;
+    if (unsupported !== undefined) {
+      disableWasm(unsupported);
+      throw new WasmEngineError(unsupported, 'unsupported', false);
+    }
     const disabled = wasmHealth().disabled;
     if (disabled !== undefined) throw new WasmEngineError(disabled, 'worker', false);
     try {

@@ -157,6 +157,19 @@ const createRemoteClient: CreateServerReviewClient = async () => {
   });
 };
 
+/**
+ * A review search without any engine output for this long fails ("the engine stopped
+ * responding"), instead of a progress bar that never moves (a worker that died silently).
+ * Generous: at depth 18 a slow phone needs a few seconds between two depths.
+ */
+export const REVIEW_STALL_MS = 60_000;
+let stallMs = REVIEW_STALL_MS;
+
+/** Tests: overrides {@link REVIEW_STALL_MS} (no argument restores it). */
+export function setReviewStallTimeout(ms: number = REVIEW_STALL_MS): void {
+  stallMs = ms;
+}
+
 /** Upper bound for positions (FENs) kept in memory (least recently used dropped first). */
 export const MAX_CACHED_POSITIONS = 5000;
 
@@ -262,6 +275,47 @@ export const browserEngineDisabled = (): boolean => wasmHealth().disabled !== un
 
 export const BROWSER_UNAVAILABLE_NOTICE = 'Browser engine unavailable — reviewing on the server';
 
+/** What {@link selectEngine} tried: whether the server was asked and why it failed. */
+interface EngineTrace {
+  server: boolean;
+  /** The server's failure (handshake or mid-run) when it was tried and failed. */
+  serverError?: unknown;
+  /** `serverError` happened during the run (the connection was lost), not at the handshake. */
+  serverMidRun?: boolean;
+}
+
+export const SERVER_TOKEN_HINT = 'Set the server access token to review on the server.';
+export const SERVER_SETTING_HINT =
+  'Set the review engine to Auto or Server in Settings to review on the server.';
+
+/**
+ * The review's error text when the browser engine cannot be used (shown as "Review failed: …"):
+ * the cause, and what the server could (not) do about it, e.g. "the browser engine could not start
+ * (wasm-simd is not enabled). Set the server access token to review on the server."
+ * `atLoad`: the engine never started (else it failed during the run).
+ */
+export function browserFailureMessage(
+  err: unknown,
+  opts: {
+    atLoad: boolean;
+    pref: ReviewEnginePreference;
+    serverConfigured: boolean;
+    serverError?: unknown;
+    serverMidRun?: boolean;
+  },
+): string {
+  const cause = errorMessage(err).replace(/\.$/, '') || 'unknown error';
+  const what = opts.atLoad
+    ? `the browser engine could not start (${cause})`
+    : `the browser engine failed (${cause})`;
+  if (!opts.serverConfigured) return `${what}.`;
+  if (opts.pref === 'browser') return `${what}. ${SERVER_SETTING_HINT}`;
+  if (opts.serverError === undefined) return `${what}.`;
+  if (isUnauthorized(opts.serverError)) return `${what}. ${SERVER_TOKEN_HINT}`;
+  const reason = serverFailureReason(opts.serverError, opts.serverMidRun === true);
+  return `${what}; the server is unavailable too (${reason}).`;
+}
+
 /**
  * Picks the engine for one run (ADR-014): the server (a fresh dedicated session) for `server`,
  * and for `auto` unless it failed within {@link SERVER_RETRY_COOLDOWN_MS}; otherwise, or when the
@@ -271,7 +325,7 @@ export const BROWSER_UNAVAILABLE_NOTICE = 'Browser engine unavailable — review
 async function selectEngine(
   pref: ReviewEnginePreference,
   browser: (notice?: string) => Promise<Selected> = browserEngine,
-  trace: { server: boolean } = { server: false },
+  trace: EngineTrace = { server: false },
 ): Promise<Selected> {
   const factory = createServerClient;
   if (pref === 'browser') return browser();
@@ -300,6 +354,8 @@ async function selectEngine(
     };
   } catch (err) {
     if (server) void server.dispose().catch(() => undefined);
+    trace.serverError = err;
+    trace.serverMidRun = false;
     const reason = serverFailureReason(err);
     rememberFailure(key, reason, isUnauthorized(err));
     return browser(noticeFor(pref, reason, isUnauthorized(err)));
@@ -669,23 +725,50 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
     const engineRun = async (): Promise<ReviewSummary | undefined> => {
       try {
         // A reset run may still be stopping its search; never overlap two runs on the engine.
-        await settling;
+        await settling.catch(() => undefined);
         await loadPersistedPositions(fens).catch(() => undefined);
         if (cancelled) throw abortError();
         // Positions other devices analysed (server store); silent when there is no server.
         await loadServerPositions(fens, batchOptions).catch(() => undefined);
         if (cancelled) throw abortError();
         const pref = useSettingsStore.getState().reviewEngine;
-        const trace = { server: false };
+        const trace: EngineTrace = { server: false };
         const browser = (notice?: string) => browserEngine(notice, aborter.signal);
-        // The browser engine failed for good (ADR-015): the server once, if configured and allowed.
-        const serverInstead = async (err: unknown): Promise<Selected> => {
-          if (pref === 'browser' || trace.server || !createServerClient || !browserEngineDisabled())
-            throw err;
-          const s = await selectEngine('server', () => Promise.reject(err), trace);
+        /**
+         * The browser engine could not start (`atLoad`: load error, unsupported browser) or failed
+         * for good mid-run (ADR-015): the server once, if configured, allowed and not tried yet in
+         * this run (symmetric to the server → browser fallback). Otherwise, or when the server
+         * fails too, the run ends with an error that says why (never silently).
+         */
+        const serverInstead = async (err: unknown, atLoad: boolean): Promise<Selected> => {
+          if (cancelled || isAbortError(err)) throw err;
+          const fail = (): Error =>
+            new Error(
+              browserFailureMessage(err, {
+                atLoad,
+                pref,
+                serverConfigured: createServerClient !== null,
+                serverError: trace.serverError,
+                serverMidRun: trace.serverMidRun === true,
+              }),
+            );
+          const allowed = atLoad || browserEngineDisabled();
+          if (pref === 'browser' || trace.server || !createServerClient || !allowed) throw fail();
+          let s: Selected;
+          try {
+            s = await selectEngine('server', () => Promise.reject(err), trace);
+          } catch (e) {
+            if (cancelled || isAbortError(e)) throw e;
+            throw fail();
+          }
           return { ...s, notice: s.notice ?? BROWSER_UNAVAILABLE_NOTICE };
         };
-        selected = await selectEngine(pref, browser, trace).catch(serverInstead);
+        /** A (fresh) browser engine; a load failure goes to {@link serverInstead}. */
+        const browserOrServer = (notice?: string): Promise<Selected> =>
+          browser(notice).catch((err: unknown) => serverInstead(err, true));
+        selected = await selectEngine(pref, browser, trace).catch((err: unknown) =>
+          serverInstead(err, true),
+        );
         if (cancelled) throw abortError();
         if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
         const forRun = runCache(fens, batchOptions);
@@ -697,6 +780,7 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
               engine: selected.engine,
               options: batchOptions,
               cache,
+              stallMs,
             });
             let r: BatchRun | null = null;
             const details = (summary: ReviewSummary): MoveDetails =>
@@ -726,11 +810,11 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
                 lease?.release({ broken: true });
                 if (isRetryableEngineError(err) && !recreated) {
                   recreated = true;
-                  selected = await browser(notice);
+                  selected = await browserOrServer(notice);
                 } else {
-                  selected = await serverInstead(err);
-                  if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
+                  selected = await serverInstead(err, false);
                 }
+                if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
                 if (cancelled) throw abortError();
                 continue;
               }
@@ -739,10 +823,13 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
               selected = null; // disposed here, not again in `finally`
               void server.dispose().catch(() => undefined);
               const reason = serverFailureReason(err, true);
+              trace.serverError = err;
+              trace.serverMidRun = true;
               rememberFailure(serverKey(), reason, isUnauthorized(err));
               const notice = noticeFor(pref, reason, isUnauthorized(err));
               if (isCurrent()) set({ runsOn: BROWSER, engineNotice: notice });
-              selected = await browser(notice);
+              selected = await browserOrServer(notice);
+              if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
               if (cancelled) throw abortError();
               continue;
             }
@@ -814,17 +901,30 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
       // local index answers at once when it knows the game; otherwise the lookup costs one
       // IndexedDB read and, with a server, one round trip (or nothing during its cooldown).
       promise = (async () => {
-        const stored = await lookup();
-        if (cancelled || !isCurrent()) {
-          if (isCurrent()) current = null;
+        try {
+          const stored = await lookup();
+          if (cancelled || !isCurrent()) {
+            if (isCurrent()) {
+              // Cancelled before anything ran: say so (the store never was `running`).
+              set({ status: 'cancelled', autoNotice: false });
+              current = null;
+            }
+            return undefined;
+          }
+          if (stored) {
+            const summary = showStored(stored);
+            current = null;
+            return summary;
+          }
+          begin();
+        } catch (err) {
+          // Never a rejected review promise (callers `void` it) nor a silent state.
+          if (isCurrent()) {
+            set({ status: 'error', error: errorMessage(err) });
+            current = null;
+          }
           return undefined;
         }
-        if (stored) {
-          const summary = showStored(stored);
-          current = null;
-          return summary;
-        }
-        begin();
         return engineRun();
       })();
     } else {

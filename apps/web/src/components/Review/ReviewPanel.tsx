@@ -281,7 +281,8 @@ export function ReviewPanel() {
           </>
         )}
       </div>
-      {autoNotice && (
+      {/* After a failed auto review the error says it all ("run Deep" would fail the same way). */}
+      {autoNotice && status !== 'error' && (
         <div className={styles.notice} data-testid="auto-notice">
           <span>Auto review (fast) — run Deep for more accuracy.</span>
           <button

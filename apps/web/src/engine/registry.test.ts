@@ -17,7 +17,9 @@ import {
   serverEngines,
   shortEngineName,
   type ProbeClient,
+  wasmBuildUnsupportedReason,
 } from './registry';
+import { NO_SIMD_REASON, NO_THREADS_REASON, type WasmSupport } from './wasmSupport';
 
 const ISOLATED = { crossOriginIsolated: true, hardwareConcurrency: 8 };
 const PLAIN = { crossOriginIsolated: false, hardwareConcurrency: 8 };
@@ -252,5 +254,53 @@ describe('memory budget (ADR-015)', () => {
       reason: 'Memory budget: one browser engine at a time on this device',
     });
     expect(byKey(DESKTOP)['wasm:lite-single']!.available).toBe(true);
+  });
+});
+
+describe('WebAssembly support (wasmSupport.ts)', () => {
+  const NO_SIMD: WasmSupport = {
+    wasm: true,
+    simd: false,
+    threads: true,
+    error: 'wasm-simd is not enabled',
+  };
+  const NO_THREADS: WasmSupport = { wasm: true, simd: true, threads: false };
+
+  it('without SIMD every browser build is unavailable with the reason', () => {
+    for (const env of [
+      { ...ISOLATED, wasm: NO_SIMD },
+      { ...PLAIN, wasm: NO_SIMD },
+    ]) {
+      const list = browserEngines(env);
+      expect(list.map((d) => d.key)).toEqual(['wasm:lite', 'wasm:lite-single', 'wasm:full']);
+      for (const d of list) expect(d).toMatchObject({ available: false, reason: NO_SIMD_REASON });
+      expect(canEnable('wasm:lite-single', [], env)).toEqual({ ok: false, reason: NO_SIMD_REASON });
+      expect(canEnable('wasm:lite', [], env)).toEqual({ ok: false, reason: NO_SIMD_REASON });
+    }
+    // Server engines are not affected.
+    expect(canEnable('remote:stockfish', [], { ...ISOLATED, wasm: NO_SIMD })).toEqual({ ok: true });
+  });
+
+  it('without threads only the single-threaded build is offered', () => {
+    const env = { ...ISOLATED, wasm: NO_THREADS };
+    const byKey = new Map(browserEngines(env).map((d) => [d.key, d]));
+    expect(byKey.get('wasm:lite')).toMatchObject({ available: false, reason: NO_THREADS_REASON });
+    expect(byKey.get('wasm:full')).toMatchObject({ available: false, reason: NO_THREADS_REASON });
+    expect(byKey.get('wasm:lite-single')).toMatchObject({ available: true });
+    expect(canEnable('wasm:full', [], env)).toEqual({ ok: false, reason: NO_THREADS_REASON });
+    expect(canEnable('wasm:lite-single', [], env)).toEqual({ ok: true });
+    expect(defaultWasmKey(env)).toBe('wasm:lite-single');
+  });
+
+  it('wasmBuildUnsupportedReason: absent support info means supported', () => {
+    expect(wasmBuildUnsupportedReason('lite', ISOLATED)).toBeUndefined();
+    expect(wasmBuildUnsupportedReason('lite', { ...ISOLATED, wasm: NO_SIMD })).toBe(NO_SIMD_REASON);
+    expect(wasmBuildUnsupportedReason('lite-single', { ...ISOLATED, wasm: NO_THREADS })).toBe(
+      undefined,
+    );
+    expect(listEngines({ status: 'idle' }, [], { ...ISOLATED, wasm: NO_SIMD })[0]).toMatchObject({
+      available: false,
+      reason: NO_SIMD_REASON,
+    });
   });
 });

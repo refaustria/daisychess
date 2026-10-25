@@ -11,6 +11,7 @@ import {
 import { sanitizeSetting, type ClockSetting } from '../clock/timeControls';
 import { PremoveQueue } from '../live/premoves';
 import { browserEnginePool, PooledEngine } from '../engine/wasmPool';
+import { browserEngineUnsupportedReason } from '../engine/wasmSupport';
 import { useAnalysisStore } from '../store/analysisStore';
 import { useSettingsStore } from '../store/settingsStore';
 import {
@@ -160,6 +161,14 @@ const startGuards = new Map<string, PlayStartGuard>();
 /** Registers (or replaces) the guard named `name`. */
 export function setPlayStartGuard(guard: PlayStartGuard, name = 'live'): void {
   startGuards.set(name, guard);
+}
+
+/**
+ * Why the engine cannot play in this browser (the shipped WASM builds need SIMD), e.g. "This
+ * browser lacks WebAssembly SIMD"; undefined when it can (or a test engine is configured).
+ */
+export function playEngineUnavailableReason(): string | undefined {
+  return hooks.createEngine === createWasmPlayEngine ? browserEngineUnsupportedReason() : undefined;
 }
 
 function startGuard(): string | null {
@@ -457,6 +466,11 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
     const blocked = startGuard();
     if (blocked) {
       set({ message: blocked });
+      return;
+    }
+    const unavailable = playEngineUnavailableReason();
+    if (unavailable) {
+      set({ message: `The engine cannot play in this browser: ${unavailable}.` });
       return;
     }
     const setup = sanitizeSetup({ ...get().setup, ...partial });

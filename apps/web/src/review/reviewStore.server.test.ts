@@ -1,3 +1,4 @@
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeWebSocket } from '../engine/remoteTesting';
 import { configureApiConnection } from '../server/apiConnection';
@@ -219,5 +220,55 @@ describe('reviewStore: server review store (ADR-017)', () => {
     expect(s.status).toBe('done');
     expect(s.stored).toMatchObject({ preset: 'deep', fromCache: true, source: 'server' });
     expect(s.reviewed).toBe(useGameStore.getState().moves);
+  });
+
+  describe('the local cache cannot be written', () => {
+    it.each([
+      ['QuotaExceededError on write', 'quota'],
+      ['SecurityError on open (private mode, blocked storage)', 'security'],
+    ])('%s: the finished review still shows as done and goes to the server', async (_, kind) => {
+      const factory = new IDBFactory();
+      const spies: { mockRestore(): void }[] = [];
+      if (kind === 'quota') {
+        spies.push(
+          vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => {
+            throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+          }),
+        );
+      } else {
+        spies.push(
+          vi.spyOn(factory, 'open').mockImplementation(() => {
+            throw new DOMException('The operation is insecure.', 'SecurityError');
+          }),
+        );
+      }
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      spies.push(warn);
+      try {
+        configureReviewCache(factory);
+        server.token = 'secret';
+        useSettingsStore.getState().setServerToken('secret');
+        const summary = await useReviewStore.getState().start({ ...REVIEW_PRESETS.fast });
+        expect(summary?.moves).toHaveLength(7);
+        expect(useReviewStore.getState()).toMatchObject({
+          status: 'done',
+          error: undefined,
+          stored: { preset: 'fast', fromCache: false },
+        });
+        await vi.waitFor(() => expect(server.reviews.get(key())).toBeDefined());
+        expect(server.reviews.get(key())).toMatchObject({ preset: 'fast' });
+        if (kind === 'quota') {
+          await vi.waitFor(() =>
+            expect(warn).toHaveBeenCalledWith(
+              'Review cache: could not store the review',
+              expect.anything(),
+            ),
+          );
+        }
+      } finally {
+        for (const s of spies) s.mockRestore();
+        configureReviewCache(null);
+      }
+    });
   });
 });

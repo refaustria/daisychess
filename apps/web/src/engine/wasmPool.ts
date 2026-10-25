@@ -1,4 +1,6 @@
 import type { AnalyzeOptions, BestMove, Engine, EngineInfo } from '@daisychess/engine-core';
+import { disableWasm, WasmEngineError } from './wasmHealth';
+import { wasmSupport } from './wasmSupport';
 
 /**
  * The one shared browser engine for batch work (ADR-015): the game review, the openings drill and
@@ -37,6 +39,12 @@ export interface AcquireOptions {
 export interface EnginePoolOptions {
   create: () => Engine | Promise<Engine>;
   idleMs?: number;
+  /**
+   * Why no engine can run in this browser at all (e.g. "wasm-simd is not enabled"), checked on
+   * every `acquire`: the request is refused with a non-retryable `WasmEngineError` of kind
+   * `unsupported` (and the browser engine disabled) without creating an engine.
+   */
+  unsupported?: () => string | undefined;
 }
 
 export interface EnginePoolStats {
@@ -60,6 +68,7 @@ const abortError = (): Error => Object.assign(new Error('Aborted'), { name: 'Abo
 export class EnginePool {
   private create: () => Engine | Promise<Engine>;
   private readonly idleMs: number;
+  private readonly unsupported: (() => string | undefined) | undefined;
   private engine: Engine | null = null;
   private loading: Promise<Engine> | null = null;
   private holder: { purpose: PoolPurpose; id: number } | null = null;
@@ -75,6 +84,7 @@ export class EnginePool {
   constructor(opts: EnginePoolOptions) {
     this.create = opts.create;
     this.idleMs = opts.idleMs ?? POOL_IDLE_MS;
+    this.unsupported = opts.unsupported;
   }
 
   get stats(): EnginePoolStats {
@@ -89,6 +99,11 @@ export class EnginePool {
   /** Resolves with a lease once no one else holds the engine and it is loaded. */
   acquire(purpose: PoolPurpose, opts: AcquireOptions = {}): Promise<PoolLease> {
     if (opts.signal?.aborted) return Promise.reject(abortError());
+    const unsupported = this.unsupported?.();
+    if (unsupported !== undefined) {
+      disableWasm(unsupported);
+      return Promise.reject(new WasmEngineError(unsupported, 'unsupported', false));
+    }
     if (!this.holder && this.queue.length === 0) return this.grant(purpose);
     return new Promise<PoolLease>((resolve, reject) => {
       const onAbort = () => {
@@ -367,7 +382,10 @@ const createWasmEngine = async (): Promise<Engine> => {
 };
 
 /** The app's shared batch engine (review, drill, play). */
-export const browserEnginePool = new EnginePool({ create: createWasmEngine });
+export const browserEnginePool = new EnginePool({
+  create: createWasmEngine,
+  unsupported: () => wasmSupport().error,
+});
 
 /** Restores the production factory of {@link browserEnginePool} (tests). */
 export function resetBrowserEngineFactory(): void {

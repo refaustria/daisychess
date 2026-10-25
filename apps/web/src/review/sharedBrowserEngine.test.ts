@@ -7,6 +7,8 @@ import { Chess } from 'chess.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserEnginePool } from '../engine/wasmPool';
 import { disableWasm, resetWasmHealth, WasmEngineError } from '../engine/wasmHealth';
+import { NO_SIMD_REASON, setWasmSupportForTests } from '../engine/wasmSupport';
+import { playEngineUnavailableReason, resetPlay, usePlayStore } from '../play/playStore';
 import { Book, type OpeningRow } from '../openings/book';
 import { useAnalysisStore } from '../store/analysisStore';
 import { useGameStore } from '../store/gameStore';
@@ -219,5 +221,44 @@ describe('shared browser engine: review + drill', () => {
     expect(engines).toHaveLength(2);
     expect(engines[0]!.disposed).toBe(true);
   });
-});
 
+  describe('a browser without WebAssembly SIMD', () => {
+    beforeEach(() =>
+      setWasmSupportForTests({
+        wasm: true,
+        simd: false,
+        threads: true,
+        error: 'wasm-simd is not enabled',
+      }),
+    );
+    afterEach(async () => {
+      setWasmSupportForTests(null);
+      await resetPlay();
+    });
+
+    it('drill: the first check ends the drill with the reason, no engine is created', async () => {
+      await setupDrill();
+      useDrillStore.getState().start(italian, 'white');
+      play('e4');
+      await vi.waitFor(() => expect(useDrillStore.getState().phase).toBe('user'));
+      play('a3');
+      await vi.waitFor(() => expect(useDrillStore.getState().status).toBe('idle'));
+      expect(useDrillStore.getState().message).toBe(
+        'Drill ended: the browser engine is unavailable (wasm-simd is not enabled).',
+      );
+      expect(engines).toHaveLength(0);
+    });
+
+    it('play: refuses to start with the reason instead of failing mid-game', () => {
+      expect(playEngineUnavailableReason()).toBe(NO_SIMD_REASON);
+      usePlayStore.getState().start({ from: 'start' });
+      expect(usePlayStore.getState()).toMatchObject({
+        mode: 'idle',
+        message: `The engine cannot play in this browser: ${NO_SIMD_REASON}.`,
+      });
+      expect(engines).toHaveLength(0);
+      setWasmSupportForTests(null);
+      expect(playEngineUnavailableReason()).toBeUndefined();
+    });
+  });
+});

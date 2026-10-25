@@ -226,6 +226,33 @@ describe('ReviewPanel', () => {
     expect(start).toHaveBeenCalled();
   });
 
+  it('error of an auto review: the engine failure with the hint, no "run Deep" notice', () => {
+    act(() => useGameStore.getState().loadPgn(PGN));
+    const error =
+      'the browser engine could not start (wasm-simd is not enabled). Set the server access token to review on the server.';
+    useReviewStore.setState({
+      status: 'error',
+      error,
+      autoNotice: true,
+      trigger: 'auto',
+      progress: { done: 0, total: 8 },
+    });
+    render(<ReviewPanel />);
+    expect(screen.getByTestId('review-panel').getAttribute('data-status')).toBe('error');
+    expect(screen.getByRole('alert').textContent).toBe(`Review failed: ${error}`);
+    expect(screen.queryByTestId('auto-notice')).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start' }).hasAttribute('disabled')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(start).toHaveBeenCalledWith({ depth: 18 });
+  });
+
+  it('error without a message still says the review failed', () => {
+    useReviewStore.setState({ status: 'error', error: undefined });
+    render(<ReviewPanel />);
+    expect(screen.getByRole('alert').textContent).toBe('Review failed: unknown error');
+  });
+
   it('done: the Opening block names the opening and where the book was left', () => {
     act(() => useGameStore.getState().loadPgn(PGN));
     const summary = scholarSummary();

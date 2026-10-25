@@ -122,14 +122,20 @@ describe('reviewStore', () => {
   it('engine errors → error status with message', async () => {
     engine.fail.set(useGameStore.getState().moves[1]!.fen, new Error('boom'));
     expect(await useReviewStore.getState().start()).toBeUndefined();
-    expect(useReviewStore.getState()).toMatchObject({ status: 'error', error: 'boom' });
+    expect(useReviewStore.getState()).toMatchObject({
+      status: 'error',
+      error: 'the browser engine failed (boom).',
+    });
     expect(useAnalysisStore.getState().enabled).toBe(true);
   });
 
   it('load failures → error; the next start creates a fresh engine', async () => {
     engine.load = () => Promise.reject(new Error('no wasm'));
     await useReviewStore.getState().start();
-    expect(useReviewStore.getState()).toMatchObject({ status: 'error', error: 'no wasm' });
+    expect(useReviewStore.getState()).toMatchObject({
+      status: 'error',
+      error: 'the browser engine could not start (no wasm).',
+    });
     expect(engine.disposed).toBe(true);
     engine = new FakeReviewEngine();
     expect(await useReviewStore.getState().start()).toBeDefined();

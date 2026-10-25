@@ -400,3 +400,52 @@ describe('memory cap through the worker shim (ADR-015)', () => {
     await client.dispose();
   });
 });
+
+describe('WasmEngineClient: unsupported browser (no WebAssembly SIMD)', () => {
+  const noSimd = () => ({
+    wasm: true,
+    simd: false,
+    threads: true,
+    error: 'wasm-simd is not enabled',
+  });
+
+  it('load() rejects at once without spawning a worker and disables the browser engine', async () => {
+    let spawned = 0;
+    const client = new WasmEngineClient({
+      crossOriginIsolated: true,
+      support: noSimd,
+      engineBaseUrl: 'https://example.test/engine/',
+      createWorker: (url) => {
+        spawned++;
+        return new FakeWorker(url);
+      },
+    });
+    const err = await client.load().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(WasmEngineError);
+    expect(err).toMatchObject({
+      message: 'wasm-simd is not enabled',
+      kind: 'unsupported',
+      retryable: false,
+    });
+    expect(spawned).toBe(0);
+    expect(wasmHealth().disabled).toBe('wasm-simd is not enabled');
+    expect(wasmHealth().live).toBe(0);
+    // A user retry does not help: still refused, still no worker.
+    allowWasmRetry();
+    await expect(client.load()).rejects.toMatchObject({ kind: 'unsupported' });
+    expect(spawned).toBe(0);
+  });
+
+  it('without WebAssembly threads the single-threaded build is used', () => {
+    const client = new WasmEngineClient({
+      crossOriginIsolated: true,
+      hardwareConcurrency: 8,
+      support: () => ({ wasm: true, simd: true, threads: false }),
+    });
+    expect(client.capabilities()).toMatchObject({ threads: false, threadCount: 1 });
+    expect(client.capabilities().build).toMatch(/-lite-single$/);
+  });
+});

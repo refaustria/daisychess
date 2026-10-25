@@ -7,7 +7,11 @@
  * Small and dependency-free on purpose: the stores import it eagerly, the engine code is lazy.
  */
 
-export type WasmFailureKind = 'oom' | 'worker';
+/**
+ * `oom`: out of memory; `worker`: the worker/runtime failed; `unsupported`: this browser cannot run
+ * the shipped builds at all (no WebAssembly SIMD, see `wasmSupport.ts`) — never retried.
+ */
+export type WasmFailureKind = 'oom' | 'worker' | 'unsupported';
 
 /** A failure of a browser engine; `retryable` = a fresh (degraded) instance may succeed. */
 export class WasmEngineError extends Error {

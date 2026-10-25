@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import { describe, expect, it, vi } from 'vitest';
-import { BatchAnalyzer, type BatchGame } from './BatchAnalyzer';
+import { BatchAnalyzer, EngineStallError, type BatchGame } from './BatchAnalyzer';
 import { FakeReviewEngine } from './fakeEngine';
 
 function gameFrom(sans: string[], startFen?: string): BatchGame {
@@ -196,5 +196,52 @@ describe('BatchAnalyzer', () => {
     expect(() => new BatchAnalyzer({ engine, options: { depth: 0 } })).toThrow(/depth/);
     // @ts-expect-error only concurrency 1 is supported
     expect(() => new BatchAnalyzer({ engine, concurrency: 2 })).toThrow(/concurrency/);
+  });
+});
+
+describe('BatchAnalyzer: stall watchdog (stallMs)', () => {
+  it('a search without output fails with EngineStallError and stops the engine', async () => {
+    const { engine, game, p } = scholarEngine();
+    // Hangs until stop(); the watchdog's stop() then ends it — but the run must fail anyway.
+    engine.hang.add(p[2]!);
+    const a = new BatchAnalyzer({ engine, options: { movetime: 10 }, stallMs: 25 });
+    const err = await a.run(game).promise.then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(EngineStallError);
+    expect((err as Error).message).toBe('the engine stopped responding (no output for 25 ms)');
+    expect(engine.stopCalls).toBeGreaterThan(0);
+    expect(a.cache.has(p[1]!)).toBe(true);
+    expect(a.cache.has(p[2]!)).toBe(false);
+  });
+
+  it('a best move that never arrives also trips the watchdog', async () => {
+    const { engine, game } = scholarEngine();
+    const analyze = engine.analyze.bind(engine);
+    engine.analyze = (fen, opts) => {
+      const h = analyze(fen, opts);
+      return {
+        [Symbol.asyncIterator]: () => h[Symbol.asyncIterator](),
+        bestMove: new Promise(() => undefined),
+      };
+    };
+    const a = new BatchAnalyzer({ engine, options: { movetime: 10 }, stallMs: 20 });
+    await expect(a.run(game).promise).rejects.toBeInstanceOf(EngineStallError);
+  });
+
+  it('slow but steady output and stallMs 0 never trip it', async () => {
+    const { engine, game } = scholarEngine();
+    engine.delayMs = 15;
+    const a = new BatchAnalyzer({ engine, options: { movetime: 10 }, stallMs: 200 });
+    expect((await a.run(game).promise).moves).toHaveLength(7);
+    const b = new BatchAnalyzer({ engine, options: { movetime: 10 }, stallMs: 0 });
+    expect((await b.run(game).promise).moves).toHaveLength(7);
+  });
+
+  it('formats long timeouts in seconds', () => {
+    expect(new EngineStallError(60_000).message).toBe(
+      'the engine stopped responding (no output for 60 s)',
+    );
   });
 });
