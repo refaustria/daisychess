@@ -6,9 +6,11 @@ import {
   MAX_SERVER_TOKEN_LENGTH,
   normalizeToken,
   PREMOVE_MODES,
+  REVIEW_ENGINE_PREFERENCES,
   useSettingsStore,
   type HighlightStyle,
   type PremoveMode,
+  type ReviewEnginePreference,
 } from '../../store/settingsStore';
 import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
 import styles from './SettingsPanel.module.css';
@@ -24,6 +26,42 @@ const PREMOVE_LABEL: Record<PremoveMode, string> = {
   single: 'One premove',
   queue: 'Queue (several)',
 };
+
+const REVIEW_ENGINE_LABEL: Record<ReviewEnginePreference, string> = {
+  auto: 'Auto (server when available)',
+  browser: 'Browser',
+  server: 'Server',
+};
+
+/** Where the game review runs (ADR-014); next to the engine server settings. */
+function ReviewEngineField() {
+  const value = useSettingsStore((s) => s.reviewEngine);
+  const set = useSettingsStore((s) => s.set);
+  const id = useId();
+  return (
+    <div className={styles.group}>
+      <label className={styles.field}>
+        Review engine
+        <select
+          value={value}
+          aria-describedby={`${id}-help`}
+          data-testid="review-engine-select"
+          onChange={(e) => set({ reviewEngine: e.currentTarget.value as ReviewEnginePreference })}
+        >
+          {REVIEW_ENGINE_PREFERENCES.map((p) => (
+            <option key={p} value={p}>
+              {REVIEW_ENGINE_LABEL[p]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p id={`${id}-help`} className={styles.help}>
+        Game review on the engine server is much faster than in the browser (needs the access
+        token). If the server is unavailable the review runs in the browser.
+      </p>
+    </div>
+  );
+}
 
 /**
  * Access token for an engine server started with `ACCESS_TOKEN` (ADR-010). Saved explicitly
@@ -218,6 +256,7 @@ export function SettingsPanel() {
       </button>
 
       <ServerTokenField />
+      <ReviewEngineField />
     </div>
   );
 }

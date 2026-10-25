@@ -12,6 +12,18 @@ export const HIGHLIGHT_STYLES: readonly HighlightStyle[] = ['classic', 'subtle',
 export type PremoveMode = 'none' | 'single' | 'queue';
 export const PREMOVE_MODES: readonly PremoveMode[] = ['none', 'single', 'queue'];
 
+/**
+ * Where the game review runs (ADR-014): `auto` = on the engine server when it is reachable and
+ * grants analysis, otherwise in the browser; `browser` = always the WASM engine (never touches
+ * the network); `server` = always try the server first (falls back to the browser on failure).
+ */
+export type ReviewEnginePreference = 'auto' | 'browser' | 'server';
+export const REVIEW_ENGINE_PREFERENCES: readonly ReviewEnginePreference[] = [
+  'auto',
+  'browser',
+  'server',
+];
+
 export interface Settings {
   /** Preset id from ui-theme, or 'custom' when `customBoard` is used. */
   boardTheme: string;
@@ -23,6 +35,8 @@ export interface Settings {
   /** Start a fast review automatically after a game is loaded (PGN, file, online import). */
   autoReview: boolean;
   premoves: PremoveMode;
+  /** Engine for the game review (ADR-014). */
+  reviewEngine: ReviewEnginePreference;
   /**
    * Access token of the engine server (ADR-010), sent in `hello.token`. Empty = none. Stored in
    * localStorage like the other settings: it is a shared gate against casual use, not a secret
@@ -49,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   autoReview: true,
   premoves: 'single',
+  reviewEngine: 'auto',
   serverToken: '',
 };
 
@@ -93,6 +108,12 @@ export function parseSettings(raw: string | null): Settings {
   if (typeof o.premoves === 'string' && (PREMOVE_MODES as readonly string[]).includes(o.premoves)) {
     out.premoves = o.premoves as PremoveMode;
   }
+  if (
+    typeof o.reviewEngine === 'string' &&
+    (REVIEW_ENGINE_PREFERENCES as readonly string[]).includes(o.reviewEngine)
+  ) {
+    out.reviewEngine = o.reviewEngine as ReviewEnginePreference;
+  }
   if (typeof o.serverToken === 'string') out.serverToken = normalizeToken(o.serverToken);
   return out;
 }
@@ -119,7 +140,7 @@ interface SettingsActions {
   setCustomBoard: (c: { light: string; dark: string }) => void;
   /** Stores the engine server access token (trimmed; empty removes it). */
   setServerToken: (token: string) => void;
-  /** Resets the appearance settings; the server access token is kept. */
+  /** Resets the appearance settings; the server settings (access token, review engine) are kept. */
   reset: () => void;
 }
 
@@ -134,6 +155,7 @@ function pick(s: Settings): Settings {
     sound: s.sound,
     autoReview: s.autoReview,
     premoves: s.premoves,
+    reviewEngine: s.reviewEngine,
     serverToken: s.serverToken,
   };
   if (s.customBoard) out.customBoard = s.customBoard;
@@ -157,7 +179,12 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
     persist(pick(get()));
   },
   reset: () => {
-    set({ ...DEFAULT_SETTINGS, serverToken: get().serverToken, customBoard: undefined });
+    set({
+      ...DEFAULT_SETTINGS,
+      serverToken: get().serverToken,
+      reviewEngine: get().reviewEngine,
+      customBoard: undefined,
+    });
     persist(pick(get()));
   },
 }));

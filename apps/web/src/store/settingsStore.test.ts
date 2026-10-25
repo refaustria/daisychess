@@ -86,6 +86,20 @@ describe('settingsStore', () => {
     expect(stored()).toMatchObject({ serverToken: '' });
   });
 
+  it('review engine: defaults to auto, persists, parses defensively, survives reset', () => {
+    expect(DEFAULT_SETTINGS.reviewEngine).toBe('auto');
+    expect(useSettingsStore.getState().reviewEngine).toBe('auto');
+    useSettingsStore.getState().set({ reviewEngine: 'server' });
+    expect(stored()).toMatchObject({ reviewEngine: 'server' });
+    expect(parseSettings(localStorage.getItem(SETTINGS_KEY)).reviewEngine).toBe('server');
+    expect(parseSettings(JSON.stringify({ reviewEngine: 'browser' })).reviewEngine).toBe('browser');
+    expect(parseSettings(JSON.stringify({ reviewEngine: 'cloud' })).reviewEngine).toBe('auto');
+    expect(parseSettings(JSON.stringify({ reviewEngine: 1 })).reviewEngine).toBe('auto');
+    useSettingsStore.getState().reset();
+    expect(useSettingsStore.getState().reviewEngine).toBe('server');
+    useSettingsStore.getState().set({ reviewEngine: 'auto' });
+  });
+
   it('applies board colours as CSS variables and tracks changes', () => {
     const stop = applySettings();
     expect(root.style.getPropertyValue('--board-light')).toBe('');

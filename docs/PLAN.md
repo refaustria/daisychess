@@ -117,3 +117,8 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 |---|---|---|---|
 | M16-1 | Protocol (ADR-013) + server: rooms over the existing WebSocket, server-side move validation and clocks, reconnect token, draw/resign/abort/claim, limits; works without the engine access token | architect | done |
 | M16-2 | Web: "Friend" play mode — create link with nickname/time control/colour, join via link with nickname, board + clocks, fair-play engine lock, result + auto review | senior | done |
+
+## M17 — Game review on the server (requested 2026-10-25)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M17-1 | Review engine setting (browser / server, default server when configured and reachable), review runs through the remote engine with the server's max threads, fallback to WASM with a notice; progress shows where it runs | senior | done |

@@ -191,6 +191,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - Batch-analyze every position at configurable depth (server mode recommended).
 - Per-move classification and accuracy %, eval graph over the game, "key moments" list.
 - Export the annotated PGN.
+- Where it runs (Settings → "Review engine", ADR-014): **Auto** (default) reviews on the engine server when it is reachable and the access token is accepted, otherwise in the browser; **Browser** always uses the WASM engine (no network); **Server** always tries the server first. On the server the review gets its own session with the server's maximum threads (`MAX_THREADS`) and is released when the run ends. If the server is unreachable, refuses the token, is busy (session cap) or drops mid-review, the rest of the review runs in the browser (already analysed positions are kept) and the Review tab shows "Server unavailable (reason) — reviewing in the browser" (in Auto a missing/wrong token falls back silently). The progress line says where it runs ("Reviewing on server (Stockfish 19, 8 threads)…").
 
 ### Customization
 - Board colors (presets + custom picker), piece sets (Cburnett, Letters), coordinates on/off, highlight style, sound on/off, dark/light mode.

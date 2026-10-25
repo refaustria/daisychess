@@ -7,7 +7,7 @@ import { buildMoveDetails } from '../../review/details';
 import { gameToBatch, useReviewStore } from '../../review/reviewStore';
 import { scholarSummary } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
-import { ReviewPanel } from './ReviewPanel';
+import { ReviewPanel, reviewingLabel } from './ReviewPanel';
 
 const PGN = '[White "Ann"]\n[Black "Bob"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 const start = vi.fn(() => Promise.resolve(undefined));
@@ -28,6 +28,8 @@ beforeEach(() => {
     moveDetails: {},
     error: undefined,
     autoNotice: false,
+    runsOn: undefined,
+    engineNotice: undefined,
     start,
     cancel,
     reset,
@@ -60,9 +62,15 @@ describe('ReviewPanel', () => {
     act(() => useLiveStore.setState({ status: 'playing' }));
     useReviewStore.setState({ autoNotice: true });
     render(<ReviewPanel />);
-    expect((screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Run Deep' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('Review is disabled during a live game (lichess fair play)')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByRole('button', { name: 'Run Deep' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      screen.getByText('Review is disabled during a live game (lichess fair play)'),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     expect(start).not.toHaveBeenCalled();
     act(() => useLiveStore.setState({ status: 'idle' }));
@@ -85,6 +93,53 @@ describe('ReviewPanel', () => {
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('2');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(cancel).toHaveBeenCalled();
+  });
+
+  it('running: shows where the review runs', () => {
+    useReviewStore.setState({
+      status: 'running',
+      progress: { done: 1, total: 8 },
+      runsOn: { kind: 'server', name: 'Stockfish 19', threads: 8 },
+    });
+    render(<ReviewPanel />);
+    expect(screen.getByTestId('review-engine').textContent).toBe(
+      'Reviewing on server (Stockfish 19, 8 threads)… live analysis is paused.',
+    );
+    act(() => useReviewStore.setState({ runsOn: { kind: 'browser' } }));
+    expect(screen.getByTestId('review-engine').textContent).toBe(
+      'Reviewing in browser… live analysis is paused.',
+    );
+    expect(screen.queryByTestId('review-engine-notice')).toBeNull();
+  });
+
+  it('fallback notice is shown in one line while running and after the review', () => {
+    const notice = 'Server unavailable (Access token required or wrong) — reviewing in the browser';
+    useGameStore.getState().loadPgn(PGN);
+    useReviewStore.setState({
+      status: 'running',
+      progress: { done: 1, total: 8 },
+      runsOn: { kind: 'browser' },
+      engineNotice: notice,
+    });
+    render(<ReviewPanel />);
+    expect(screen.getByTestId('review-engine-notice').textContent).toBe(notice);
+    act(() =>
+      useReviewStore.setState({
+        status: 'done',
+        summary: scholarSummary(),
+        progress: { done: 8, total: 8 },
+      }),
+    );
+    expect(screen.getByTestId('review-engine-notice').textContent).toBe(notice);
+    expect(screen.getByTestId('review-engine').textContent).toBe('Reviewed in browser.');
+    act(() => useReviewStore.setState({ status: 'idle' }));
+    expect(screen.queryByTestId('review-engine-notice')).toBeNull();
+  });
+
+  it('reviewingLabel', () => {
+    expect(reviewingLabel(undefined)).toBe('Reviewing…');
+    expect(reviewingLabel({ kind: 'server', threads: 1 })).toBe('Reviewing on server (1 thread)…');
+    expect(reviewingLabel({ kind: 'server' }, true)).toBe('Reviewed on server.');
   });
 
   it('done: accuracy, counts, highlights per side and navigation', () => {

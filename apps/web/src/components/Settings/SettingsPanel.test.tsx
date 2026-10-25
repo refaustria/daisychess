@@ -61,4 +61,19 @@ describe('SettingsPanel', () => {
     expect(input.type).toBe('password');
     useSettingsStore.getState().setServerToken('');
   });
+
+  it('review engine select: auto by default, stores the choice', () => {
+    useSettingsStore.getState().set({ reviewEngine: 'auto' });
+    render(<SettingsPanel />);
+    const select = screen.getByLabelText('Review engine') as HTMLSelectElement;
+    expect(select.value).toBe('auto');
+    expect([...select.options].map((o) => o.text)).toEqual([
+      'Auto (server when available)',
+      'Browser',
+      'Server',
+    ]);
+    fireEvent.change(select, { target: { value: 'browser' } });
+    expect(useSettingsStore.getState().reviewEngine).toBe('browser');
+    useSettingsStore.getState().set({ reviewEngine: 'auto' });
+  });
 });

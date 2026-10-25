@@ -4,7 +4,7 @@ import { annotatePgn } from '../../review/annotatePgn';
 import { reviewHighlights } from '../../review/details';
 import { CLASS_INFO, bestMoveSan, moveNumberLabel } from '../../review/format';
 import { useHumanGameLockReason } from '../../live/lock';
-import { REVIEW_PRESETS, useReviewStore } from '../../review/reviewStore';
+import { REVIEW_PRESETS, useReviewStore, type ReviewEngineInfo } from '../../review/reviewStore';
 import { useGameStore } from '../../store/gameStore';
 import { EvalGraph } from './EvalGraph';
 import { MoveCommentary } from './MoveCommentary';
@@ -15,6 +15,24 @@ const PRESET_LABELS: Record<PresetKey, string> = {
   fast: 'Fast (0.3 s/move)',
   deep: 'Deep (depth 18)',
 };
+
+/**
+ * "Reviewing on server (Stockfish 19, 8 threads)…" / "Reviewing in browser…" / "Reviewing…"
+ * (engine not chosen yet); with `done` "Reviewed on server (…)." / "Reviewed in browser.".
+ */
+export function reviewingLabel(runsOn: ReviewEngineInfo | undefined, done = false): string {
+  const verb = done ? 'Reviewed' : 'Reviewing';
+  const end = done ? '.' : '…';
+  if (!runsOn) return `${verb}${end}`;
+  if (runsOn.kind === 'browser') return `${verb} in browser${end}`;
+  const details = [
+    runsOn.name,
+    runsOn.threads !== undefined
+      ? `${runsOn.threads} thread${runsOn.threads === 1 ? '' : 's'}`
+      : undefined,
+  ].filter(Boolean);
+  return `${verb} on server${details.length > 0 ? ` (${details.join(', ')})` : ''}${end}`;
+}
 
 function download(text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/x-chess-pgn' }));
@@ -179,6 +197,8 @@ export function ReviewPanel() {
   const details = useReviewStore((s) => s.moveDetails);
   const error = useReviewStore((s) => s.error);
   const autoNotice = useReviewStore((s) => s.autoNotice);
+  const runsOn = useReviewStore((s) => s.runsOn);
+  const engineNotice = useReviewStore((s) => s.engineNotice);
   const start = useReviewStore((s) => s.start);
   const cancel = useReviewStore((s) => s.cancel);
   const reset = useReviewStore((s) => s.reset);
@@ -268,9 +288,16 @@ export function ReviewPanel() {
           </button>
         </div>
       )}
+      {engineNotice && status !== 'idle' && (
+        <p className={styles.muted} data-testid="review-engine-notice" role="status">
+          {engineNotice}
+        </p>
+      )}
       {status === 'running' && (
         <>
-          <p>Reviewing… live analysis is paused.</p>
+          <p data-testid="review-engine" data-engine={runsOn?.kind ?? 'pending'}>
+            {reviewingLabel(runsOn)} live analysis is paused.
+          </p>
           <div
             className={styles.bar}
             role="progressbar"
@@ -300,6 +327,11 @@ export function ReviewPanel() {
       )}
       {summary && (status === 'running' || status === 'done') && (
         <MoveCommentary summary={summary} details={details} running={status === 'running'} />
+      )}
+      {status === 'done' && runsOn && (
+        <p className={styles.muted} data-testid="review-engine" data-engine={runsOn.kind}>
+          {reviewingLabel(runsOn, true)}
+        </p>
       )}
       {status === 'done' && summary && <Done summary={summary} />}
     </div>
