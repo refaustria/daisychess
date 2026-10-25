@@ -132,7 +132,7 @@ test.describe('play vs Maia (server, real Lc0)', () => {
     // Without the token the Maia levels are disabled with the reason.
     await page.getByRole('tab', { name: 'Play' }).click();
     await expect(page.getByTestId('maia-unavailable')).toHaveText(
-      'Human-like (Maia): Needs the server access token',
+      'Human-like (Maia): No server access token on this device — enter it in Settings',
       { timeout: 15_000 },
     );
     const strength = page.getByLabel('Strength');

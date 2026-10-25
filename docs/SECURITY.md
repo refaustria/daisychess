@@ -102,6 +102,14 @@ DaisyChess holds two kinds of lichess credential, both only in this browser:
 
 Tokens never appear in a URL, a log line or an error message (the token exchange body goes in a `POST` form body; nginx logs paths without query strings anyway, §2.9). Anything able to run script in the page could read `localStorage`, so the protection is the absence of XSS: the enforced CSP (§2.8, no inline or eval'd script, `connect-src` limited to the listed hosts, so a token could not be posted elsewhere by injected markup either) and React's escaping of all lichess-provided strings. Worst case for a stolen login token: playing/challenging on the user's behalf until the user logs out here or revokes it on lichess (Preferences → Third-party access). The top-level redirect to `lichess.org/oauth` is a navigation (`location.assign`), not a form submission, so `form-action 'self'` does not apply and the CSP needs no change.
 
+### 2.10 Setup link for the access token (fragment) — Low, accepted
+
+Settings are per device, so a new device has no access token. Settings has "Copy link for another device", which copies `https://<origin>/#setup-token=<urlencoded token>`. On start (after the storage migration, before the stores are used) the app stores the token (trimmed, at most 256 characters, same rules as the Settings field), removes the fragment with `history.replaceState` (path and query kept), and shows a one-time notice. Invalid or empty tokens are dropped, the fragment is removed anyway. The token is never logged.
+
+- The fragment is not sent to the server (not in the request line, access logs or `Referer`), so nginx and the engine server never see it.
+- It does stay in the places where the link was pasted: chat/mail history of the sender and recipient, the sender's clipboard, and the browser history of a device where the link was opened (the fragment is removed from the address bar only after load, and the history entry visited first may still hold it).
+- Anyone with the link can use the engine server. Advice: send it over a private channel, open it once on the other device, delete the message afterwards, and rotate `ACCESS_TOKEN` (restart the server with a new value) if a link may have leaked. The token is a shared gate against casual use, not a per-user credential (ADR-010).
+
 ### 2.9 Transport, supply chain and abuse logging — fixed (M10-1)
 
 - **HSTS** on `c.referee.at`: `Strict-Transport-Security: max-age=31536000` on every response, without `includeSubDomains`/`preload` (other `referee.at` subdomains are not ours). The certbot setup is permanent (renewal timer), which was the condition in ADR-002. Undo requires serving `max-age=0` for a while — browsers remember for a year.

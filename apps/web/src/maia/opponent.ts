@@ -1,5 +1,6 @@
 import type { AnalyzeOptions, BestMove, EngineInfo, PolicyEntry } from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
+import { authMessage } from '../server/tokenMessages';
 import type { PlayEngine } from '../play/PlayController';
 
 /**
@@ -19,7 +20,7 @@ import type { PlayEngine } from '../play/PlayController';
  * Errors: `no_capacity` (all Maia processes of the server are busy) is retried with backoff up to
  * {@link BUSY_BACKOFF_MS}.length times, then the move fails with {@link MAIA_BUSY_MESSAGE}; a lost
  * connection is reconnected once per move; a missing/wrong token fails with
- * {@link NEEDS_TOKEN_MESSAGE}.
+ * `authMessage()`.
  */
 
 /** The part of `RemoteEngineClient` the opponent uses (structural; tests pass a fake). */
@@ -34,7 +35,6 @@ export interface MaiaClient {
 }
 
 export const MAIA_BUSY_MESSAGE = 'Maia is busy, try again';
-export const NEEDS_TOKEN_MESSAGE = 'Needs the server access token';
 export const SERVER_UNAVAILABLE_MESSAGE = 'Server unavailable';
 /** Waits before the 1st, 2nd and 3rd retry of a `no_capacity` answer. */
 export const BUSY_BACKOFF_MS: readonly number[] = [500, 1_000, 2_000];
@@ -403,7 +403,7 @@ function mapError(err: unknown): Error {
   if (err instanceof MaiaError) return err;
   const code = codeOf(err);
   const msg = err instanceof Error ? err.message : String(err);
-  if (code === 'unauthorized') return new MaiaError(NEEDS_TOKEN_MESSAGE, code);
+  if (code === 'unauthorized') return new MaiaError(authMessage(), code);
   if (code === 'no_capacity') return new MaiaError(MAIA_BUSY_MESSAGE, code);
   if (code === 'forbidden')
     return new MaiaError(`The server refuses the engine now (${msg})`, code);

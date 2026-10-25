@@ -1,6 +1,7 @@
 import type { Engine, ReviewSummary } from '@daisychess/engine-core';
 import { create } from 'zustand';
-import { UNAUTHORIZED_MESSAGE, useAnalysisStore } from '../store/analysisStore';
+import { authMessage, authReviewHint, isAuthText } from '../server/tokenMessages';
+import { useAnalysisStore } from '../store/analysisStore';
 import { useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore, type ReviewEnginePreference } from '../store/settingsStore';
 import {
@@ -225,7 +226,7 @@ export function serverConfigured(): boolean {
 /** Short reason for the fallback notice (protocol code → words). */
 export function serverFailureReason(err: unknown, midRun = false): string {
   const code = (err as { code?: unknown } | null)?.code;
-  if (code === 'unauthorized') return UNAUTHORIZED_MESSAGE;
+  if (code === 'unauthorized') return authMessage();
   if (code === 'closed') return midRun ? 'connection lost' : 'not reachable';
   if (code === 'timeout') return 'no response';
   if (code === 'no_capacity' || code === 'limit_exceeded') return 'too many sessions, busy';
@@ -235,7 +236,9 @@ export function serverFailureReason(err: unknown, midRun = false): string {
 }
 
 export const fallbackNotice = (reason: string): string =>
-  `Server unavailable (${reason}) — reviewing in the browser`;
+  isAuthText(reason)
+    ? `${reason} — reviewing in the browser`
+    : `Server unavailable (${reason}) — reviewing in the browser`;
 
 const serverKey = (): string =>
   `${useAnalysisStore.getState().settings.remoteUrl ?? ''}\n${useSettingsStore.getState().serverToken}`;
@@ -284,14 +287,15 @@ interface EngineTrace {
   serverMidRun?: boolean;
 }
 
-export const SERVER_TOKEN_HINT = 'Set the server access token to review on the server.';
+/** What to do about a missing/refused token (wording depends on whether a token is stored). */
+export const serverTokenHint = (): string => authReviewHint();
 export const SERVER_SETTING_HINT =
   'Set the review engine to Auto or Server in Settings to review on the server.';
 
 /**
  * The review's error text when the browser engine cannot be used (shown as "Review failed: …"):
  * the cause, and what the server could (not) do about it, e.g. "the browser engine could not start
- * (wasm-simd is not enabled). Set the server access token to review on the server."
+ * (wasm-simd is not enabled). Enter the server access token in Settings to review on the server."
  * `atLoad`: the engine never started (else it failed during the run).
  */
 export function browserFailureMessage(
@@ -311,7 +315,7 @@ export function browserFailureMessage(
   if (!opts.serverConfigured) return `${what}.`;
   if (opts.pref === 'browser') return `${what}. ${SERVER_SETTING_HINT}`;
   if (opts.serverError === undefined) return `${what}.`;
-  if (isUnauthorized(opts.serverError)) return `${what}. ${SERVER_TOKEN_HINT}`;
+  if (isUnauthorized(opts.serverError)) return `${what}. ${serverTokenHint()}`;
   const reason = serverFailureReason(opts.serverError, opts.serverMidRun === true);
   return `${what}; the server is unavailable too (${reason}).`;
 }

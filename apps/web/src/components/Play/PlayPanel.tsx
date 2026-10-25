@@ -31,6 +31,8 @@ import { humanAvailability, humanEngineReason } from '../../maia/opponentAvailab
 import { useHumanProbe } from '../../maia/opponentHooks';
 import { START_FEN, useGameStore, type Orientation } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
+import { isAuthText } from '../../server/tokenMessages';
+import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import styles from './PlayPanel.module.css';
 
 const COLORS: { id: ColorChoice; label: string }[] = [
@@ -318,6 +320,7 @@ export function PlayPanel() {
             Human-like (Maia): {humanNote}
           </p>
         )}
+        {humanNote && isAuthText(humanNote) && <OpenSettingsButton className={styles.settingsLink} />}
         {opponent.human ? (
           <label className={styles.check}>
             <input

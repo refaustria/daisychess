@@ -176,7 +176,7 @@ describe('playStore vs Maia', () => {
     });
     p().start({ color: 'white', strength: 'maia-1500' });
     expect(p().mode).toBe('idle');
-    expect(p().message).toBe('Maia 1500 cannot play: Needs the server access token.');
+    expect(p().message).toBe('Maia 1500 cannot play: No server access token on this device — enter it in Settings.');
     expect(p().setup.strength).toBe('maia-1500');
   });
 
@@ -207,7 +207,7 @@ describe('playStore vs Maia', () => {
     expect(p()).toMatchObject({
       mode: 'finished',
       reason: 'engine_error',
-      message: 'Needs the server access token',
+      message: 'No server access token on this device — enter it in Settings',
     });
   });
 

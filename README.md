@@ -247,7 +247,7 @@ Protocol (additive, `PROTOCOL_VERSION` stays 1):
 - Import tab: fetch recent games of a user from the lichess and chess.com public APIs.
 
 ### Engine access
-- Settings tab: server access token (sent as `hello.token`; the server enforces it with `ACCESS_TOKEN`). Opt-in full-strength browser build (`wasm:full`, ~99 MB, one-time download confirmation).
+- Settings tab: server access token (sent as `hello.token`; the server enforces it with `ACCESS_TOKEN`). The token is stored per device. Without it the UI says "No server access token on this device — enter it in Settings"; with a stored token the server refused it: "Server access token was rejected — check it in Settings"; only real connection failures say "Server unreachable". Those messages carry an "Open Settings" button that focuses the token field. **Setup link:** "Copy link for another device" (enabled when a token is stored) copies `https://<origin>/#setup-token=<token>`; opening it on another device stores the token there, removes the fragment from the address bar and shows "Server access token saved on this device". Anyone with the link can use your engine server: open it once, then delete it from your messages. Opt-in full-strength browser build (`wasm:full`, ~99 MB, one-time download confirmation).
 
 ### Game review
 - Batch-analyze every position at configurable depth (server mode recommended).

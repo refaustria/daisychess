@@ -352,7 +352,7 @@ describe('OpeningsPanel: after the book (M23-2)', () => {
     expect(option('maia-1100').textContent).toBe('Continue vs Maia 1100 (unavailable)');
     expect(option('stockfish').disabled).toBe(false);
     expect(screen.getByTestId('drill-maia-unavailable').textContent).toBe(
-      'Human-like (Maia): Needs the server access token',
+      'Human-like (Maia): No server access token on this device — enter it in Settings',
     );
   });
 });

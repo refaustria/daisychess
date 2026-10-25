@@ -356,13 +356,13 @@ describe('PlayPanel: human-like opponents (Maia, M23-2)', () => {
     expect(probes).toBeGreaterThan(0);
   });
 
-  it('without the token the Maia options are disabled with "Needs the server access token"', () => {
+  it('without the token the Maia options are disabled with "No server access token on this device — enter it in Settings"', () => {
     render(<PlayPanel />);
     setProbe({ status: 'error', error: 'Access token required or wrong', lastProbe: 1 });
     expect(option(/Maia 1500/).disabled).toBe(true);
-    expect(option(/Maia 1500/).title).toBe('Needs the server access token');
+    expect(option(/Maia 1500/).title).toBe('No server access token on this device — enter it in Settings');
     expect(screen.getByTestId('maia-unavailable').textContent).toBe(
-      'Human-like (Maia): Needs the server access token',
+      'Human-like (Maia): No server access token on this device — enter it in Settings',
     );
     expect(option(/1500 Elo/).disabled).toBe(false);
   });
@@ -451,6 +451,6 @@ describe('PlayPanel: human-like opponents (Maia, M23-2)', () => {
     expect(strength().value).toBe('maia-1500');
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     expect(usePlayStore.getState().mode).toBe('idle');
-    expect(screen.getByText('Maia 1500 cannot play: Needs the server access token.')).toBeTruthy();
+    expect(screen.getByText('Maia 1500 cannot play: No server access token on this device — enter it in Settings.')).toBeTruthy();
   });
 });

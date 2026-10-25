@@ -1,7 +1,7 @@
 import type { EngineDescriptor } from '@daisychess/engine-core';
 import type { ServerProbeState } from '../engine/registry';
-import { UNAUTHORIZED_MESSAGE } from '../store/analysisStore';
-import { NEEDS_TOKEN_MESSAGE, SERVER_UNAVAILABLE_MESSAGE } from './opponent';
+import { authMessage, isAuthError } from '../server/tokenMessages';
+import { SERVER_UNAVAILABLE_MESSAGE } from './opponent';
 
 /**
  * Whether the human-like opponents (Maia on the engine server, ADR-019) can be chosen, derived
@@ -10,8 +10,8 @@ import { NEEDS_TOKEN_MESSAGE, SERVER_UNAVAILABLE_MESSAGE } from './opponent';
  *
  * - probe ok + `welcome.engines` lists enabled `style: 'human'` engines → available (per level:
  *   the engine `maia-<rating>` must be listed and enabled);
- * - the server answered with a restricted welcome (token missing/wrong) → "Needs the server
- *   access token";
+ * - the server answered with a restricted welcome (token missing/wrong) → "No server access token on
+ *   this device" or "Server access token was rejected" (see server/tokenMessages);
  * - any other failure → "Server unavailable"; no human engines → "Not offered by the server";
  * - not probed yet / probing → `pending` (the panel probes on mount; a start is not refused).
  */
@@ -34,8 +34,8 @@ export function humanAvailability(probe: ServerProbeState): HumanAvailability {
   if (probe.status === 'error') {
     return {
       ok: false,
-      reason: probe.error?.includes(UNAUTHORIZED_MESSAGE)
-        ? NEEDS_TOKEN_MESSAGE
+      reason: isAuthError(probe.error)
+        ? authMessage()
         : SERVER_UNAVAILABLE_MESSAGE,
     };
   }

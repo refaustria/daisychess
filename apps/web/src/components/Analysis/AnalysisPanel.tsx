@@ -19,17 +19,17 @@ import {
 } from '../../engine/registry';
 import {
   ENGINE_SETTING_FIELDS,
-  isAuthError,
   isRemoteKey,
   MAX_MULTIPV,
   newInstance,
-  UNAUTHORIZED_HINT,
   useAnalysisStore,
   type AnalysisLine,
   type EngineInstanceState,
   type EngineSettingsOverride,
   type EngineSettingsPatch,
 } from '../../store/analysisStore';
+import { authMessage, displayError, isAuthError } from '../../server/tokenMessages';
+import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import { usePreviewStore } from '../../store/previewStore';
 import styles from './AnalysisPanel.module.css';
 
@@ -265,7 +265,7 @@ function EnginePicker() {
           )}
           {probe.status === 'error' && isAuthError(probe.error) && (
             <p className={styles.hint} data-testid="auth-hint">
-              {UNAUTHORIZED_HINT}
+              {authMessage()} <OpenSettingsButton className={styles.linkButton} />
             </p>
           )}
           {probe.status === 'error' && (
@@ -446,12 +446,12 @@ export function AnalysisPanel() {
     <>
       <p className={styles.empty}>
         {inst.status === 'error'
-          ? (inst.backendError ?? inst.error ?? 'Engine unavailable.')
+          ? displayError(inst.backendError ?? inst.error ?? 'Engine unavailable.')
           : 'Thinking…'}
       </p>
       {inst.status === 'error' && isAuthError(inst.backendError ?? inst.error) && (
         <p className={styles.authHint} data-testid="auth-hint">
-          {UNAUTHORIZED_HINT}
+          <OpenSettingsButton className={styles.linkButton} />
         </p>
       )}
     </>

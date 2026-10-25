@@ -214,3 +214,15 @@
   height: 1.1rem;
   accent-color: var(--accent);
 }
+
+.settingsLink {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}

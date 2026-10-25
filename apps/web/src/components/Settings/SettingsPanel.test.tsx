@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useUiStore } from '../../store/uiStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -78,5 +79,33 @@ describe('SettingsPanel', () => {
     fireEvent.change(select, { target: { value: 'browser' } });
     expect(useSettingsStore.getState().reviewEngine).toBe('browser');
     useSettingsStore.getState().set({ reviewEngine: 'auto' });
+  });
+});
+
+describe('SettingsPanel: setup link', () => {
+  it('"Copy link for another device" is enabled only with a stored token; copies and warns', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    useSettingsStore.getState().setServerToken('');
+    render(<SettingsPanel />);
+    const copy = screen.getByRole('button', { name: 'Copy link for another device' }) as HTMLButtonElement;
+    expect(copy.disabled).toBe(true);
+    cleanup();
+    useSettingsStore.getState().setServerToken('tok en');
+    render(<SettingsPanel />);
+    const copy2 = screen.getByRole('button', { name: 'Copy link for another device' }) as HTMLButtonElement;
+    expect(copy2.disabled).toBe(false);
+    fireEvent.click(copy2);
+    const warning = await screen.findByTestId('setup-link-warning');
+    expect(warning.textContent).toContain('Anyone with this link can use your engine server.');
+    expect(writeText).toHaveBeenCalledWith(`${location.origin}${location.pathname}#setup-token=tok%20en`);
+    useSettingsStore.getState().setServerToken('');
+  });
+
+  it('focuses the token field when asked via the ui store', () => {
+    useUiStore.getState().openServerTokenSettings();
+    render(<SettingsPanel />);
+    expect(document.activeElement).toBe(screen.getByLabelText('Server access token'));
+    expect(useUiStore.getState().focusServerToken).toBe(false);
   });
 });

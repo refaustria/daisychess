@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { NO_TOKEN_MESSAGE } from '../../server/tokenMessages';
+import { useUiStore } from '../../store/uiStore';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -298,8 +300,11 @@ describe('AnalysisPanel', () => {
     });
     single({ key: REMOTE, status: 'error', lines: [], backendError: UNAUTHORIZED_MESSAGE });
     render(<AnalysisPanel />);
-    expect(screen.getByText(UNAUTHORIZED_MESSAGE, { selector: 'p' })).toBeTruthy();
-    expect(screen.getByTestId('auth-hint').textContent).toMatch(/Settings tab/);
+    expect(screen.getByText(NO_TOKEN_MESSAGE, { selector: 'p' })).toBeTruthy();
+    expect(screen.getAllByTestId('open-token-settings').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByTestId('open-token-settings')[0]!);
+    expect(useUiStore.getState().activeTab).toBe('settings');
+    expect(useUiStore.getState().focusServerToken).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /Engines/ }));
     expect(within(screen.getByTestId('engine-picker')).getByTestId('auth-hint')).toBeTruthy();
   });

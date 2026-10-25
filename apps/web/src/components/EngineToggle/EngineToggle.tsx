@@ -1,13 +1,13 @@
 import { lockText, useHumanGameLockReason } from '../../live/lock';
+import { authMessage, isAuthError } from '../../server/tokenMessages';
 import {
-  isAuthError,
   isRemoteKey,
-  UNAUTHORIZED_HINT,
   useAnalysisStore,
   usePrimaryAnalysis,
   type AnalysisState,
   type EngineInstanceState,
 } from '../../store/analysisStore';
+import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import styles from './EngineToggle.module.css';
 
 /** Status line of the (primary) engine; `remote` marks a server engine. */
@@ -56,8 +56,9 @@ export function EngineToggle() {
   const locked = lock !== null;
   const primary = usePrimaryAnalysis();
   const s = { ...primary, enabled, terminal, remote };
-  const text = engineStatusText(s);
-  const auth = s.status === 'error' && remote && isAuthError(text);
+  const rawText = engineStatusText(s);
+  const auth = s.status === 'error' && remote && isAuthError(rawText);
+  const text = auth ? authMessage() : rawText;
   return (
     <div className={styles.engine}>
       <label
@@ -81,7 +82,7 @@ export function EngineToggle() {
         data-testid="engine-status"
         title={
           auth
-            ? `${text}. ${UNAUTHORIZED_HINT}`
+            ? text
             : s.engineName
               ? `${s.engineName} (${s.capabilities?.build ?? 'browser'})`
               : text
@@ -89,8 +90,8 @@ export function EngineToggle() {
         aria-live="polite"
       >
         {text}
-        {auth && <span className={styles.hint}> (see Settings)</span>}
       </span>
+      {auth && <OpenSettingsButton className={styles.retry} />}
       {s.status === 'error' && enabled && (
         <button type="button" className={styles.retry} onClick={() => retry(primary.key)}>
           Retry

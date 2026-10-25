@@ -412,3 +412,15 @@ button:disabled {
   margin: 0.25rem 0 0;
   padding-left: 1.1rem;
 }
+
+.settingsLink {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}

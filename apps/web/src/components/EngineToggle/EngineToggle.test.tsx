@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { NO_TOKEN_MESSAGE, TOKEN_REJECTED_MESSAGE } from '../../server/tokenMessages';
+import { useSettingsStore } from '../../store/settingsStore';
+import { useUiStore } from '../../store/uiStore';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { useLiveStore } from '../../live/liveStore';
 import { usePlayStore } from '../../play/playStore';
@@ -78,8 +81,24 @@ describe('engineStatusText', () => {
     });
     render(<EngineToggle />);
     const status = screen.getByTestId('engine-status');
-    expect(status.textContent).toBe('Access token required or wrong (see Settings)');
-    expect(status.getAttribute('title')).toMatch(/Settings tab/);
+    expect(status.textContent).toBe(NO_TOKEN_MESSAGE);
+    fireEvent.click(screen.getByTestId('open-token-settings'));
+    expect(useUiStore.getState().activeTab).toBe('settings');
+  });
+
+  it('a stored but refused token says it was rejected', () => {
+    useSettingsStore.getState().setServerToken('abc');
+    const key = 'remote:stockfish';
+    useAnalysisStore.setState({
+      enabled: true,
+      enabledEngines: [key],
+      instances: {
+        [key]: { key, status: 'error', lines: [], backendError: UNAUTHORIZED_MESSAGE },
+      },
+    });
+    render(<EngineToggle />);
+    expect(screen.getByTestId('engine-status').textContent).toBe(TOKEN_REJECTED_MESSAGE);
+    useSettingsStore.getState().setServerToken('');
   });
 });
 

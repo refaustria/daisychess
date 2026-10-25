@@ -1,4 +1,5 @@
 import type { EngineDescriptor as ServerEngine, Limits } from '@daisychess/engine-core';
+import { authMessage, isAuthError } from '../server/tokenMessages';
 import {
   budgetReason,
   currentMemoryBudget,
@@ -279,7 +280,9 @@ export function serverEngines(
     probe.status === 'probing' || probe.status === 'idle'
       ? 'Checking the server…'
       : probe.status === 'error'
-        ? `Server unavailable: ${probe.error ?? 'unknown error'}`
+        ? isAuthError(probe.error)
+          ? authMessage()
+          : `Server unavailable: ${probe.error ?? 'unknown error'}`
         : 'Not offered by the server';
   const wanted = enabledKeys.filter((k) => k.startsWith('remote:'));
   // Before the first answer, offer the default server engine as a placeholder.

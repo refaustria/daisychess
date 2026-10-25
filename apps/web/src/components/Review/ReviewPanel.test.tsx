@@ -116,7 +116,7 @@ describe('ReviewPanel', () => {
   });
 
   it('fallback notice is shown in one line while running and after the review', () => {
-    const notice = 'Server unavailable (Access token required or wrong) — reviewing in the browser';
+    const notice = 'No server access token on this device — enter it in Settings — reviewing in the browser';
     useGameStore.getState().loadPgn(PGN);
     useReviewStore.setState({
       status: 'running',
@@ -229,7 +229,7 @@ describe('ReviewPanel', () => {
   it('error of an auto review: the engine failure with the hint, no "run Deep" notice', () => {
     act(() => useGameStore.getState().loadPgn(PGN));
     const error =
-      'the browser engine could not start (wasm-simd is not enabled). Set the server access token to review on the server.';
+      'the browser engine could not start (wasm-simd is not enabled). Enter the server access token in Settings to review on the server.';
     useReviewStore.setState({
       status: 'error',
       error,

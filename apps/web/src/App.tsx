@@ -19,6 +19,7 @@ import { ImportPanel } from './components/Import/ImportPanel';
 import { AccountChip } from './components/LichessAccount/AccountChip';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
+import { Notice } from './components/Notice/Notice';
 import { PlayIndicator } from './components/Play/PlayIndicator';
 import { PlayerBar, useBoardPlayers } from './components/PlayerBar/PlayerBar';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
@@ -229,6 +230,7 @@ export function App() {
           <ThemeToggle />
         </div>
       </header>
+      <Notice />
       <main className={styles.main}>
         <BoardColumn>
           <ConnectedEvalBar />

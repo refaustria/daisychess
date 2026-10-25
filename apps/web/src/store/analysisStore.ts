@@ -28,6 +28,7 @@ import {
 import { browserEnginePool } from '../engine/wasmPool';
 import { allowWasmRetry, clearWasmNotice, subscribeWasmHealth, wasmHealth } from '../engine/wasmHealth';
 import { currentFen, useGameStore } from './gameStore';
+import { isAuthError, UNAUTHORIZED_MESSAGE } from '../server/tokenMessages';
 import { useSettingsStore } from './settingsStore';
 
 export type { AnalysisStatus, EngineCapabilities, EngineKey, TerminalKind };
@@ -371,10 +372,7 @@ export const RECONNECT_MAX_ATTEMPTS = 3;
 export const RECONNECT_BASE_MS = 1000;
 
 /** Shown when the server requires an access token and none or a wrong one was sent (ADR-010). */
-export const UNAUTHORIZED_MESSAGE = 'Access token required or wrong';
-export const UNAUTHORIZED_HINT = 'Enter the server access token in the Settings tab.';
-export const isAuthError = (message: string | undefined): boolean =>
-  message !== undefined && message.includes(UNAUTHORIZED_MESSAGE);
+export { UNAUTHORIZED_MESSAGE, isAuthError };
 
 /** Maps a remote load/search failure to a short user-facing message. */
 export function describeRemoteError(err: unknown): string {

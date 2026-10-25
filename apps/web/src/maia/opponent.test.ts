@@ -1,5 +1,6 @@
 import type { EngineInfo, PolicyEntry } from '@daisychess/engine-core';
 import { describe, expect, it } from 'vitest';
+import { NO_TOKEN_MESSAGE } from '../server/tokenMessages';
 import {
   BUSY_BACKOFF_MS,
   chooseMove,
@@ -8,7 +9,6 @@ import {
   MAIA_BUSY_MESSAGE,
   MAX_THINK_MS,
   MIN_THINK_MS,
-  NEEDS_TOKEN_MESSAGE,
   policyEntropy,
   samplePolicy,
   thinkDelayMs,
@@ -240,7 +240,7 @@ describe('MaiaOpponent (real RemoteEngineClient on a fake server)', () => {
     await maia.dispose();
   });
 
-  it('missing/wrong token (restricted welcome): load fails with "Needs the server access token"', async () => {
+  it('missing/wrong token (restricted welcome): load fails with "No server access token on this device — enter it in Settings"', async () => {
     const server = new FakeMaiaServer();
     server.welcome = {
       ...MAIA_WELCOME,
@@ -249,7 +249,7 @@ describe('MaiaOpponent (real RemoteEngineClient on a fake server)', () => {
     };
     const maia = server.opponent();
     await expect(maia.load()).rejects.toMatchObject({
-      message: NEEDS_TOKEN_MESSAGE,
+      message: NO_TOKEN_MESSAGE,
       code: 'unauthorized',
     });
     await maia.dispose();

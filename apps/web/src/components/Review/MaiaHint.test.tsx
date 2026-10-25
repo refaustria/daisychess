@@ -13,7 +13,8 @@ import { SCHOLAR_TIMED_PGN, scholarSummary } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { MoveCommentary } from './MoveCommentary';
-import { MAIA_TOKEN_NOTE, ReviewPanel } from './ReviewPanel';
+import { NO_TOKEN_HINTS_NOTE } from '../../server/tokenMessages';
+import { ReviewPanel } from './ReviewPanel';
 
 const PGN =
   '[White "Ann"]\n[Black "Bob"]\n[WhiteElo "1480"]\n[BlackElo "1510"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
@@ -199,7 +200,7 @@ describe('Maia hints in the review panel', () => {
     setMaiaHintClientFactory(server.createClient, { sleep: instantSleep() });
     done();
     render(<ReviewPanel />);
-    await waitFor(() => expect(screen.getByTestId('maia-token-note').textContent).toBe(MAIA_TOKEN_NOTE));
+    await waitFor(() => expect(screen.getByTestId('maia-token-note').textContent).toBe(NO_TOKEN_HINTS_NOTE));
     expect(screen.queryByTestId('maia-summary')).toBeNull();
     act(() => useGameStore.getState().goTo(6));
     expect(screen.queryByTestId('move-card-maia')).toBeNull();

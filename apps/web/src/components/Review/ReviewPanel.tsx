@@ -18,6 +18,8 @@ import { TimeTroubleBadge } from './TimeTroubleBadge';
 import { MoveCommentary } from './MoveCommentary';
 import { OpeningFocusBlock } from './OpeningFocusBlock';
 import { ReviewTour } from './ReviewTour';
+import { authHintsNote } from '../../server/tokenMessages';
+import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import styles from './ReviewPanel.module.css';
 
 type PresetKey = keyof typeof REVIEW_PRESETS;
@@ -199,7 +201,6 @@ function TimeSummary({ summary }: { summary: ReviewSummary }) {
   );
 }
 
-export const MAIA_TOKEN_NOTE = 'Human-like hints need the server access token';
 
 /**
  * Requests the Maia hints (M23-3) once the review of the game on the board is done (computed or
@@ -244,9 +245,12 @@ function MaiaSummary({ summary }: { summary: ReviewSummary }) {
   if (!state) return null;
   if (state.status === 'unauthorized') {
     return (
-      <p className={styles.muted} data-testid="maia-token-note">
-        {MAIA_TOKEN_NOTE}
-      </p>
+      <>
+        <p className={styles.muted} data-testid="maia-token-note">
+          {authHintsNote()}
+        </p>
+        <OpenSettingsButton className={styles.settingsLink} />
+      </>
     );
   }
   if (!counts || !state.levels || state.status === 'off') return null;

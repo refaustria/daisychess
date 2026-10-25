@@ -23,7 +23,7 @@ import {
   BROWSER_UNAVAILABLE_NOTICE,
   REVIEW_PRESETS,
   SERVER_SETTING_HINT,
-  SERVER_TOKEN_HINT,
+  serverTokenHint,
   browserFailureMessage,
   disposeReviewEngine,
   gameToBatch,
@@ -129,7 +129,7 @@ describe('browserFailureMessage', () => {
     );
     expect(
       browserFailureMessage(err, { ...base, serverError: remoteError('token', 'unauthorized') }),
-    ).toBe(`the browser engine could not start (wasm-simd is not enabled). ${SERVER_TOKEN_HINT}`);
+    ).toBe(`the browser engine could not start (wasm-simd is not enabled). ${serverTokenHint()}`);
     expect(browserFailureMessage(err, { ...base, serverError: remoteError('x', 'closed') })).toBe(
       'the browser engine could not start (wasm-simd is not enabled); the server is unavailable too (not reachable).',
     );
@@ -211,7 +211,7 @@ describe('reviewStore: browser engine load failures', () => {
     await useReviewStore.getState().start({ ...REVIEW_PRESETS.fast });
     expect(useReviewStore.getState()).toMatchObject({
       status: 'error',
-      error: `the browser engine could not start (wasm-simd is not enabled). ${SERVER_TOKEN_HINT}`,
+      error: `the browser engine could not start (wasm-simd is not enabled). ${serverTokenHint()}`,
     });
     // The server was asked once, not twice.
     expect(serverCreated).toBe(1);
@@ -301,7 +301,7 @@ describe('reviewStore: browser without WebAssembly SIMD', () => {
     stop();
     expect(list.at(-1)).toBe('error');
     expect(useReviewStore.getState().error).toBe(
-      'the browser engine could not start (wasm-simd is not enabled). Set the server access token to review on the server.',
+      'the browser engine could not start (wasm-simd is not enabled). Enter the server access token in Settings to review on the server.',
     );
     expect(browserCreated).toBe(0);
     expect(wasmHealth().disabled).toBe('wasm-simd is not enabled');

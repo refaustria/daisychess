@@ -506,7 +506,7 @@ describe('after the book (M23-2)', () => {
     drill().start(sicilian, 'white');
     play('e4');
     await vi.waitFor(() =>
-      expect(drill().message).toBe('Maia 1500 cannot play: Needs the server access token.'),
+      expect(drill().message).toBe('Maia 1500 cannot play: No server access token on this device — enter it in Settings.'),
     );
     expect(drill().status).toBe('done');
     expect(drill().summary?.reason).toBe('end');

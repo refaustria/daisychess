@@ -108,7 +108,7 @@ test.describe('human-like review hints (Maia)', () => {
     await loadPgn(page, GAME);
     await expect(panel).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
     await expect(panel.getByTestId('maia-token-note')).toHaveText(
-      'Human-like hints need the server access token',
+      'Human-like hints need the server access token — enter it in Settings',
       { timeout: 15_000 },
     );
     await expect(panel.getByTestId('move-card-maia')).toHaveCount(0);

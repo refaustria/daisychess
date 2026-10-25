@@ -1,6 +1,9 @@
 import { boardThemes, findBoardTheme } from '@daisychess/ui-theme/boardThemes';
 import { pieceSets } from '@daisychess/ui-theme/pieceSets';
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { SERVER_TOKEN_INPUT_ID } from '../../server/tokenMessages';
+import { SETUP_LINK_WARNING, setupLink } from '../../setup/setupLink';
+import { useUiStore } from '../../store/uiStore';
 import {
   HIGHLIGHT_STYLES,
   MAX_SERVER_TOKEN_LENGTH,
@@ -75,8 +78,25 @@ function ServerTokenField() {
   const [draft, setDraft] = useState(token);
   const [shown, setShown] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [linkCopied, setLinkCopied] = useState<'copied' | 'failed' | null>(null);
   const id = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusRequested = useUiStore((s) => s.focusServerToken);
+  const clearFocus = useUiStore((s) => s.clearFocusServerToken);
+  useEffect(() => {
+    if (!focusRequested) return;
+    inputRef.current?.focus();
+    clearFocus();
+  }, [focusRequested, clearFocus]);
   const dirty = normalizeToken(draft) !== token;
+  const copyLink = () => {
+    const link = setupLink(token);
+    const write = navigator.clipboard?.writeText(link) ?? Promise.reject(new Error('no clipboard'));
+    write.then(
+      () => setLinkCopied('copied'),
+      () => setLinkCopied('failed'),
+    );
+  };
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     setServerToken(draft);
@@ -88,12 +108,13 @@ function ServerTokenField() {
       <span id={`${id}-legend`} className={styles.legend}>
         Engine server
       </span>
-      <label className={styles.field} htmlFor={`${id}-token`}>
+      <label className={styles.field} htmlFor={SERVER_TOKEN_INPUT_ID}>
         Server access token
       </label>
       <div className={styles.tokenRow}>
         <input
-          id={`${id}-token`}
+          id={SERVER_TOKEN_INPUT_ID}
+          ref={inputRef}
           className={styles.tokenInput}
           type={shown ? 'text' : 'password'}
           value={draft}
@@ -125,6 +146,22 @@ function ServerTokenField() {
             : 'Token removed.'
           : 'Only needed when the engine server requires one. Stored in this browser.'}
       </p>
+      <div className={styles.tokenRow}>
+        <button
+          type="button"
+          className={styles.reset}
+          disabled={token === ''}
+          onClick={copyLink}
+        >
+          Copy link for another device
+        </button>
+      </div>
+      {linkCopied !== null && (
+        <p className={styles.help} role="status" data-testid="setup-link-warning">
+          {linkCopied === 'copied' ? 'Link copied. ' : 'Could not copy the link. '}
+          {SETUP_LINK_WARNING}
+        </p>
+      )}
     </form>
   );
 }

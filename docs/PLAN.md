@@ -162,3 +162,4 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M23-1 | Server: build/fetch Lc0 (CPU backend, no AVX2) + Maia 1100–1900 weights (pinned, checksummed, fetch script), engine pool entries `maia-<elo>`, protocol additions (engine list with `style: human`, `nodes` limit), ADR-019 | architect | done |
 | M23-2 | Web: Maia levels as opponent in Play and as drill opponent (server only, fallback message without token), strength picker "Human-like (Maia 1500)" | senior | done |
 | M23-3 | Review hint: per mistake, Maia's most likely move at the player's level (rating from PGN headers or chosen), "typical at 1500" note; time-trouble aware (M22) | senior | done |
+| M23-4 | Token UX: per-device wording (missing vs rejected vs unreachable), "Open Settings" button, setup link `#setup-token=` for another device | worker | done |

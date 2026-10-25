@@ -214,14 +214,13 @@ test.describe('server access token', () => {
     await page.goto('/');
     await expect(page.locator('cg-board')).toBeVisible();
     const status = page.getByTestId('engine-status');
-    await expect(status).toContainText('Access token required or wrong', { timeout: 20_000 });
-    await expect(status).toContainText('see Settings');
-    await expect(page.getByTestId('auth-hint').first()).toContainText('Settings tab');
+    await expect(status).toContainText('No server access token on this device', { timeout: 20_000 });
+    await expect(page.getByTestId('open-token-settings').first()).toBeVisible();
 
     // The picker's server probe fails the same way.
     await page.getByRole('button', { name: /^Engines/ }).click();
     await expect(page.getByTestId('engine-picker')).toContainText(
-      'Server unavailable: Access token required or wrong',
+      'No server access token on this device — enter it in Settings',
       { timeout: 15_000 },
     );
     await page.keyboard.press('Escape');
@@ -232,7 +231,7 @@ test.describe('server access token', () => {
     await expect(field).toHaveAttribute('type', 'password');
     await field.fill('wrong');
     await page.getByRole('button', { name: 'Save token' }).click();
-    await expect(status).toContainText('Access token required or wrong', { timeout: 20_000 });
+    await expect(status).toContainText('Server access token was rejected', { timeout: 20_000 });
 
     await field.fill(TOKEN);
     await page.getByRole('button', { name: 'Save token' }).click();

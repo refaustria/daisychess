@@ -278,7 +278,7 @@ describe('reviewStore: review engine selection (ADR-014)', () => {
     remote.load = () => Promise.reject(remoteError('Engine server: access token', 'unauthorized'));
     await useReviewStore.getState().start();
     expect(useReviewStore.getState().engineNotice).toBe(
-      'Server unavailable (Access token required or wrong) — reviewing in the browser',
+      'No server access token on this device — enter it in Settings — reviewing in the browser',
     );
     expect(useReviewStore.getState().status).toBe('done');
     await useReviewStore.getState().start({ depth: 5 });
@@ -300,7 +300,7 @@ describe('reviewStore: review engine selection (ADR-014)', () => {
     useSettingsStore.getState().set({ reviewEngine: 'server' });
     await useReviewStore.getState().start({ depth: 5 });
     expect(useReviewStore.getState().engineNotice).toBe(
-      'Server unavailable (Access token required or wrong) — reviewing in the browser',
+      'No server access token on this device — enter it in Settings — reviewing in the browser',
     );
   });
 
