@@ -292,3 +292,28 @@ test('layout: player bars with large clocks beside the board (desktop and mobile
   await page.screenshot({ path: `${SHOTS}/layout-right-mobile.png`, fullPage: true });
   await page.getByRole('button', { name: 'Stop' }).click();
 });
+
+test('play from the current position keeps the opening line in the move list', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.getByRole('tab', { name: 'Import' }).click();
+  await page.getByLabel('PGN text').fill('1. e4 e5 2. Nf3 Nc6');
+  await page.getByRole('button', { name: 'Load PGN' }).click();
+  await page.getByRole('button', { name: 'Last move' }).click();
+  await expect(page.getByLabel('FEN')).toHaveValue(/ w KQkq - 2 3$/);
+  await page.getByRole('tab', { name: 'Play' }).click();
+  await expect(page.getByRole('radio', { name: 'Current position' })).toBeEnabled();
+  await page.getByRole('radio', { name: 'Current position' }).check();
+  await page.getByRole('radio', { name: 'White' }).check();
+  await page.getByLabel('Thinking time').selectOption({ label: '0.1 s per move' });
+  await page.getByLabel('Time control').selectOption('none');
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByTestId('play-status')).toHaveText(/Your move|Engine thinking/);
+  await page.getByRole('tab', { name: 'Moves' }).click();
+  const list = page.getByTestId('movelist');
+  for (const san of ['e4', 'e5', 'Nf3', 'Nc6']) await expect(list).toContainText(san);
+  await page.getByRole('tab', { name: 'Play' }).click();
+  await expect(page.getByRole('button', { name: 'Take back' })).toBeDisabled();
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: `${SHOTS}/play-from-here.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Stop' }).click();
+});

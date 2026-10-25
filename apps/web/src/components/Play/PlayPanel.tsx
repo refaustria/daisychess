@@ -16,10 +16,11 @@ import {
   takeBackPlies,
   usePlayStore,
   type ColorChoice,
+  type PlayFrom,
   type PlaySetup,
 } from '../../play/playStore';
 import { findStrength, MOVE_TIMES, STRENGTH_PRESETS } from '../../play/strength';
-import { useGameStore, type Orientation } from '../../store/gameStore';
+import { START_FEN, useGameStore, type Orientation } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
 import styles from './PlayPanel.module.css';
 
@@ -27,6 +28,11 @@ const COLORS: { id: ColorChoice; label: string }[] = [
   { id: 'white', label: 'White' },
   { id: 'black', label: 'Black' },
   { id: 'random', label: 'Random' },
+];
+
+const FROMS: { id: PlayFrom; label: string }[] = [
+  { id: 'start', label: 'Start position' },
+  { id: 'current', label: 'Current position' },
 ];
 
 const colorName = (c: Orientation) => (c === 'white' ? 'White' : 'Black');
@@ -175,8 +181,10 @@ const summaryOf = (playerColor: Orientation, setup: PlaySetup): string =>
 /** "Play vs Engine": setup, running game controls and the result. */
 export function PlayPanel() {
   const play = usePlayStore();
-  const plies = useGameStore((g) => takeBackPlies(g, play.playerColor));
+  const plies = useGameStore((g) => takeBackPlies(g, play.playerColor, play.fromPly));
   const atTip = useGameStore((g) => g.ply === g.moves.length);
+  const hasPosition = useGameStore((g) => g.moves.length > 0 || g.startFen !== START_FEN);
+  const hasMoves = useGameStore((g) => g.moves.length > 0);
   const setTab = useUiStore((s) => s.setActiveTab);
   const id = useId();
   const lock = useHumanGameLockReason();
@@ -209,6 +217,29 @@ export function PlayPanel() {
               </label>
             ))}
           </div>
+        </fieldset>
+        <fieldset className={styles.fieldset}>
+          <legend className={styles.legend}>Start from</legend>
+          <div className={styles.segmented}>
+            {FROMS.map((f) => (
+              <label key={f.id} className={styles.segment}>
+                <input
+                  type="radio"
+                  name={`${id}-from`}
+                  value={f.id}
+                  checked={(hasPosition ? setup.from : 'start') === f.id}
+                  disabled={f.id === 'current' && !hasPosition}
+                  onChange={() => play.setSetup({ from: f.id })}
+                />
+                <span>{f.label}</span>
+              </label>
+            ))}
+          </div>
+          {!hasPosition && (
+            <p className={styles.note}>
+              Play or load some moves first to continue from the current position.
+            </p>
+          )}
         </fieldset>
         <label className={styles.field}>
           <span>Strength</span>
@@ -261,6 +292,15 @@ export function PlayPanel() {
         >
           Start
         </button>
+        {hasMoves && (
+          <button
+            type="button"
+            disabled={lock === 'live' || lock === 'room'}
+            onClick={() => play.start({ from: 'current' })}
+          >
+            Play from here
+          </button>
+        )}
       </form>
     );
   }
@@ -323,6 +363,11 @@ export function PlayPanel() {
         <button type="button" onClick={() => void reviewThisGame(setTab)}>
           Review this game
         </button>
+        {hasMoves && (
+          <button type="button" onClick={() => play.start({ from: 'current' })}>
+            Play from here
+          </button>
+        )}
         <button type="button" onClick={play.stop}>
           New setup
         </button>

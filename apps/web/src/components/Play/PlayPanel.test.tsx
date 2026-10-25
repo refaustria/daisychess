@@ -230,3 +230,52 @@ describe('PlayPanel', () => {
     }
   });
 });
+
+describe('PlayPanel play from the current position', () => {
+  it('the “Current position” option is disabled at the start position without moves', () => {
+    render(<PlayPanel />);
+    expect(
+      (screen.getByRole('radio', { name: 'Current position' }) as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(screen.getByText(/Play or load some moves first/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Play from here' })).toBeNull();
+  });
+
+  it('Start with “Current position” keeps the moves', async () => {
+    useGameStore.getState().loadPgn('1. e4 e5');
+    render(<PlayPanel />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Current position' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(usePlayStore.getState().mode).toBe('playing');
+    expect(usePlayStore.getState().fromPly).toBe(2);
+    expect(useGameStore.getState().moves).toHaveLength(2);
+    expect(takeBack().disabled).toBe(true); // opening moves are not taken back
+  });
+
+  it('“Play from here” on the idle and finished states; the review sees all plies', async () => {
+    useGameStore.getState().loadPgn('1. e4 e5');
+    render(<PlayPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Play from here' }));
+    expect(usePlayStore.getState().mode).toBe('playing');
+    act(() => {
+      useGameStore.getState().makeMove('g1', 'f3');
+    });
+    await waitFor(() => expect(useGameStore.getState().moves).toHaveLength(4));
+    fireEvent.click(screen.getByRole('button', { name: 'Resign' }));
+    let plies = 0;
+    reviewStart.mockImplementationOnce(() => {
+      plies = useGameStore.getState().moves.length;
+      return Promise.resolve(undefined);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Review this game' }));
+    await waitFor(() => expect(reviewStart).toHaveBeenCalled());
+    expect(plies).toBe(4); // opening line + the played-out part
+    expect(
+      useGameStore
+        .getState()
+        .moves.slice(0, 2)
+        .map((m) => m.san),
+    ).toEqual(['e4', 'e5']);
+    expect(screen.getByRole('button', { name: 'Play from here' })).toBeTruthy();
+  });
+});

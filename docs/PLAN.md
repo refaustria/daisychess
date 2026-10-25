@@ -123,3 +123,12 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M17-1 | Review engine setting (browser / server, default server when configured and reachable), review runs through the remote engine with the server's max threads, fallback to WASM with a notice; progress shows where it runs | senior | done |
+
+## M18 — Openings trainer (decided 2026-10-25: drill + play-out first, library and repertoire later)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M18-1 | Openings data with move lines (generator keeps the PGN of each variation), book model (book moves at a position, named sub-variations), Openings tab: opening search/picker, line walk-through, Drill mode (user plays one side, app plays book moves, engine-checked feedback on deviations, retry, mistake memory with spaced repetition) | senior | in progress |
+| M18-2 | Play vs engine from the current position (keeps the moves so far in the game, review covers the whole game) as the hand-off from the drill | worker | done |
+| M18-3 | Review with opening focus: "left the book at move N, book move was …, eval swing"; drill → play-out → review flow wired end-to-end; summary of drill results | senior | todo |
+| M18-4 | Opening library view (engine eval, alternatives, explorer stats per move) | senior | todo |
+| M18-5 | Repertoire from imported games: openings played, win rates, first deviation from book, training recommendations | senior | todo |

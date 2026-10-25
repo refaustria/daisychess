@@ -3,7 +3,14 @@ import { useAnalysisStore } from '../store/analysisStore';
 import { START_FEN, useGameStore } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { FakePlayEngine } from './fakePlayEngine';
-import { configurePlay, PLAY_STORAGE_KEY, readPlaySetup, resetPlay, takeBackPlies, usePlayStore } from './playStore';
+import {
+  configurePlay,
+  PLAY_STORAGE_KEY,
+  readPlaySetup,
+  resetPlay,
+  takeBackPlies,
+  usePlayStore,
+} from './playStore';
 
 const g = () => useGameStore.getState();
 const p = () => usePlayStore.getState();
@@ -88,7 +95,11 @@ describe('playStore', () => {
     expect(p().premoves).toEqual(['d2d4', 'g1f3']);
     await flush();
     // Engine reply, premove d4, engine reply, premove Nf3, engine reply.
-    expect(g().moves.map((m) => m.san).filter((_, i) => i % 2 === 0)).toEqual(['e4', 'd4', 'Nf3']);
+    expect(
+      g()
+        .moves.map((m) => m.san)
+        .filter((_, i) => i % 2 === 0),
+    ).toEqual(['e4', 'd4', 'Nf3']);
     expect(p().premoves).toEqual([]);
     p().addPremove('a2a3');
     p().stop();
@@ -175,7 +186,13 @@ describe('playStore', () => {
 
   it('sanitizes the setup', () => {
     p().start({ strength: 'bogus', moveTime: 42 });
-    expect(p().setup).toEqual({ color: 'white', strength: '1500', moveTime: 500, timeControl: null });
+    expect(p().setup).toEqual({
+      color: 'white',
+      strength: '1500',
+      moveTime: 500,
+      timeControl: null,
+      from: 'start',
+    });
   });
 });
 
@@ -185,7 +202,12 @@ describe('playStore clock', () => {
 
   beforeEach(async () => {
     nowMs = 1000;
-    await configurePlay({ createEngine: () => engine, extraDelayMs: () => 0, random: () => random, now: () => nowMs });
+    await configurePlay({
+      createEngine: () => engine,
+      extraDelayMs: () => 0,
+      random: () => random,
+      now: () => nowMs,
+    });
     localStorage.clear();
   });
 
@@ -318,13 +340,99 @@ describe('playStore clock', () => {
       strength: '1800',
       moveTime: 1000,
       timeControl: { initialMs: 180_000, incrementMs: 2000 },
+      from: 'start',
     });
     expect(readPlaySetup().timeControl).toEqual({ initialMs: 180_000, incrementMs: 2000 });
     p().setSetup({ timeControl: null });
     expect(readPlaySetup().timeControl).toBeNull();
     localStorage.setItem(PLAY_STORAGE_KEY, '{not json');
-    expect(readPlaySetup()).toEqual({ color: 'white', strength: '1500', moveTime: 500, timeControl: null });
-    localStorage.setItem(PLAY_STORAGE_KEY, JSON.stringify({ color: 'x', timeControl: { initialMs: 1, incrementMs: 0 } }));
-    expect(readPlaySetup()).toMatchObject({ color: 'white', timeControl: { initialMs: 15_000, incrementMs: 0 } });
+    expect(readPlaySetup()).toEqual({
+      color: 'white',
+      strength: '1500',
+      moveTime: 500,
+      timeControl: null,
+      from: 'start',
+    });
+    localStorage.setItem(
+      PLAY_STORAGE_KEY,
+      JSON.stringify({ color: 'x', timeControl: { initialMs: 1, incrementMs: 0 } }),
+    );
+    expect(readPlaySetup()).toMatchObject({
+      color: 'white',
+      timeControl: { initialMs: 15_000, incrementMs: 0 },
+    });
+  });
+});
+
+describe('play from the current position', () => {
+  it('takeBackPlies respects fromPly', () => {
+    g().loadPgn('1. e4 e5 2. Nf3 Nc6');
+    expect(takeBackPlies(g(), 'white')).toBe(2);
+    expect(takeBackPlies(g(), 'white', 3)).toBe(0);
+    expect(takeBackPlies(g(), 'white', 2)).toBe(2);
+  });
+
+  it('keeps the moves, truncates at the shown ply, engine moves first when it is to move', async () => {
+    g().loadPgn('1. e4 e5 2. Nf3 Nc6');
+    const headers = g().headers;
+    g().goTo(3); // after 2. Nf3, Black to move; the later move is discarded
+    p().start({ from: 'current', color: 'white' });
+    expect(p().mode).toBe('playing');
+    expect(p().fromPly).toBe(3);
+    expect(g().headers).toBe(headers);
+    expect(
+      g()
+        .moves.map((m) => m.san)
+        .slice(0, 3),
+    ).toEqual(['e4', 'e5', 'Nf3']);
+    await flush();
+    // Black (engine) to move: it answered, so the user (White) is on move now.
+    expect(g().moves).toHaveLength(4);
+    expect(g().moves[3]!.fen.split(' ')[1]).toBe('w');
+    expect(readPlaySetup().from).toBe('current');
+  });
+
+  it('the user moves first when it is the user’s turn; takeback stops at the base', async () => {
+    g().loadPgn('1. e4 e5');
+    p().start({ from: 'current', color: 'white' });
+    await flush();
+    expect(engine.searches).toHaveLength(0);
+    p().takeBack();
+    expect(g().moves).toHaveLength(2); // nothing of the user's to take back
+    g().makeMove('g1', 'f3');
+    await flush();
+    expect(g().moves).toHaveLength(4);
+    p().takeBack();
+    expect(g().moves).toHaveLength(2);
+    expect(g().ply).toBe(2);
+    expect(p().mode).toBe('playing');
+  });
+
+  it('rematch returns to the same base position', async () => {
+    g().loadPgn('1. e4 e5 2. Nf3 Nc6');
+    p().start({ from: 'current', color: 'white' });
+    g().makeMove('f1', 'b5');
+    await flush();
+    p().resign();
+    expect(g().moves.length).toBeGreaterThan(4);
+    p().rematch();
+    expect(p().mode).toBe('playing');
+    expect(p().fromPly).toBe(4);
+    expect(g().moves.map((m) => m.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6']);
+  });
+
+  it('refuses a terminal position with a message', () => {
+    g().loadPgn('1. f3 e5 2. g4 Qh4#');
+    p().start({ from: 'current', color: 'white' });
+    expect(p().mode).toBe('idle');
+    expect(p().message).toMatch(/Checkmate/);
+    expect(g().moves).toHaveLength(4);
+  });
+
+  it('from start (default) still resets the board', () => {
+    p().start({ color: 'white' });
+    expect(p().fromPly).toBe(0);
+    expect(g().moves).toHaveLength(0);
+    expect(p().setup.from).toBe('start');
   });
 });

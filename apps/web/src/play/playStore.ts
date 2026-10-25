@@ -12,8 +12,22 @@ import { sanitizeSetting, type ClockSetting } from '../clock/timeControls';
 import { PremoveQueue } from '../live/premoves';
 import { useAnalysisStore } from '../store/analysisStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { currentFen, useGameStore, type GameState, type Orientation } from '../store/gameStore';
-import { atTip, type EndReason, type GameResult, type Outcome } from './outcome';
+import {
+  currentFen,
+  START_FEN,
+  useGameStore,
+  type GameState,
+  type MoveRecord,
+  type Orientation,
+} from '../store/gameStore';
+import {
+  atTip,
+  gameOutcome,
+  REASON_TEXT,
+  type EndReason,
+  type GameResult,
+  type Outcome,
+} from './outcome';
 import { PlayController, type CreatePlayEngine, type PlayConfig } from './PlayController';
 import { DEFAULT_MOVE_TIME, DEFAULT_STRENGTH, findStrength, MOVE_TIMES } from './strength';
 
@@ -28,6 +42,20 @@ export interface PlaySetup {
   moveTime: number;
   /** Clock of both sides; null (or missing) = no clock. */
   timeControl?: ClockSetting | null;
+  /**
+   * `start` (default): a new game from the initial position. `current`: continues from the
+   * position shown on the board, keeping the moves so far (later ones are discarded).
+   */
+  from?: PlayFrom;
+}
+
+export type PlayFrom = 'start' | 'current';
+
+/** The game's base: where the played-out part begins (snapshot, used by rematch). */
+export interface PlayBase {
+  startFen: string;
+  moves: MoveRecord[];
+  headers: Record<string, string>;
 }
 
 export interface PlayState {
@@ -46,10 +74,18 @@ export interface PlayState {
   premoves: string[];
   /** The game's clock (null without a time control); stopped when the game is finished. */
   clock: GameClock | null;
+  /** Number of plies that belong to the base (opening line) of this game; takebacks stop there. */
+  fromPly: number;
+  /** Snapshot of the base position (start FEN + moves + headers) of this game, for rematch. */
+  base: PlayBase | null;
 }
 
 export interface PlayActions {
-  /** Resets the board, orients it for the player and starts a game against the engine. */
+  /**
+   * Orients the board for the player and starts a game against the engine, from the initial
+   * position or (`from: 'current'`) from the position on the board, keeping the moves so far.
+   * A terminal position cannot be started (`message` is set instead).
+   */
   start(setup?: Partial<PlaySetup>): void;
   /** Changes the setup (sanitized, persisted in localStorage `chesslab.play`). */
   setSetup(setup: Partial<PlaySetup>): void;
@@ -74,15 +110,18 @@ export type PlayStore = PlayState & PlayActions;
 
 /**
  * How many plies a takeback removes: back to the user's previous turn (2 plies when it is the
- * user's turn, 1 while the engine still has to answer). 0 when the user has not moved yet.
+ * user's turn, 1 while the engine still has to answer). 0 when the user has not moved yet;
+ * never goes below `fromPly` (the base of a game started from a position).
  */
 export function takeBackPlies(
   g: Pick<GameState, 'startFen' | 'moves' | 'ply'>,
   playerColor: Orientation,
+  fromPly = 0,
 ): number {
   const toMove = currentFen(atTip(g)).split(' ')[1] === 'b' ? 'black' : 'white';
   const n = toMove === playerColor ? 2 : 1;
-  return g.moves.length >= n ? n : 0;
+  // The moves of the base (opening line) are not the user's to take back.
+  return g.moves.length - Math.max(0, fromPly) >= n ? n : 0;
 }
 
 const createWasmPlayEngine: CreatePlayEngine = async () => {
@@ -357,6 +396,8 @@ export async function resetPlay(): Promise<void> {
     message: undefined,
     thinking: false,
     clock: null,
+    fromPly: 0,
+    base: null,
   });
   syncTicker();
 }
@@ -366,6 +407,7 @@ const sanitizeSetup = (s: PlaySetup): PlaySetup => ({
   strength: findStrength(s.strength).id,
   moveTime: MOVE_TIMES.some((t) => t.ms === s.moveTime) ? s.moveTime : DEFAULT_MOVE_TIME,
   timeControl: sanitizeSetting(s.timeControl),
+  from: s.from === 'current' ? 'current' : 'start',
 });
 
 const DEFAULT_SETUP: PlaySetup = {
@@ -373,6 +415,7 @@ const DEFAULT_SETUP: PlaySetup = {
   strength: DEFAULT_STRENGTH,
   moveTime: DEFAULT_MOVE_TIME,
   timeControl: null,
+  from: 'start',
 };
 
 /** The last setup from localStorage `chesslab.play` (defaults when missing or invalid). */
@@ -403,6 +446,8 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
   thinking: false,
   premoves: [],
   clock: null,
+  fromPly: 0,
+  base: null,
 
   start: (partial) => {
     const blocked = startGuard();
@@ -415,10 +460,34 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
     const playerColor: Orientation =
       setup.color === 'random' ? (hooks.random() < 0.5 ? 'white' : 'black') : setup.color;
     const ctl = getController();
+    let base: PlayBase;
+    if (setup.from === 'current') {
+      const cur = useGameStore.getState();
+      base = { startFen: cur.startFen, moves: cur.moves.slice(0, cur.ply), headers: cur.headers };
+      const end = gameOutcome({
+        startFen: base.startFen,
+        moves: base.moves,
+        ply: base.moves.length,
+      });
+      if (end) {
+        set({ setup, message: `This position is already over (${REASON_TEXT[end.reason]}).` });
+        return;
+      }
+    } else {
+      base = { startFen: START_FEN, moves: [], headers: {} };
+    }
     ctl.stop();
-    const game = useGameStore.getState();
-    game.reset();
-    useGameStore.setState({ orientation: playerColor });
+    if (setup.from === 'current') {
+      // Same startFen/headers objects: the game watcher (started below) sees no replacement.
+      useGameStore.setState({
+        moves: base.moves,
+        ply: base.moves.length,
+        orientation: playerColor,
+      });
+    } else {
+      useGameStore.getState().reset();
+      useGameStore.setState({ orientation: playerColor });
+    }
     suspendAnalysis();
     watchGame();
     startPremoves();
@@ -430,6 +499,8 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
       reason: undefined,
       message: undefined,
       thinking: false,
+      fromPly: base.moves.length,
+      base,
       clock: setup.timeControl ? createClock(setup.timeControl, hooks.now()) : null,
     });
     // The user's clock starts now when they have White; the engine's when its search starts.
@@ -463,7 +534,7 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
     const s = get();
     if (s.mode !== 'playing') return;
     const g = useGameStore.getState();
-    const n = takeBackPlies(g, s.playerColor);
+    const n = takeBackPlies(g, s.playerColor, s.fromPly);
     if (n === 0) return;
     premoveQueue?.clear();
     controller?.cancel();
@@ -489,7 +560,20 @@ export const usePlayStore = create<PlayStore>()((set, get) => ({
     restoreAnalysis();
   },
 
-  rematch: () => get().start(get().setup),
+  rematch: () => {
+    const { setup, base } = get();
+    if (setup.from === 'current' && base) {
+      if (startGuard()) return get().start(setup); // sets the guard's message
+      // Back to the same base position (the finished game's moves are replaced).
+      useGameStore.setState({
+        startFen: base.startFen,
+        moves: base.moves,
+        ply: base.moves.length,
+        headers: base.headers,
+      });
+    }
+    get().start(setup);
+  },
 
   addPremove: (uci) => {
     if (get().mode === 'playing') premoveQueue?.add(uci);
