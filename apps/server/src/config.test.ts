@@ -164,4 +164,30 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ROOM_MAX_ROOMS: '0' })).toThrow(/ROOM_MAX_ROOMS/);
     expect(() => loadConfig({ ROOM_CLAIM_GRACE_MS: '10' })).toThrow(/ROOM_CLAIM_GRACE_MS/);
   });
+
+  it('parses the hub store settings (ADR-020 §6, M24-4)', () => {
+    const def = loadConfig({}).hub;
+    expect(def).toEqual({
+      storePath: expect.stringMatching(/data[\\/]hub\.sqlite$/),
+      poolDailyBudgetMin: 30,
+      usageRetentionDays: 90,
+    });
+    expect(path.isAbsolute(def.storePath)).toBe(true);
+    expect(
+      loadConfig({ HUB_STORE_PATH: 'x/hub.db', POOL_DAILY_BUDGET_MIN: '0', USAGE_RETENTION_DAYS: '7' })
+        .hub,
+    ).toEqual({ storePath: path.resolve('x/hub.db'), poolDailyBudgetMin: 0, usageRetentionDays: 7 });
+    // HUB_DB_PATH is an alias; both set must agree.
+    expect(loadConfig({ HUB_DB_PATH: 'y/hub.db' }).hub.storePath).toBe(path.resolve('y/hub.db'));
+    expect(loadConfig({ HUB_DB_PATH: 'y/hub.db', HUB_STORE_PATH: './y/hub.db' }).hub.storePath).toBe(
+      path.resolve('y/hub.db'),
+    );
+    expect(() => loadConfig({ HUB_DB_PATH: 'a.db', HUB_STORE_PATH: 'b.db' })).toThrow(
+      /HUB_STORE_PATH and HUB_DB_PATH/,
+    );
+    expect(() => loadConfig({ POOL_DAILY_BUDGET_MIN: '-1' })).toThrow(/POOL_DAILY_BUDGET_MIN/);
+    expect(() => loadConfig({ POOL_DAILY_BUDGET_MIN: '1441' })).toThrow(/POOL_DAILY_BUDGET_MIN/);
+    expect(() => loadConfig({ USAGE_RETENTION_DAYS: '0' })).toThrow(/USAGE_RETENTION_DAYS/);
+    expect(() => loadConfig({ USAGE_RETENTION_DAYS: 'x' })).toThrow(/USAGE_RETENTION_DAYS/);
+  });
 });

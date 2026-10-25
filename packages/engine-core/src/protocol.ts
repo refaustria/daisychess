@@ -1297,6 +1297,31 @@ export function checkAnalyzeLimits(msg: AnalyzeMessage, limits: Limits): string 
 }
 
 /**
+ * Element-wise minimum of two {@link Limits} (ADR-020 relay layering §5): the limits a node
+ * enforces for a relayed client are `minLimits(client.open.limits, own)`, so a hub can narrow
+ * but never widen them. `maxNodes` absent on one side takes the other side's value (absent on
+ * both stays absent). Returns a new object; the inputs are not modified.
+ */
+export function minLimits(a: Limits, b: Limits): Limits {
+  const out: Limits = {
+    maxDepth: Math.min(a.maxDepth, b.maxDepth),
+    maxMultipv: Math.min(a.maxMultipv, b.maxMultipv),
+    maxThreads: Math.min(a.maxThreads, b.maxThreads),
+    maxHash: Math.min(a.maxHash, b.maxHash),
+    maxMovetimeMs: Math.min(a.maxMovetimeMs, b.maxMovetimeMs),
+    maxSessionsPerConnection: Math.min(a.maxSessionsPerConnection, b.maxSessionsPerConnection),
+  };
+  const nodes =
+    a.maxNodes === undefined
+      ? b.maxNodes
+      : b.maxNodes === undefined
+        ? a.maxNodes
+        : Math.min(a.maxNodes, b.maxNodes);
+  if (nodes !== undefined) out.maxNodes = nodes;
+  return out;
+}
+
+/**
  * Per-engine node cap (ADR-019): the node count an `analyze` for `engine` runs with, or a
  * `limit_exceeded` message when `msg.nodes` exceeds the engine's `maxNodes`. Without a cap the
  * client's `nodes` (possibly undefined = no node limit) is used as is.

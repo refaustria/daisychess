@@ -472,3 +472,10 @@ Fixed by `packages/engine-core/src/link.ts`, `tokens.ts` and the additive `welco
 - `Connection` is touched once more (M24-6): channel creation moves from the constructor to `hello`, `ConnectionOptions.router` replaces four options. Standalone behaviour is unchanged except the additive `analysisDenied` on restricted welcomes; `ws.test.ts` deep-equals of restricted welcomes gain that field.
 - `apps/server/src/sessions/AnalysisChannel.ts`, `SessionTracker.ts`, `UnlimitedLedger.ts` (M24-3); `hub/RelaySessions.ts`, `hub/HubNodeLink.ts` (M24-5); `hub/AccountingChannel.ts`, `hub/Router.ts`, `ws/LocalRouter.ts` (M24-6); engine-core `minLimits` (M24-3, unit-tested).
 
+
+### ADR-020 — implementation notes (M24-3/M24-4, 2026-10-25)
+- Env names: `HUB_STORE_PATH` (alias `HUB_DB_PATH`), `NODE_POOL` (not `POOL`), `NODE_NAME` is local only (logs/health; not sent in `node.hello`), `DAISYCHESS_INSECURE=1` allows plain `ws://` hub URLs outside loopback (tests, docker networks only).
+- Token kinds `player | pool | anonymous` (`anonymous` reserved). Verify order: format → lookup (`unknown`, mapped to `bad_token` for players) → constant-time secret (`bad_token`) → `revoked` → `expired`.
+- Daily pool budget applies to pool tokens **and** to player tokens while they are routed to the pool via `poolFallback` (enforced by the router, M24-6).
+- engine-core gains `minLimits(a, b)`; `SessionTracker` additionally exposes `openSearchList()`/`openSearchCount` for node-loss terminals.
+- An unrequested `client.closed` from a node means "node refused this client"; the hub emits terminals for anything still open on link loss or drain deadline.

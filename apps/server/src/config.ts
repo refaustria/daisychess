@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import {
   DEFAULT_LIMITS,
+  LINK_BOUNDS,
   MAX_TOKEN_LENGTH,
   PROTOCOL_BOUNDS,
+  parseToken,
   type Limits,
 } from '@daisychess/engine-core';
 import { parseAllowedOrigins, type OriginPolicy } from './ws/origin.js';
@@ -132,7 +134,43 @@ export const EnvSchema = z.object({
   REVIEW_STORE_MAX_BYTES: int(1_000_000, 10_000_000_000_000, 5_000_000_000),
   /** `review.put` + `review.positions.put` per client address per UTC day. */
   REVIEW_PUT_PER_IP_PER_DAY: int(1, 1_000_000, 500),
+  // Roles and the node side of the node ⇄ hub link (ADR-020 §3, §7; M24-3).
+  /** `standalone` (default, today's server), `hub` (M24-6) or `node` (outbound link, no `/ws`). */
+  ROLE: z.enum(['standalone', 'hub', 'node']).default('standalone'),
+  /** `ROLE=node`: the hub's link endpoint, `wss://host/link` (plain `ws://` see {@link checkHubUrl}). */
+  HUB_URL: z.string().min(1).max(2_048).optional(),
+  /** `ROLE=node`: this node's `dcn_…` token from the portal. Never logged. */
+  NODE_TOKEN: z.string().max(MAX_TOKEN_LENGTH).optional(),
+  /** `ROLE=node`: local name for logs and `/health/detail` (the hub's name comes from the portal). */
+  NODE_NAME: z.string().min(1).max(LINK_BOUNDS.nodeNameMaxLength).optional(),
+  /** `ROLE=node`: offer this node to the shared pool (`node.hello.pool`; the portal decides too). */
+  NODE_POOL: z.enum(['on', 'off']).default('off'),
+  /** `ROLE=node`: node-wide session cap announced to the hub (≤ MAX_SESSIONS; default MAX_SESSIONS). */
+  NODE_MAX_SESSIONS: z.coerce
+    .number()
+    .int()
+    .min(LINK_BOUNDS.maxSessions.min)
+    .max(LINK_BOUNDS.maxSessions.max)
+    .optional(),
+  /** `1` allows a plain `ws://` HUB_URL to a non-loopback host (development only, ADR-020 §5). */
+  DAISYCHESS_INSECURE: z.enum(['0', '1']).default('0'),
+  // Hub store (ADR-020 §6, M24-4); only read by ROLE=hub (wired in M24-6).
+  /** SQLite file of the hub; relative paths resolve against the working directory. Default apps/server/data/hub.sqlite */
+  HUB_STORE_PATH: z.string().min(1).optional(),
+  /** Alias of HUB_STORE_PATH (the name used in the M24-4 brief); both set must agree. */
+  HUB_DB_PATH: z.string().min(1).optional(),
+  /** Daily engine-time budget per pool token in minutes (UTC day); 0 = off. */
+  POOL_DAILY_BUDGET_MIN: int(0, 1_440, 30),
+  /** Days of `usage_daily` aggregates kept (the current UTC day counts as one). */
+  USAGE_RETENTION_DAYS: int(1, 3_650, 90),
 });
+
+/** Hub persistence and token policy (ADR-020, M24-4), env `HUB_STORE_PATH` etc. */
+export interface HubSettings {
+  storePath: string;
+  poolDailyBudgetMin: number;
+  usageRetentionDays: number;
+}
 
 /** Server-side review store (ADR-017), env `REVIEW_*`. */
 export interface ReviewStoreSettings {
@@ -165,6 +203,78 @@ export interface ServerConfig {
   reviewStore: ReviewStoreSettings;
   /** Human-like engines (ADR-019): Lc0 + Maia nets, registry group `maia`. */
   maia: MaiaSettings;
+  /** Server role (ADR-020 §7). */
+  role: ServerRole;
+  /** Node side of the link; non-null exactly when `role === 'node'`. */
+  node: NodeSettings | null;
+  /** Hub store and token policy; only used with ROLE=hub (M24-6). */
+  hub: HubSettings;
+}
+
+export type ServerRole = 'standalone' | 'hub' | 'node';
+
+/** `ROLE=node` settings (ADR-020 §3, §7). */
+export interface NodeSettings {
+  /** Validated `ws(s)://…` URL of the hub's `/link`. */
+  hubUrl: string;
+  /** `dcn_…` node token (format-checked with `parseToken`). Never log it. */
+  token: string;
+  /** Local display name (logs, `/health/detail`); null when unset. */
+  name: string | null;
+  /** `node.hello.pool`. */
+  pool: boolean;
+  /** `node.hello.maxSessions`: node-wide session cap. */
+  maxSessions: number;
+}
+
+/**
+ * Validates `HUB_URL`: `wss://` always; plain `ws://` only to a loopback host (a hub on the same
+ * machine, e.g. `pnpm dev:server`) or with `DAISYCHESS_INSECURE=1` (ADR-020 §5). Returns an error
+ * message or null.
+ */
+export function checkHubUrl(raw: string, insecure: boolean): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return 'HUB_URL must be a ws:// or wss:// URL';
+  }
+  if (url.username || url.password) return 'HUB_URL must not contain credentials';
+  if (url.protocol === 'wss:') return null;
+  if (url.protocol !== 'ws:') return 'HUB_URL must be a ws:// or wss:// URL';
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  const loopback = host === 'localhost' || host === '::1' || /^127\.\d+\.\d+\.\d+$/.test(host);
+  if (loopback || insecure) return null;
+  return 'HUB_URL must use wss:// (plain ws:// only to a loopback host or with DAISYCHESS_INSECURE=1)';
+}
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+
+function nodeSettings(e: z.infer<typeof EnvSchema>): NodeSettings | null {
+  if (e.ROLE !== 'node') return null;
+  const fail = (msg: string): never => {
+    throw new Error(`Invalid server configuration: ${msg}`);
+  };
+  if (!e.HUB_URL) fail('ROLE=node requires HUB_URL (wss://<hub>/link)');
+  const hubUrl = e.HUB_URL as string;
+  const urlError = checkHubUrl(hubUrl, e.DAISYCHESS_INSECURE === '1');
+  if (urlError) fail(urlError);
+  // Strict format check without echoing the value (it is a secret).
+  const parsed = parseToken(e.NODE_TOKEN);
+  if (!parsed || parsed.kind !== 'node') {
+    fail('ROLE=node requires NODE_TOKEN, a dcn_… node token from the portal');
+  }
+  const maxSessions = e.NODE_MAX_SESSIONS ?? e.MAX_SESSIONS;
+  if (maxSessions > e.MAX_SESSIONS) {
+    fail(`NODE_MAX_SESSIONS (${maxSessions}) must not exceed MAX_SESSIONS (${e.MAX_SESSIONS})`);
+  }
+  return {
+    hubUrl,
+    token: e.NODE_TOKEN as string,
+    name: e.NODE_NAME ?? null,
+    pool: e.NODE_POOL === 'on',
+    maxSessions,
+  };
 }
 
 export interface MaiaSettings {
@@ -191,9 +301,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       `Invalid server configuration: MAX_SESSIONS_PER_IP (${e.MAX_SESSIONS_PER_IP}) must not exceed MAX_SESSIONS (${e.MAX_SESSIONS})`,
     );
   }
+  if (
+    e.HUB_STORE_PATH !== undefined &&
+    e.HUB_DB_PATH !== undefined &&
+    path.resolve(e.HUB_STORE_PATH) !== path.resolve(e.HUB_DB_PATH)
+  ) {
+    throw new Error(
+      'Invalid server configuration: HUB_STORE_PATH and HUB_DB_PATH are both set and differ',
+    );
+  }
+  const hubStorePath = e.HUB_STORE_PATH ?? e.HUB_DB_PATH;
   return {
     port: e.PORT,
-    host: e.HOST,
+    // A node has no public listener (ADR-020 §7): `/health` binds to loopback whatever HOST says
+    // (the Docker image sets HOST=0.0.0.0 for the standalone role).
+    host: e.ROLE === 'node' && !LOOPBACK_HOSTS.has(e.HOST) ? '127.0.0.1' : e.HOST,
     maxSessions: e.MAX_SESSIONS,
     // Default 2, but never above the global cap.
     maxSessionsPerIp: e.MAX_SESSIONS_PER_IP ?? Math.min(2, e.MAX_SESSIONS),
@@ -235,5 +357,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       putPerIpPerDay: e.REVIEW_PUT_PER_IP_PER_DAY,
     },
     maia: { enabled: e.MAIA === 'on', maxProcesses: e.MAIA_MAX_PROCESSES },
+    role: e.ROLE,
+    node: nodeSettings(e),
+    hub: {
+      storePath: hubStorePath
+        ? path.resolve(hubStorePath)
+        : path.join(PACKAGE_DIR, 'data', 'hub.sqlite'),
+      poolDailyBudgetMin: e.POOL_DAILY_BUDGET_MIN,
+      usageRetentionDays: e.USAGE_RETENTION_DAYS,
+    },
   };
 }

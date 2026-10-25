@@ -17,6 +17,7 @@ import {
 import type { PoolLogger } from '../engines/EnginePool.js';
 import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
 import type { AnalysisBackend, BackendLease } from './AnalysisBackend.js';
+import type { AnalysisChannel } from './AnalysisChannel.js';
 import { allowRate, type RateLimit } from './rateLimit.js';
 
 /** Who the sessions belong to: the client address (per-IP cap) and an id for logs. */
@@ -104,7 +105,7 @@ interface Session {
  * were superseded before they started are terminated with `bestmove null, reason: stopped`
  * without ever reaching the engine. After {@link close} nothing is delivered any more.
  */
-export class ClientSessions {
+export class ClientSessions implements AnalysisChannel {
   private closed = false;
   private readonly sessions = new Map<string, Session>();
   /** Chains of released sessions still stopping/returning their engine, by sessionId. */

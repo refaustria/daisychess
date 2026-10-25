@@ -8,6 +8,8 @@ import { loadEngineRegistry, type EngineConfig, type EngineRegistry } from './en
 import { attachWebSocketServer, type WsServerHandle, type WsServerOptions } from './ws/server.js';
 import type { ConnectionOptions } from './ws/connection.js';
 import { ReviewStore } from './review/ReviewStore.js';
+import { LocalBackend } from './sessions/LocalBackend.js';
+import { NodeLink, type NodeLinkOptions } from './node/NodeLink.js';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -44,11 +46,32 @@ export interface BuildAppOptions {
   heartbeatMs?: number;
   /** Pool tuning for tests (respawn backoff timing, clock). */
   pool?: Pick<EnginePoolOptions, 'backoffBaseMs' | 'backoffMaxMs' | 'now' | 'random'>;
+  /** `ROLE=node`: link tuning and injection for tests (socket factory, exit, timings). */
+  node?: Partial<
+    Pick<
+      NodeLinkOptions,
+      | 'connect'
+      | 'exit'
+      | 'random'
+      | 'load1'
+      | 'platform'
+      | 'arch'
+      | 'welcomeTimeoutMs'
+      | 'maxDrainMs'
+      | 'reconnectMinMs'
+      | 'reconnectMaxMs'
+      | 'stopTimeoutMs'
+      | 'closeTimeoutMs'
+    >
+  >;
 }
 
 declare module 'fastify' {
   interface FastifyInstance {
+    /** `ROLE=standalone`/`hub`. Not decorated for `ROLE=node` (no WebSocket server there). */
     daisychess: { pool: EnginePool; ws: WsServerHandle; config: ServerConfig };
+    /** `ROLE=node` only (ADR-020 §7): the pool and the outbound hub link. */
+    daisychessNode: { pool: EnginePool; link: NodeLink; config: ServerConfig };
   }
 }
 
@@ -70,7 +93,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
 
   const pool = new EnginePool(registry, {
     ...opts.pool,
-    maxSessions: config.maxSessions,
+    // A node announces NODE_MAX_SESSIONS (≤ MAX_SESSIONS) and the pool enforces it.
+    maxSessions: config.node?.maxSessions ?? config.maxSessions,
     idleMs: config.engineIdleMs,
     crashResetMs: config.engineCrashResetMs,
     maxConsecutiveCrashes: config.engineMaxConsecutiveCrashes,
@@ -78,6 +102,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     ...(opts.spawnEngine ? { spawn: opts.spawnEngine } : {}),
     logger: app.log.child({ component: 'pool' }),
   });
+  if (config.node) return buildNode(app, opts, config, config.node, pool, descriptors);
+  if (config.role === 'hub') {
+    app.log.warn('ROLE=hub is not implemented yet (M24-6); running as standalone');
+  }
+
   const reviewStore = await openReviewStore(app, config);
   const ws = attachWebSocketServer(app, {
     ...opts.connection,
@@ -135,6 +164,84 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       maia: config.maia,
     },
     'engine server configured',
+  );
+  return app;
+}
+
+/**
+ * `ROLE=node` (ADR-020 §7): the pool plus the outbound link; no `/ws`, no rooms, no review store
+ * (those live on the hub). `/health` and `/health/detail` (with the link state) are served on
+ * the loopback listener only (`loadConfig` forces a loopback HOST for this role). The link
+ * starts when the app is ready and closes before the pool shuts down.
+ */
+function buildNode(
+  app: FastifyInstance,
+  opts: BuildAppOptions,
+  config: ServerConfig,
+  node: NonNullable<ServerConfig['node']>,
+  pool: EnginePool,
+  descriptors: EngineDescriptor[],
+): FastifyInstance {
+  const tuning = opts.node ?? {};
+  const exit =
+    tuning.exit ??
+    (async (code: number) => {
+      // Fatal link end: stop the engines cleanly, then exit non-zero (no restart storm).
+      await app.close().catch(() => {});
+      process.exit(code);
+    });
+  const link = new NodeLink({
+    ...tuning,
+    exit,
+    hubUrl: node.hubUrl,
+    token: node.token,
+    version: SERVER_VERSION,
+    localName: node.name,
+    engines: descriptors,
+    limits: config.limits,
+    maxSessions: node.maxSessions,
+    pool: node.pool,
+    backend: new LocalBackend(pool),
+    engineStatus: () =>
+      pool.stats().map((e) => ({ id: e.id, busy: e.busy, idle: e.idle, degraded: e.degraded })),
+    logger: app.log.child({ component: 'link' }),
+    sessionIdleMs: config.sessionIdleMs,
+  });
+  app.decorate('daisychessNode', { pool, link, config });
+
+  app.get('/health', async () => ({ status: 'ok', version: SERVER_VERSION }));
+  app.get('/health/detail', async () => ({
+    status: 'ok',
+    version: SERVER_VERSION,
+    role: 'node',
+    engines: pool.stats(),
+    processGroups: pool.groupStats(),
+    sessions: pool.sessions,
+    link: link.stats(),
+  }));
+
+  app.addHook('onReady', async () => {
+    link.start();
+  });
+  app.addHook('preClose', async () => {
+    await link.close();
+  });
+  app.addHook('onClose', async () => {
+    await pool.shutdown();
+  });
+
+  app.log.info(
+    {
+      role: 'node',
+      hub: link.stats().hubUrl,
+      name: node.name,
+      pool: node.pool,
+      maxSessions: node.maxSessions,
+      engines: descriptors.map((d) => ({ id: d.id, enabled: d.enabled })),
+      limits: config.limits,
+      maia: config.maia,
+    },
+    'engine node configured',
   );
   return app;
 }

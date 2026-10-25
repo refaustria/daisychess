@@ -95,6 +95,7 @@ export {
   parseClientMessage,
   parseServerMessage,
   checkAnalyzeLimits,
+  minLimits,
 } from './protocol.js';
 export type {
   ProtocolErrorCode,
