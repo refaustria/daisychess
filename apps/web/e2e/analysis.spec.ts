@@ -25,7 +25,7 @@ test.describe('live analysis', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await page.evaluate(() => localStorage.removeItem('chesslab.analysis'));
+    await page.evaluate(() => localStorage.removeItem('daisychess.analysis'));
     await page.reload();
     await expect(page.locator('cg-board')).toBeVisible();
   });
@@ -94,7 +94,7 @@ test.describe('live analysis', () => {
     // Count `go` commands vs `bestmove` replies at the Worker boundary.
     await page.addInitScript(() => {
       // Only the live analysis may search here: no automatic review after loading the PGN.
-      localStorage.setItem('chesslab.settings', JSON.stringify({ autoReview: false }));
+      localStorage.setItem('daisychess.settings', JSON.stringify({ autoReview: false }));
       const Orig = window.Worker;
       const stats = { go: 0, bestmove: 0, maxOpen: 0 };
       (window as unknown as { __uciStats: typeof stats }).__uciStats = stats;
@@ -148,7 +148,7 @@ test.describe('live analysis', () => {
 test('analysis panel: MultiPV lines in SAN, hover arrows, click preview', async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto('/');
-  await page.evaluate(() => localStorage.removeItem('chesslab.analysis'));
+  await page.evaluate(() => localStorage.removeItem('daisychess.analysis'));
   await page.reload();
   await page.getByRole('switch', { name: 'Engine' }).check();
   const panel = page.getByTestId('analysis-panel');

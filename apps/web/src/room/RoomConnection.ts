@@ -7,7 +7,7 @@ import {
   type RoomErrorMessage,
   type RoomSeatMessage,
   type RoomStateMessage,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import type { WebSocketLike } from '../engine/RemoteEngineClient';
 
 /** `WebSocket.OPEN` (not referenced through the global so the module loads without one). */
@@ -143,7 +143,7 @@ export class RoomConnection {
         JSON.stringify({
           type: 'hello',
           protocolVersion: PROTOCOL_VERSION,
-          client: { name: 'chesslab-web-rooms' },
+          client: { name: 'daisychess-web-rooms' },
           ...(token ? { token } : {}),
         }),
       );

@@ -76,7 +76,7 @@ export function stockfishEngines(): Plugin {
   let base = '/';
 
   return {
-    name: 'chesslab:stockfish-engines',
+    name: 'daisychess:stockfish-engines',
     config: () => ({ define: { __STOCKFISH_ENGINE__: JSON.stringify(manifest) } }),
     configResolved(config) {
       base = config.base;

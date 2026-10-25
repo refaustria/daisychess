@@ -8,7 +8,7 @@ import {
   type EngineInfo,
   type ReviewSummary,
   type Score,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
 
 /** One move of the game to review. `fenAfter` is the position reached by the move. */

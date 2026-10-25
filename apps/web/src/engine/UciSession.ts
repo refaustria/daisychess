@@ -6,7 +6,7 @@ import {
   type AnalyzeOptions,
   type BestMove,
   type EngineInfo,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 
 /** Line-oriented UCI channel. Implemented by a Web Worker in production and by fakes in tests. */
 export interface UciTransport {

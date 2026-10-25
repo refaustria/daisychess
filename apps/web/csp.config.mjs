@@ -1,4 +1,4 @@
-// Content-Security-Policy for the ChessLab SPA (docs/SECURITY.md, "Content-Security-Policy").
+// Content-Security-Policy for the DaisyChess SPA (docs/SECURITY.md, "Content-Security-Policy").
 // Single source of truth: vite.config.ts sends it from `vite preview`, and
 // `node scripts/check-csp.mjs` verifies that the nginx configs (deploy/nginx, docker) carry
 // exactly PRODUCTION_CSP. Plain ESM so the check script runs on Node 20 without a TS loader.
@@ -47,7 +47,7 @@ export const PRODUCTION_CSP = buildCsp();
  */
 export const CSP_REPORT_FILE = fileURLToPath(
   new URL(
-    `./node_modules/.cache/chesslab/csp-violations-${process.env.E2E_PORT ?? '4180'}.jsonl`,
+    `./node_modules/.cache/daisychess/csp-violations-${process.env.E2E_PORT ?? '4180'}.jsonl`,
     import.meta.url,
   ),
 );

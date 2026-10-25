@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 pnpm install --frozen-lockfile
-pnpm --filter @chesslab/web build
+pnpm --filter @daisychess/web build
 
 if [[ ! -f apps/web/dist/index.html ]]; then
   echo "error: apps/web/dist/index.html missing after build" >&2

@@ -1,4 +1,4 @@
-import { formatScore, type Score } from '@chesslab/engine-core';
+import { formatScore, type Score } from '@daisychess/engine-core';
 import {
   useDeferredValue,
   useEffect,
@@ -115,7 +115,7 @@ export function instanceDot(
 }
 
 /** localStorage flag: the user agreed to the large download of the full browser build once. */
-export const FULL_BUILD_CONFIRMED_KEY = 'chesslab.fullBuildConfirmed';
+export const FULL_BUILD_CONFIRMED_KEY = 'daisychess.fullBuildConfirmed';
 
 function downloadConfirmed(): boolean {
   try {

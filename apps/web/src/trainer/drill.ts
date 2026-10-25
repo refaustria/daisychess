@@ -1,4 +1,4 @@
-import { formatScore, type Score } from '@chesslab/engine-core';
+import { formatScore, type Score } from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
 import type { Orientation } from '../store/gameStore';
 

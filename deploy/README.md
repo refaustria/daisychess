@@ -11,7 +11,7 @@ policies); the threat model and hardening checklist are in `docs/SECURITY.md`.
 | Repo copy (pre-certbot) | `deploy/nginx/c.referee.at.conf` |
 | TLS cert | `/etc/letsencrypt/live/c.referee.at/` |
 | Engine server | `127.0.0.1:8580`, proxied at `/ws` and `/health` (`/health/detail` is loopback-only) |
-| Server unit | `deploy/chesslab-server.service` (installed by `deploy/deploy-server.sh`) |
+| Server unit | `deploy/daisychess-server.service` (installed by `deploy/deploy-server.sh`) |
 
 The site sends `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` (multi-threaded WASM), plus CORP,
@@ -48,7 +48,7 @@ Always `sudo nginx -t` before `sudo systemctl reload nginx`.
 deploy/deploy-web.sh
 ```
 
-Runs `pnpm install --frozen-lockfile`, `pnpm --filter @chesslab/web build`,
+Runs `pnpm install --frozen-lockfile`, `pnpm --filter @daisychess/web build`,
 then `rsync -a --delete apps/web/dist/ /var/www/c.referee.at/`. No nginx reload
 needed.
 The build includes the opt-in full-strength Stockfish build
@@ -57,26 +57,37 @@ is ~105 MB; browsers fetch it only when a user enables "maximum strength".
 
 ## Engine server
 
-Systemd unit `chesslab-server` (user `bojan`, `127.0.0.1:8580`), deployed on 2026-10-23.
+Systemd unit `daisychess-server` (user `bojan`, `127.0.0.1:8580`), deployed on 2026-10-23.
 
 ```bash
 deploy/deploy-server.sh
 ```
 
 Runs `pnpm install --frozen-lockfile`, builds `engine-core` and `server`, runs
-`pnpm fetch-engines` (idempotent), installs `deploy/chesslab-server.service` to
+`pnpm fetch-engines` (idempotent), installs `deploy/daisychess-server.service` to
 `/etc/systemd/system/`, `daemon-reload`, `enable` + `restart`, then waits up to
 10 s for `http://127.0.0.1:8580/health/detail` and prints it. Needs `sudo`.
+
+**Rename to DaisyChess (ADR-018).** The unit was called differently before the
+rename; the first run of `deploy/deploy-server.sh` after it stops, disables and
+removes the old unit (`LEGACY_UNIT` in the script) before installing
+`daisychess-server`, so nothing else has to be done for the server
+(`apps/server/.env.production` is unchanged). For the web app, run
+`deploy/deploy-web.sh` and apply `deploy/nginx/c.referee.at.conf` to the installed
+site (new CSP hash of the inline theme script, renamed `log_format`/`limit_*`
+zones/CSP map variable, `location = /manifest.webmanifest`), keeping the certbot
+lines, then `sudo nginx -t && sudo systemctl reload nginx`;
+`node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at` verifies the CSP.
 
 Verify:
 
 ```bash
-systemctl status chesslab-server
+systemctl status daisychess-server
 curl -s https://c.referee.at/health            # {status, version} only
 curl -s http://127.0.0.1:8580/health/detail   # pool stats, sessions, connections (loopback)
 node deploy/ws-smoke.mjs            # hello -> analyze depth 12 -> bestmove (Node 22+)
 # with ACCESS_TOKEN set: without the token the smoke test fails (restricted welcome, `unauthorized`)
-CHESSLAB_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" node deploy/ws-smoke.mjs
+DAISYCHESS_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" node deploy/ws-smoke.mjs
 ```
 
 **Limits and config.** The server does not read `.env` itself; the unit loads
@@ -85,7 +96,7 @@ created by the script; copy from `apps/server/.env.example`; currently
 `MAX_SESSIONS=4`, `MAX_THREADS=4`, `LOG_LEVEL=info`). The unit itself sets
 `ALLOWED_ORIGINS=https://c.referee.at` (ADR-008: browser origins allowed on `/ws`;
 other origins get 403 at the upgrade). Edit it, then
-`sudo systemctl restart chesslab-server`. Per-engine defaults and
+`sudo systemctl restart daisychess-server`. Per-engine defaults and
 `maxInstances` live in `apps/server/engines.json`. Resource caps (`MemoryMax`,
 `CPUWeight`, `TasksMax`) are in the unit; after editing it, rerun the script.
 The unit is read-only on the filesystem (`ProtectSystem=strict`,
@@ -102,8 +113,8 @@ browser's `localStorage`). Rotate it:
 
 ```bash
 sed -i "s/^ACCESS_TOKEN=.*/ACCESS_TOKEN=$(openssl rand -hex 16)/" apps/server/.env.production
-sudo systemctl restart chesslab-server
-CHESSLAB_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" node deploy/ws-smoke.mjs
+sudo systemctl restart daisychess-server
+DAISYCHESS_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" node deploy/ws-smoke.mjs
 ```
 
 Then hand the new value to the users (old tokens stop working immediately;
@@ -126,15 +137,15 @@ Abuse-relevant limits (production values; all env vars are documented in
 `/health/detail` shows per engine `crashes`, `backoffUntil` and `degraded`, and
 `clientAddresses` (addresses currently holding engine sessions).
 `node deploy/ws-limits-check.mjs` verifies the per-IP cap end to end (the third
-session from one address must get `no_capacity`; prefix `CHESSLAB_TOKEN=…` when
+session from one address must get `no_capacity`; prefix `DAISYCHESS_TOKEN=…` when
 the server requires a token).
 
 **Logs.** JSON lines in the journal (your user needs group `adm` or
 `systemd-journal`, otherwise use `sudo`):
 
 ```bash
-sudo journalctl -u chesslab-server -n 50 --no-pager
-sudo journalctl -u chesslab-server -f
+sudo journalctl -u daisychess-server -n 50 --no-pager
+sudo journalctl -u daisychess-server -f
 ```
 
 `/health` requests are not logged by the server, so polling it adds no noise.
@@ -149,10 +160,10 @@ deploy/deploy-server.sh
 Stopping the service kills the whole cgroup (`KillMode=control-group`), so no
 orphaned `stockfish` processes remain.
 
-**nginx.** `/ws` has `limit_conn chesslab_ws 10` (per IP) and
-`limit_req zone=chesslab_ws_req burst=20 nodelay` (5 handshakes/s per IP);
-excess gets 429. The two `*_zone` lines, the `$chesslab_csp` map and the
-`chesslab` log format sit at the top of the site file (http context).
+**nginx.** `/ws` has `limit_conn daisychess_ws 10` (per IP) and
+`limit_req zone=daisychess_ws_req burst=20 nodelay` (5 handshakes/s per IP);
+excess gets 429. The two `*_zone` lines, the `$daisychess_csp` map and the
+`daisychess` log format sit at the top of the site file (http context).
 `deploy/nginx/c.referee.at.conf` is the source; the live file additionally has
 the certbot lines. Apply a change by merging it into the live file, then
 `sudo nginx -t && sudo systemctl reload nginx` (back the live file up first:
@@ -181,7 +192,7 @@ HTTP needs `max-age=0` served over HTTPS for a while first.
 ## Abuse logging and fail2ban
 
 nginx writes `/var/log/nginx/c.referee.at.access.log` (and `.error.log`) in the
-`chesslab` format: address, time, method, path **without query string**,
+`daisychess` format: address, time, method, path **without query string**,
 status, bytes, `rt=` request time, `urt=` upstream time, `Origin`, User-Agent.
 No bodies. The stock `/etc/logrotate.d/nginx` rotates it (daily, 14 days).
 
@@ -200,10 +211,10 @@ files are inactive. To enable:
 
 ```bash
 sudo apt install fail2ban
-sudo cp deploy/fail2ban/filter.d/chesslab-ws.conf /etc/fail2ban/filter.d/
-sudo cp deploy/fail2ban/jail.d/chesslab-ws.conf /etc/fail2ban/jail.d/
-sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log chesslab-ws   # dry run
-sudo systemctl restart fail2ban && sudo fail2ban-client status chesslab-ws
+sudo cp deploy/fail2ban/filter.d/daisychess-ws.conf /etc/fail2ban/filter.d/
+sudo cp deploy/fail2ban/jail.d/daisychess-ws.conf /etc/fail2ban/jail.d/
+sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log daisychess-ws   # dry run
+sudo systemctl restart fail2ban && sudo fail2ban-client status daisychess-ws
 ```
 
 ## Certificate renewal

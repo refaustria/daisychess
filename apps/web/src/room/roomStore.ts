@@ -5,7 +5,7 @@ import type {
   RoomColorChoice,
   RoomErrorMessage,
   RoomSide,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import { create } from 'zustand';
 import type { WebSocketLike } from '../engine/RemoteEngineClient';
 import { defaultServerUrl } from '../engine/serverUrl';

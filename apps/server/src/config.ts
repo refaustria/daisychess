@@ -6,7 +6,7 @@ import {
   MAX_TOKEN_LENGTH,
   PROTOCOL_BOUNDS,
   type Limits,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import { parseAllowedOrigins, type OriginPolicy } from './ws/origin.js';
 import { parseTrustedProxies, type TrustedProxies } from './ws/clientIp.js';
 import { DEFAULT_ROOM_CONFIG, type RoomConfig } from './rooms/RoomManager.js';

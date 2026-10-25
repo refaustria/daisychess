@@ -1,4 +1,4 @@
-import { DEFAULT_LIMITS, type AnalyzeMessage, type EngineInfo } from '@chesslab/engine-core';
+import { DEFAULT_LIMITS, type AnalyzeMessage, type EngineInfo } from '@daisychess/engine-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RemoteEngineClient } from '../engine/RemoteEngineClient';
 import { FakeWebSocket, TEST_WELCOME } from '../engine/remoteTesting';

@@ -34,7 +34,7 @@ export const UNAUTHORIZED_TEXT = 'Log in with lichess (with the board:play permi
 /** Default wait after a 429 without a readable `Retry-After` (lichess asks for one minute). */
 export const DEFAULT_RETRY_AFTER = 60;
 
-// --- payload types (only the fields ChessLab uses) ----------------------------------------------
+// --- payload types (only the fields DaisyChess uses) ----------------------------------------------
 
 export type Color = 'white' | 'black';
 

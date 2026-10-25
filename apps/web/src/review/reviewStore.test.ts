@@ -1,4 +1,4 @@
-import { DEFAULT_LIMITS } from '@chesslab/engine-core';
+import { DEFAULT_LIMITS } from '@daisychess/engine-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useAnalysisStore } from '../store/analysisStore';
 import { useGameStore } from '../store/gameStore';

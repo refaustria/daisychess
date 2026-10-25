@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ROOM_BOUNDS } from '@chesslab/engine-core';
+import { ROOM_BOUNDS } from '@daisychess/engine-core';
 import { Room, START_FEN, hasMatingMaterial, otherSide, type RoomOptions } from './room.js';
 
 const T_HOST = 'host-token-'.padEnd(43, 'h');

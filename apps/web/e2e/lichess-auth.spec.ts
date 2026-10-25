@@ -80,7 +80,7 @@ test('callback logs in, cleans the URL; explorer uses the token; logout revokes'
   await page.addInitScript(
     ({ state, verifier, redirectUri }) => {
       if (location.search.includes('code=')) {
-        sessionStorage.setItem('chesslab.lichess.pkce', JSON.stringify({ verifier, state, redirectUri }));
+        sessionStorage.setItem('daisychess.lichess.pkce', JSON.stringify({ verifier, state, redirectUri }));
       }
     },
     { state: STATE, verifier: VERIFIER, redirectUri: `${baseURL}/` },
@@ -96,7 +96,7 @@ test('callback logs in, cleans the URL; explorer uses the token; logout revokes'
     code: 'abc',
     code_verifier: VERIFIER,
     redirect_uri: `${baseURL}/`,
-    client_id: 'chesslab.c.referee.at',
+    client_id: 'daisychess.c.referee.at',
   });
   expect(seen.accountAuth).toBe(`Bearer ${TOKEN}`);
 
@@ -121,7 +121,7 @@ test('callback logs in, cleans the URL; explorer uses the token; logout revokes'
   await expect(page.getByTestId('account-chip')).toHaveText('Log in');
   await expect(page.getByTestId('lichess-account').getByRole('button', { name: 'Log in with lichess' })).toBeVisible();
   await expect.poll(() => seen.revoked).toBe(`Bearer ${TOKEN}`);
-  expect(await page.evaluate(() => localStorage.getItem('chesslab.lichess'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('daisychess.lichess'))).toBeNull();
   expect(page.url()).not.toContain(TOKEN);
 });
 
@@ -130,7 +130,7 @@ test('a forged state is rejected without a token request', async ({ page }) => {
   await page.addInitScript(() => {
     if (location.search.includes('code=')) {
       sessionStorage.setItem(
-        'chesslab.lichess.pkce',
+        'daisychess.lichess.pkce',
         JSON.stringify({ verifier: 'v'.repeat(64), state: 'expected', redirectUri: `${location.origin}/` }),
       );
     }
@@ -161,16 +161,16 @@ test('Log in navigates to lichess.org/oauth with PKCE parameters and scopes', as
   const url = new URL(page.url());
   const p = url.searchParams;
   expect(p.get('response_type')).toBe('code');
-  expect(p.get('client_id')).toBe('chesslab.c.referee.at');
+  expect(p.get('client_id')).toBe('daisychess.c.referee.at');
   expect(p.get('redirect_uri')).toBe(`${baseURL}/`);
   expect(p.get('code_challenge_method')).toBe('S256');
   expect(p.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
   expect(p.get('scope')).toBe('board:play challenge:read challenge:write');
   expect(p.get('state')).toMatch(/^[A-Za-z0-9_-]{32}$/);
 
-  // Back on ChessLab: the pending state matches the one sent to lichess.
+  // Back on DaisyChess: the pending state matches the one sent to lichess.
   await page.goto('/');
-  const pending = await page.evaluate(() => sessionStorage.getItem('chesslab.lichess.pkce'));
+  const pending = await page.evaluate(() => sessionStorage.getItem('daisychess.lichess.pkce'));
   expect(JSON.parse(pending ?? '{}')).toMatchObject({ state: p.get('state'), redirectUri: `${baseURL}/` });
 });
 
@@ -235,7 +235,7 @@ test('a pasted personal token logs in, shows scopes, survives reload, logout doe
   await page.getByTestId('account-chip').click();
   await page.getByRole('button', { name: 'Log out' }).click();
   await expect(page.getByTestId('account-chip')).toHaveText('Log in');
-  expect(await page.evaluate(() => localStorage.getItem('chesslab.lichess'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('daisychess.lichess'))).toBeNull();
   await page.waitForTimeout(300);
   expect(seen.deletes).toBe(0);
   expect(csp).toEqual([]);
@@ -252,5 +252,5 @@ test('a wrong personal token shows an error and stays anonymous', async ({ page 
   await account.getByRole('button', { name: 'Save lichess token' }).click();
   await expect(account.getByRole('alert')).toHaveText('Token invalid or expired');
   await expect(page.getByTestId('account-chip')).toHaveText('Log in');
-  expect(await page.evaluate(() => localStorage.getItem('chesslab.lichess'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('daisychess.lichess'))).toBeNull();
 });

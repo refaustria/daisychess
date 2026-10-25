@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LIMITS } from '@chesslab/engine-core';
+import { DEFAULT_LIMITS } from '@daisychess/engine-core';
 import { loadConfig } from './config.js';
 import { DEFAULT_ROOM_CONFIG } from './rooms/RoomManager.js';
 

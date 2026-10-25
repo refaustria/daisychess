@@ -9,7 +9,7 @@ import {
   type RoomSide,
   type RoomStateMessage,
   type RoomStatus,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import { tokenMatches } from '../ws/token.js';
 
 /**

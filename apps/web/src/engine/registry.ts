@@ -1,4 +1,4 @@
-import type { EngineDescriptor as ServerEngine, Limits } from '@chesslab/engine-core';
+import type { EngineDescriptor as ServerEngine, Limits } from '@daisychess/engine-core';
 import {
   budgetReason,
   currentMemoryBudget,
@@ -12,7 +12,7 @@ import type { WasmBuild } from './WasmEngineClient';
  *
  * Keys: `wasm:lite` (multi-threaded WASM, needs cross-origin isolation), `wasm:lite-single`
  * (single-threaded WASM, works everywhere), `wasm:full` (multi-threaded with the full-strength
- * network, ~99 MB download, opt-in; ADR-010) and `remote:<engineId>` (an engine of the ChessLab
+ * network, ~99 MB download, opt-in; ADR-010) and `remote:<engineId>` (an engine of the DaisyChess
  * server, discovered with {@link probeServer}).
  */
 export type EngineKey = string;

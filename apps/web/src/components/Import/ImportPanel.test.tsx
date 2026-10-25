@@ -108,7 +108,7 @@ describe('ImportPanel', () => {
       expect(online.fetchOnlineGames).toHaveBeenCalledWith('lichess', 'Alice');
       expect(screen.getAllByText(/1-0 · 2023-11-14 · 3\+2 · Italian Game/)).toHaveLength(2);
       expect(screen.getAllByText(/\(you, /)).toHaveLength(2);
-      expect(JSON.parse(localStorage.getItem('chesslab.import.online') ?? '{}').users.lichess).toBe('Alice');
+      expect(JSON.parse(localStorage.getItem('daisychess.import.online') ?? '{}').users.lichess).toBe('Alice');
 
       fireEvent.click(screen.getAllByRole('button', { name: /Alice \(1800\)/ })[0] as HTMLElement);
       await waitFor(() => expect(onLoaded).toHaveBeenCalled());
@@ -136,7 +136,7 @@ describe('ImportPanel', () => {
 
     it('"My games" fetches the logged-in user\'s games with the lichess login', async () => {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 'lio_x', username: 'Alice', scopes: [] }));
-      localStorage.setItem('chesslab.import.online', JSON.stringify({ site: 'chesscom', users: { chesscom: 'cc' } }));
+      localStorage.setItem('daisychess.import.online', JSON.stringify({ site: 'chesscom', users: { chesscom: 'cc' } }));
       resetLichessAuth();
       vi.mocked(online.fetchOnlineGames).mockResolvedValue([game]);
       vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue('[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0');
@@ -152,7 +152,7 @@ describe('ImportPanel', () => {
 
     it('restores the saved username per site', () => {
       localStorage.setItem(
-        'chesslab.import.online',
+        'daisychess.import.online',
         JSON.stringify({ site: 'chesscom', users: { lichess: 'li', chesscom: 'cc' } }),
       );
       render(<ImportPanel />);

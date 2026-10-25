@@ -1,4 +1,4 @@
-import { ROOM_BOUNDS, type RoomColorChoice } from '@chesslab/engine-core';
+import { ROOM_BOUNDS, type RoomColorChoice } from '@daisychess/engine-core';
 import { useEffect, useId, useRef, useState } from 'react';
 import { timeControlLabel } from '../../clock/timeControls';
 import { isLiveLocked, useLiveStore } from '../../live/liveStore';

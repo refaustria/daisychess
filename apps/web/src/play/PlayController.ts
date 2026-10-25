@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, BestMove, EngineInfo } from '@chesslab/engine-core';
+import type { AnalyzeOptions, BestMove, EngineInfo } from '@daisychess/engine-core';
 import { currentFen, turn, type GameStore, type Orientation } from '../store/gameStore';
 import { atTip, gameOutcome, type Outcome } from './outcome';
 import { strengthOptions, type StrengthPreset } from './strength';

@@ -23,7 +23,7 @@ type Hook = {
   runReview(o: { pgn: string; movetime: number }): Promise<{ status: string; error?: string }>;
 };
 const stats = (page: Page): Promise<Stats> =>
-  page.evaluate(() => (window as unknown as { __chesslab: Hook }).__chesslab.wasmInstances());
+  page.evaluate(() => (window as unknown as { __daisychess: Hook }).__daisychess.wasmInstances());
 
 async function squareCentre(page: Page, sq: string) {
   const box = await page.locator('cg-board').boundingBox();
@@ -55,7 +55,7 @@ async function reviewThenDrill(page: Page, threads?: RegExp): Promise<void> {
 
   const review = await page.evaluate(
     (pgn) =>
-      (window as unknown as { __chesslab: Hook }).__chesslab.runReview({ pgn, movetime: 100 }),
+      (window as unknown as { __daisychess: Hook }).__daisychess.runReview({ pgn, movetime: 100 }),
     SCHOLAR,
   );
   expect(review.status, review.error).toBe('done');
@@ -108,7 +108,7 @@ test.describe('browser engine memory budget', () => {
           Promise.race([
             w.evaluate(
               () =>
-                (self as unknown as { __chesslabMemory?: { maximum: number } }).__chesslabMemory
+                (self as unknown as { __daisychessMemory?: { maximum: number } }).__daisychessMemory
                   ?.maximum ?? null,
             ),
             new Promise<null>((r) => setTimeout(() => r(null), 1_000)),

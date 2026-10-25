@@ -57,7 +57,7 @@ test.describe('game review on the server', () => {
     test.setTimeout(120_000);
     if (!existsSync(SERVER_ENTRY) || !existsSync(`${REPO}packages/engine-core/dist/index.js`)) {
       execSync(
-        'pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server build',
+        'pnpm --filter @daisychess/engine-core build && pnpm --filter @daisychess/server build',
         { cwd: REPO, stdio: 'inherit' },
       );
     }
@@ -87,9 +87,9 @@ test.describe('game review on the server', () => {
     page.on('pageerror', (e) => errors.push(e.message));
     await page.addInitScript(
       ({ url }) => {
-        if (!localStorage.getItem('chesslab.analysis')) {
+        if (!localStorage.getItem('daisychess.analysis')) {
           localStorage.setItem(
-            'chesslab.analysis',
+            'daisychess.analysis',
             JSON.stringify({ enabled: false, settings: { depth: 12, multipv: 1, remoteUrl: url } }),
           );
         }

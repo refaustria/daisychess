@@ -46,7 +46,7 @@ describe('settingsStore', () => {
     expect(stored()).toMatchObject({ premoves: 'none' });
   });
 
-  it('persists changes under chesslab.settings', () => {
+  it('persists changes under daisychess.settings', () => {
     useSettingsStore.getState().set({ boardTheme: 'blue', coordinates: false });
     expect(stored()).toMatchObject({ boardTheme: 'blue', coordinates: false });
   });

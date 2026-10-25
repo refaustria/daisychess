@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
 import { WebSocketServer } from 'ws';
-import { MAX_MESSAGE_BYTES } from '@chesslab/engine-core';
+import { MAX_MESSAGE_BYTES } from '@daisychess/engine-core';
 import { Connection, type ConnectionOptions } from './connection.js';
 import { isOriginAllowed, type OriginPolicy } from './origin.js';
 import { IpSessionLedger, resolveClientIp, type TrustedProxies } from './clientIp.js';

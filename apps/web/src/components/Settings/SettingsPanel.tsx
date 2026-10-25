@@ -1,5 +1,5 @@
-import { boardThemes, findBoardTheme } from '@chesslab/ui-theme/boardThemes';
-import { pieceSets } from '@chesslab/ui-theme/pieceSets';
+import { boardThemes, findBoardTheme } from '@daisychess/ui-theme/boardThemes';
+import { pieceSets } from '@daisychess/ui-theme/pieceSets';
 import { useId, useState, type FormEvent } from 'react';
 import {
   HIGHLIGHT_STYLES,

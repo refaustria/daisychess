@@ -1,4 +1,4 @@
-import type { MoveClass, ReviewedMove, ReviewSummary, Score } from '@chesslab/engine-core';
+import type { MoveClass, ReviewedMove, ReviewSummary, Score } from '@daisychess/engine-core';
 
 const counts = (): Record<MoveClass, number> => ({
   best: 0,

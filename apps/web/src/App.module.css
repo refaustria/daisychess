@@ -40,10 +40,20 @@
 }
 
 .title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   margin: 0;
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+}
+
+.logo {
+  display: block;
+  flex: none;
+  width: 28px;
+  height: 28px;
 }
 
 .main {

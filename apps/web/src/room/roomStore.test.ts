@@ -70,7 +70,7 @@ describe('room store: host flow', () => {
   it('create → seat → waiting → playing → moves → result', async () => {
     useAnalysisStore.setState({ enabled: true });
     const s = await hostWaiting();
-    expect(s.sent[0]).toMatchObject({ type: 'hello', client: { name: 'chesslab-web-rooms' } });
+    expect(s.sent[0]).toMatchObject({ type: 'hello', client: { name: 'daisychess-web-rooms' } });
     expect(s.sent[0]).not.toHaveProperty('token');
     expect(room().phase).toBe('room');
     expect(room().room?.status).toBe('waiting');

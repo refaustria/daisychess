@@ -1,4 +1,4 @@
-import type { MoveClass, ReviewedMove } from '@chesslab/engine-core';
+import type { MoveClass, ReviewedMove } from '@daisychess/engine-core';
 import { convertPv } from '../engine/pvToSan';
 import type { MoveRecord } from '../store/gameStore';
 

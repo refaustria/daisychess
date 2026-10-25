@@ -17,9 +17,9 @@ const files = [
 let failed = false;
 for (const file of files) {
   const conf = readFileSync(file, 'utf8');
-  const m = /map\s+\$host\s+\$chesslab_csp\s*\{\s*default\s+"([^"]*)";\s*\}/.exec(conf);
+  const m = /map\s+\$host\s+\$daisychess_csp\s*\{\s*default\s+"([^"]*)";\s*\}/.exec(conf);
   if (!m) {
-    console.error(`✗ ${file}: no \`map $host $chesslab_csp { default "…"; }\` block`);
+    console.error(`✗ ${file}: no \`map $host $daisychess_csp { default "…"; }\` block`);
     failed = true;
   } else if (m[1] !== PRODUCTION_CSP) {
     console.error(`✗ ${file}: CSP differs from apps/web/csp.config.mjs`);

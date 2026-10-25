@@ -5,7 +5,7 @@ import { usePlayStore } from '../../play/playStore';
 import { configureRoom, resetRoom, useRoomStore } from '../../room/roomStore';
 import { fakeSockets, ROOM_ID, roomState, settle, TOKEN_A } from '../../room/testing';
 import { NICK_KEY, writeSeat } from '../../room/storage';
-import type { RoomStateMessage } from '@chesslab/engine-core';
+import type { RoomStateMessage } from '@daisychess/engine-core';
 import { useGameStore } from '../../store/gameStore';
 import { PlayerBar, useBoardPlayers } from '../PlayerBar/PlayerBar';
 import { FriendPanel } from './FriendPanel';

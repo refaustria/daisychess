@@ -1,4 +1,4 @@
-import type { EngineInfo, Limits, Score } from '@chesslab/engine-core';
+import type { EngineInfo, Limits, Score } from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
 import { create } from 'zustand';
 import {
@@ -142,7 +142,7 @@ export type AnalysisStore = AnalysisState & AnalysisActions;
 export const MAX_DEPTH = 40;
 export const MAX_MULTIPV = 5;
 export const DEFAULT_SETTINGS: AnalysisSettings = { depth: 22, multipv: 1 };
-export const STORAGE_KEY = 'chesslab.analysis';
+export const STORAGE_KEY = 'daisychess.analysis';
 export const PROBE_TTL_MS = 60_000;
 export const PROBE_ERROR_TTL_MS = 5_000;
 /** Upper bound of `enabledEngines` (one multi- and one single-threaded browser build + the server engines). */
@@ -420,7 +420,7 @@ const defaultProbeClient: ProbeClientFactory = async (settings) => {
     ...(settings.remoteUrl ? { url: settings.remoteUrl } : {}),
     ...(token ? { token } : {}),
     handshakeTimeoutMs: 5_000,
-    clientInfo: { name: 'chesslab-web-probe' },
+    clientInfo: { name: 'daisychess-web-probe' },
   });
 };
 

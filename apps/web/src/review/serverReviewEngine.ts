@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, BestMove, Engine, EngineInfo, Limits } from '@chesslab/engine-core';
+import type { AnalyzeOptions, BestMove, Engine, EngineInfo, Limits } from '@daisychess/engine-core';
 
 /**
  * The part of `RemoteEngineClient` the review uses (structural, so this module does not pull the
@@ -28,7 +28,7 @@ export function remoteError(message: string, code: string): Error {
 }
 
 /**
- * Review engine on the ChessLab server: adapts a {@link RemoteReviewClient} (one connection, one
+ * Review engine on the DaisyChess server: adapts a {@link RemoteReviewClient} (one connection, one
  * dedicated server session) to the {@link Engine} interface `BatchAnalyzer` expects.
  *
  * - After `load()` the session asks for the server's maximum threads (`limits.maxThreads`) and

@@ -17,7 +17,7 @@ const CSP_REPORT_PATH = '/__csp-report';
 /** Preview-only sink for `report-uri`: one JSON line per violation, so e2e can assert none. */
 function cspReportCollector(): Plugin {
   return {
-    name: 'chesslab:csp-report-collector',
+    name: 'daisychess:csp-report-collector',
     configurePreviewServer(server) {
       server.middlewares.use(CSP_REPORT_PATH, (req, res) => {
         const chunks: Buffer[] = [];
@@ -51,7 +51,7 @@ export default defineConfig({
   plugins: [react(), stockfishEngines(), cspReportCollector()],
   resolve: {
     alias: {
-      '@chesslab/engine-core': fileURLToPath(
+      '@daisychess/engine-core': fileURLToPath(
         new URL('../../packages/engine-core/src/index.ts', import.meta.url),
       ),
     },

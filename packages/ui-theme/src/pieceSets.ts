@@ -9,11 +9,11 @@ export const DEFAULT_PIECE_SET = 'cburnett';
 
 /**
  * The CSS for each set is loaded lazily by the app. `cburnett` comes from the
- * chessground package; `letters` is an original set generated for ChessLab.
+ * chessground package; `letters` is an original set generated for DaisyChess.
  */
 export const pieceSets: readonly PieceSetInfo[] = [
   { id: 'cburnett', name: 'Classic (Cburnett)', license: 'Colin M.L. Burnett, GPLv2+ (via chessground)' },
-  { id: 'letters', name: 'Letters', license: 'ChessLab original, MIT' },
+  { id: 'letters', name: 'Letters', license: 'DaisyChess original, MIT' },
 ];
 
 export function isPieceSet(id: string): boolean {

@@ -1,4 +1,4 @@
-# ChessLab — Browser & Server Chess Analysis
+# DaisyChess — Browser & Server Chess Analysis
 
 A modern, minimal chess analysis web app. Play a game yourself or import a PGN, and let Stockfish (or other UCI engines) evaluate every position with a live evaluation bar, best-move suggestions and full-game analysis.
 
@@ -47,7 +47,7 @@ Non-goals (for v1): online multiplayer, user accounts, opening database, cloud s
 ## 2. Architecture
 
 ```
-chesslab/
+daisychess/
 ├── apps/
 │   ├── web/                 # Vite + React + TypeScript frontend
 │   └── server/              # Node.js (TypeScript) engine server, WebSocket API
@@ -86,7 +86,7 @@ The site must set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Em
 - The game review, the openings drill and Play vs Engine share **one pooled browser engine** (`apps/web/src/engine/wasmPool.ts`): one holder at a time (a drill check waits for a running review), disposed 20 s after the last use. Server reviews/drills (ADR-014) do not touch it.
 - `engine/memoryBudget.ts` detects iOS/iPadOS (also the Mac user agent of iPadOS) and low `deviceMemory` (≤ 2 GiB): there the live analysis runs **one browser engine** at a time (the picker says "Memory budget: one browser engine at a time on this device"), with **at most 2 threads** (labels, the Threads select and the engine itself are capped), the multi-threaded build starts through `engine-shim/stockfish-memory-shim.js` (shared memory maximum 512 MiB instead of 2 GiB), and the live engine is released while a review/drill/game pauses it.
 - An out-of-memory (or other worker) failure restarts the engine once single-threaded for the rest of the session and shows one notice in the engine panel ("Browser engine restarted with 1 thread after running out of memory"); if that fails too, the browser engine is disabled until the user retries, and the review/drill switch to the server when one is configured (except with the "Browser" review setting).
-- `window.__chesslab.wasmInstances()` reports live/peak/created instances (e2e `engine-memory.spec.ts`).
+- `window.__daisychess.wasmInstances()` reports live/peak/created instances (e2e `engine-memory.spec.ts`).
 
 ### 2.2 Server (`apps/server`)
 
@@ -103,7 +103,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 
 ```jsonc
 // client → server
-{ "type": "hello", "protocolVersion": 1, "client": { "name": "chesslab-web", "version": "0.1.0" }, "token": "…" }  // token only if the server sets ACCESS_TOKEN
+{ "type": "hello", "protocolVersion": 1, "client": { "name": "daisychess-web", "version": "0.1.0" }, "token": "…" }  // token only if the server sets ACCESS_TOKEN
 { "type": "analyze", "sessionId": "tab-1", "searchId": 7, "engine": "stockfish", "fen": "...",
   "multipv": 3, "depth": 24, "movetime": 5000, "threads": 4, "hash": 256 }   // all after fen optional; no depth/movetime = infinite
 { "type": "stop", "sessionId": "tab-1" }        // stops the running search, bestmove follows
@@ -191,7 +191,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - Openings tab: search the ~3,900 named openings and variations by name or ECO code (e.g. "Italian", "B90"); each entry shows how many sub-variations it has.
 - **Browse**: the line move by move (click a move to see the position on the board, with the move list, opening name and review working as for an imported game) and the named branches at that move.
 - **Drill**: choose White, Black or both (alternating) and start. The app plays the book moves of the other side (main lines more often, side lines now and then). Your book moves are confirmed ("Book: <variation>"); a move outside the book is checked by the engine (same engine choice as the review: server when configured, else the browser): within 0.3 pawns of the best move it is "Not book, but fine" and the line ends out of book, otherwise you see the eval loss, the best move and its line on the board and in text, and "Try again". At the end: moves right first try, mistakes, and Repeat / Next variation / Play on vs engine.
-- Spaced repetition (stored only in this browser, localStorage `chesslab.trainer`): a variation drilled without a mistake comes back after 1, 2.5, 6 … days; one with a mistake is due again at once. "Due" filters the due variations, "Train due" starts the earliest. The live analysis is paused during a drill, and no drill runs during live, friend or engine games (starting one ends the drill).
+- Spaced repetition (stored only in this browser, localStorage `daisychess.trainer`): a variation drilled without a mistake comes back after 1, 2.5, 6 … days; one with a mistake is due again at once. "Due" filters the due variations, "Train due" starts the earliest. The live analysis is paused during a drill, and no drill runs during live, friend or engine games (starting one ends the drill).
 
 ### Online import
 - Import tab: fetch recent games of a user from the lichess and chess.com public APIs.
@@ -204,7 +204,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - Per-move classification and accuracy %, eval graph over the game, "key moments" list.
 - Export the annotated PGN.
 - Where it runs (Settings → "Review engine", ADR-014): **Auto** (default) reviews on the engine server when it is reachable and the access token is accepted, otherwise in the browser; **Browser** always uses the WASM engine (no network); **Server** always tries the server first. On the server the review gets its own session with the server's maximum threads (`MAX_THREADS`) and is released when the run ends. If the server is unreachable, refuses the token, is busy (session cap) or drops mid-review, the rest of the review runs in the browser (already analysed positions are kept) and the Review tab shows "Server unavailable (reason) — reviewing in the browser" (in Auto a missing/wrong token falls back silently). The progress line says where it runs ("Reviewing on server (Stockfish 19, 8 threads)…").
-- Review cache (ADR-016): finished reviews are stored in the browser (IndexedDB `chesslab-reviews`, in memory only in private mode), keyed by the start position and the moves (headers do not matter). Loading a game that was reviewed before shows its review at once ("Loaded from cache (reviewed 25 Oct, deep, server)") without running an engine; Start with the same or a weaker preset is disabled ("Already reviewed (deep)"); Deep after Fast runs but reuses every position the Fast run already searched to depth 18 or more. Settings → "Review cache" shows the number of stored reviews and clears them.
+- Review cache (ADR-016): finished reviews are stored in the browser (IndexedDB `daisychess-reviews`, in memory only in private mode), keyed by the start position and the moves (headers do not matter). Loading a game that was reviewed before shows its review at once ("Loaded from cache (reviewed 25 Oct, deep, server)") without running an engine; Start with the same or a weaker preset is disabled ("Already reviewed (deep)"); Deep after Fast runs but reuses every position the Fast run already searched to depth 18 or more. Settings → "Review cache" shows the number of stored reviews and clears them.
 
 ### Customization
 - Board colors (presets + custom picker), piece sets (Cburnett, Letters), coordinates on/off, highlight style, sound on/off, dark/light mode.
@@ -272,7 +272,7 @@ pnpm dev:web        # http://localhost:5180 (browser mode works without the serv
 pnpm dev:server     # http://127.0.0.1:8580 (/ws, /health); needs the engines above
 pnpm lint           # eslint + typecheck of all packages
 pnpm test           # Vitest, all packages
-pnpm e2e            # Playwright (builds the web app, serves it on :4180); first run: pnpm --filter @chesslab/web exec playwright install chromium
+pnpm e2e            # Playwright (builds the web app, serves it on :4180); first run: pnpm --filter @daisychess/web exec playwright install chromium
 pnpm build
 ```
 

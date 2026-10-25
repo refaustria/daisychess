@@ -4,7 +4,7 @@ import {
   parseServerMessage,
   type ServerMessage,
   type WelcomeMessage,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 
 /** Test client: records every server message and asserts each one conforms to the protocol. */
 export class TestClient {

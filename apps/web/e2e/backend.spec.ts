@@ -53,7 +53,7 @@ test.describe('engine backend switch (server mode)', () => {
     test.setTimeout(120_000);
     if (!existsSync(SERVER_ENTRY) || !existsSync(`${REPO}packages/engine-core/dist/index.js`)) {
       execSync(
-        'pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server build',
+        'pnpm --filter @daisychess/engine-core build && pnpm --filter @daisychess/server build',
         {
           cwd: REPO,
           stdio: 'inherit',
@@ -84,7 +84,7 @@ test.describe('engine backend switch (server mode)', () => {
     // Persisted settings are the only way to point the app at the test server.
     await page.addInitScript(
       ({ url }) => {
-        const key = 'chesslab.analysis';
+        const key = 'daisychess.analysis';
         if (!localStorage.getItem(key)) {
           localStorage.setItem(
             key,
@@ -153,7 +153,7 @@ test.describe('server access token', () => {
     test.setTimeout(120_000);
     if (!existsSync(SERVER_ENTRY) || !existsSync(`${REPO}packages/engine-core/dist/index.js`)) {
       execSync(
-        'pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server build',
+        'pnpm --filter @daisychess/engine-core build && pnpm --filter @daisychess/server build',
         { cwd: REPO, stdio: 'inherit' },
       );
     }
@@ -195,7 +195,7 @@ test.describe('server access token', () => {
   }) => {
     await page.addInitScript(
       ({ url }) => {
-        const key = 'chesslab.analysis';
+        const key = 'daisychess.analysis';
         if (!localStorage.getItem(key)) {
           localStorage.setItem(
             key,
@@ -238,7 +238,7 @@ test.describe('server access token', () => {
     await expect(status).not.toContainText('Access token');
     await expect(page.getByTestId('eval-label')).toHaveText(LABEL, { timeout: 20_000 });
     expect(
-      await page.evaluate(() => JSON.parse(localStorage.getItem('chesslab.settings') ?? '{}')),
+      await page.evaluate(() => JSON.parse(localStorage.getItem('daisychess.settings') ?? '{}')),
     ).toMatchObject({ serverToken: TOKEN });
     mkdirSync(SHOTS, { recursive: true });
     await page.screenshot({ path: `${SHOTS}/backend-token.png`, fullPage: true });

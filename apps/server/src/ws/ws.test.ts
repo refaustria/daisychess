@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PROTOCOL_VERSION, type ServerMessage } from '@chesslab/engine-core';
+import { PROTOCOL_VERSION, type ServerMessage } from '@daisychess/engine-core';
 import { buildApp, type BuildAppOptions } from '../app.js';
 import { loadConfig, type ServerConfig } from '../config.js';
 import { fakeSpawner, registry, until } from '../../test/helpers.js';
@@ -272,7 +272,7 @@ describe('WebSocket /ws', () => {
     // after a releases, b can analyze
     a.send({ type: 'release', sessionId: 's' });
     expect(await a.terminal('s', 1)).toMatchObject({ reason: 'stopped' });
-    await until(() => app.chesslab.pool.sessions === 0);
+    await until(() => app.daisychess.pool.sessions === 0);
     b.send(analyze('s', 2, { depth: 2 }));
     expect(await b.terminal('s', 2)).toMatchObject({ type: 'bestmove', reason: 'completed' });
   });
@@ -284,7 +284,7 @@ describe('WebSocket /ws', () => {
     await c.terminal('s', 1);
     c.send(analyze('s', 2, { depth: 2, engine: 'fake2' }));
     expect(await c.terminal('s', 2)).toMatchObject({ type: 'bestmove' });
-    const stats = app.chesslab.pool.stats();
+    const stats = app.daisychess.pool.stats();
     expect(stats.find((s) => s.id === 'fake')).toMatchObject({ busy: 0 });
     expect(stats.find((s) => s.id === 'fake2')).toMatchObject({ busy: 1 });
   });
@@ -300,8 +300,8 @@ describe('WebSocket /ws', () => {
       sessionId: 's',
       searchId: 1,
     });
-    await until(() => app.chesslab.pool.sessions === 0);
-    expect(app.chesslab.ws.ipSessions.total).toBe(0);
+    await until(() => app.daisychess.pool.sessions === 0);
+    expect(app.daisychess.ws.ipSessions.total).toBe(0);
     // backoff (500 ms): the request is refused at once, not held
     c.send(analyze('s', 2, { depth: 2 }));
     expect(await c.terminal('s', 2)).toMatchObject({ type: 'error', code: 'no_capacity' });
@@ -317,10 +317,10 @@ describe('WebSocket /ws', () => {
     c.send(analyze('s', 3, { depth: 2 }));
     expect(await c.terminal('s', 3)).toMatchObject({ type: 'bestmove', reason: 'completed' });
     // the completed search proved the engine healthy
-    expect(app.chesslab.pool.stats().find((e) => e.id === 'fake')).toMatchObject({ crashes: 0 });
+    expect(app.daisychess.pool.stats().find((e) => e.id === 'fake')).toMatchObject({ crashes: 0 });
     checkOrdering(c.messages, 's', [1, 2, 3]);
     expect(c.messages.filter((m) => m.type === 'bestmove' && m.searchId === 1)).toHaveLength(0);
-    expect(app.chesslab.ws.ipSessions.total).toBe(1);
+    expect(app.daisychess.ws.ipSessions.total).toBe(1);
   });
 
   it('an engine that ignores stop is dropped: engine_crashed for the search, process killed', async () => {
@@ -335,7 +335,7 @@ describe('WebSocket /ws', () => {
       reason: 'completed',
     });
     checkOrdering(c.messages, 's', [1, 2]);
-    expect(app.chesslab.pool.instanceCount('fake')).toBeLessThanOrEqual(2);
+    expect(app.daisychess.pool.instanceCount('fake')).toBeLessThanOrEqual(2);
   });
 
   it('an idle session gives its engine back after SESSION_IDLE_MS and is recreated on demand', async () => {
@@ -343,11 +343,11 @@ describe('WebSocket /ws', () => {
     const c = await client(url);
     c.send(analyze('s', 1, { depth: 2 }));
     await c.terminal('s', 1);
-    expect(app.chesslab.pool.sessions).toBe(1);
-    await until(() => app.chesslab.pool.sessions === 0);
+    expect(app.daisychess.pool.sessions).toBe(1);
+    await until(() => app.daisychess.pool.sessions === 0);
     c.send(analyze('s', 2, { depth: 2 }));
     expect(await c.terminal('s', 2)).toMatchObject({ type: 'bestmove', reason: 'completed' });
-    expect(app.chesslab.pool.sessions).toBe(1);
+    expect(app.daisychess.pool.sessions).toBe(1);
   });
 
   it('caps the wall time of infinite searches (reason: limit)', async () => {
@@ -384,10 +384,10 @@ describe('WebSocket /ws', () => {
     c.send(analyze('b', 1, { engine: 'fake2' }));
     await c.waitFor((m) => m.type === 'info' && m.sessionId === 'a');
     await c.waitFor((m) => m.type === 'info' && m.sessionId === 'b');
-    expect(app.chesslab.pool.sessions).toBe(2);
+    expect(app.daisychess.pool.sessions).toBe(2);
     await c.close();
-    await until(() => app.chesslab.pool.sessions === 0 && app.chesslab.ws.connections.size === 0);
-    await until(() => app.chesslab.pool.stats().every((s) => s.busy === 0 && s.idle <= 1));
+    await until(() => app.daisychess.pool.sessions === 0 && app.daisychess.ws.connections.size === 0);
+    await until(() => app.daisychess.pool.stats().every((s) => s.busy === 0 && s.idle <= 1));
     const health = (await app.inject({ method: 'GET', url: '/health/detail' })).json() as {
       engines: { id: string; busy: number; idle: number }[];
       sessions: number;
@@ -401,13 +401,13 @@ describe('WebSocket /ws', () => {
     const c = await client(url);
     c.send(analyze('s', 1));
     await c.waitFor((m) => m.type === 'info');
-    const pids = app.chesslab.pool.stats();
+    const pids = app.daisychess.pool.stats();
     expect(pids[0]?.busy).toBe(1);
     const closed = c.waitClosed();
     await app.close();
     apps.splice(apps.indexOf(app), 1);
     expect(await closed).toBe(1001);
-    expect(app.chesslab.pool.instanceCount('fake')).toBe(0);
+    expect(app.daisychess.pool.instanceCount('fake')).toBe(0);
   });
 
   it('rejects upgrades on other paths', async () => {
@@ -437,17 +437,17 @@ describe('WebSocket /ws', () => {
         message: 'too many sessions from your address (at most 2)',
       });
       expect(await b.terminal('s2', 1)).toMatchObject({ type: 'error', code: 'no_capacity' });
-      expect(app.chesslab.pool.sessions).toBe(2);
-      expect(app.chesslab.ws.ipSessions.count('203.0.113.7')).toBe(2);
+      expect(app.daisychess.pool.sessions).toBe(2);
+      expect(app.daisychess.ws.ipSessions.count('203.0.113.7')).toBe(2);
 
       // release frees a slot
       a.send({ type: 'release', sessionId: 's1' });
-      await until(() => app.chesslab.ws.ipSessions.count('203.0.113.7') === 1);
+      await until(() => app.daisychess.ws.ipSessions.count('203.0.113.7') === 1);
       b.send(analyze('s2', 2));
       await b.waitFor((m) => m.type === 'info' && m.sessionId === 's2');
       // closing a connection frees all of its slots
       await b.close();
-      await until(() => app.chesslab.ws.ipSessions.total === 0);
+      await until(() => app.daisychess.ws.ipSessions.total === 0);
       a.send(analyze('s2', 2, { depth: 2 }));
       expect(await a.terminal('s2', 2)).toMatchObject({ type: 'bestmove', reason: 'completed' });
     });
@@ -464,7 +464,7 @@ describe('WebSocket /ws', () => {
       );
       expect(terminals.filter(noCapacity)).toHaveLength(4);
       expect(terminals.filter((m) => m.type === 'bestmove')).toHaveLength(2);
-      expect(app.chesslab.ws.ipSessions.count('2001:db8::1')).toBe(2);
+      expect(app.daisychess.ws.ipSessions.count('2001:db8::1')).toBe(2);
     });
 
     it('different addresses are independent; IPv4-mapped IPv6 is the same address', async () => {
@@ -478,7 +478,7 @@ describe('WebSocket /ws', () => {
       expect(await a2.terminal('s', 1)).toMatchObject({ type: 'error', code: 'no_capacity' });
       b.send(analyze('s', 1, { depth: 2 }));
       expect(await b.terminal('s', 1)).toMatchObject({ type: 'bestmove', reason: 'completed' });
-      expect(app.chesslab.ws.ipSessions.addresses).toBe(2);
+      expect(app.daisychess.ws.ipSessions.addresses).toBe(2);
     });
 
     it('without X-Real-IP all loopback clients count as one address', async () => {
@@ -502,7 +502,7 @@ describe('WebSocket /ws', () => {
         code: 'no_capacity',
         message: 'server session limit reached',
       });
-      expect(app.chesslab.ws.ipSessions.count('192.0.2.2')).toBe(0);
+      expect(app.daisychess.ws.ipSessions.count('192.0.2.2')).toBe(0);
     });
   });
 

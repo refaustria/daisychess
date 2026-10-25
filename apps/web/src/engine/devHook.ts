@@ -14,7 +14,7 @@ export interface WasmInstanceStats extends Pick<WasmHealth, 'live' | 'peak' | 'c
   pool: EnginePoolStats;
 }
 
-export interface ChessLabDevHook {
+export interface DaisyChessDevHook {
   createWasmEngine(options?: WasmEngineClientOptions): Promise<WasmEngineClient>;
   createRemoteEngine(options?: RemoteEngineClientOptions): Promise<RemoteEngineClient>;
   /** Engine instance counters (ADR-015; e2e asserts the peak). */
@@ -24,12 +24,12 @@ export interface ChessLabDevHook {
 
 declare global {
   interface Window {
-    __chesslab?: ChessLabDevHook;
+    __daisychess?: DaisyChessDevHook;
   }
 }
 
-window.__chesslab = {
-  ...window.__chesslab,
+window.__daisychess = {
+  ...window.__daisychess,
   async createWasmEngine(options) {
     const { WasmEngineClient } = await import('./WasmEngineClient');
     return new WasmEngineClient(options);

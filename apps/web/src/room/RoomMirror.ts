@@ -1,4 +1,4 @@
-import type { RoomSide, RoomStateMessage } from '@chesslab/engine-core';
+import type { RoomSide, RoomStateMessage } from '@daisychess/engine-core';
 import { moveToUci, replay, type LiveGameStoreApi } from '../live/LiveGameController';
 import { PremoveQueue } from '../live/premoves';
 import { START_FEN, type GameState, type MoveRecord, type Orientation } from '../store/gameStore';
@@ -24,7 +24,7 @@ export const sideToMoveAt = (plies: number): RoomSide => (plies % 2 === 0 ? 'whi
 export function roomHeaders(s: Pick<RoomStateMessage, 'players' | 'clock'>): Record<string, string> {
   return {
     Event: 'Friend game',
-    Site: 'ChessLab',
+    Site: 'DaisyChess',
     White: s.players.white?.nick ?? '?',
     Black: s.players.black?.nick ?? '?',
     TimeControl: timeControl(s.clock),
@@ -137,7 +137,7 @@ export class RoomMirror {
       const from = k === 0 ? START_FEN : this.records[k - 1]!.fen;
       const r = replay(from, s.moves.slice(k));
       this.records = [...this.records, ...r.records];
-      if (!r.ok) this.o.onError('The server sent a move ChessLab cannot replay');
+      if (!r.ok) this.o.onError('The server sent a move DaisyChess cannot replay');
     }
     if (this.pending && (s.moves.length > (prev?.moves.length ?? 0) || s.status !== 'playing')) {
       // The game advanced (our move confirmed or superseded) or ended.

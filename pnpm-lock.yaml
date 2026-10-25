@@ -190,7 +190,7 @@ importers:
 
   apps/server:
     dependencies:
-      '@chesslab/engine-core':
+      '@daisychess/engine-core':
         specifier: workspace:*
         version: link:../../packages/engine-core
       chess.js:
@@ -221,10 +221,10 @@ importers:
 
   apps/web:
     dependencies:
-      '@chesslab/engine-core':
+      '@daisychess/engine-core':
         specifier: workspace:*
         version: link:../../packages/engine-core
-      '@chesslab/ui-theme':
+      '@daisychess/ui-theme':
         specifier: workspace:*
         version: link:../../packages/ui-theme
       chess.js:

@@ -9,7 +9,7 @@ test('loading a game reviews it automatically with move commentary and arrows', 
   test.setTimeout(90_000);
   // The guided tour (M20-2) has its own spec; here the card must stay at the start position.
   await page.addInitScript(() =>
-    localStorage.setItem('chesslab.settings', JSON.stringify({ reviewTour: false })),
+    localStorage.setItem('daisychess.settings', JSON.stringify({ reviewTour: false })),
   );
   await page.goto('/');
   await expect(page.locator('cg-board')).toBeVisible();
@@ -71,7 +71,7 @@ test('loading a game reviews it automatically with move commentary and arrows', 
 
   const download = page.waitForEvent('download');
   await panel.getByRole('button', { name: 'Export annotated PGN' }).click();
-  expect((await download).suggestedFilename()).toBe('chesslab-review.pgn');
+  expect((await download).suggestedFilename()).toBe('daisychess-review.pgn');
 
   // A manual Deep run replaces the auto review.
   await panel.getByRole('button', { name: 'Run Deep' }).click();

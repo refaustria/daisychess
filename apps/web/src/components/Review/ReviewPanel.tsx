@@ -1,4 +1,4 @@
-import { MOVE_CLASSES, type ReviewedMove, type ReviewSummary } from '@chesslab/engine-core';
+import { MOVE_CLASSES, type ReviewedMove, type ReviewSummary } from '@daisychess/engine-core';
 import { useMemo, useState } from 'react';
 import { annotatePgn } from '../../review/annotatePgn';
 import { reviewHighlights } from '../../review/details';
@@ -41,7 +41,7 @@ function download(text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/x-chess-pgn' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'chesslab-review.pgn';
+  a.download = 'daisychess-review.pgn';
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -1,9 +1,9 @@
-import { normalizeNick, ROOM_BOUNDS, RoomIdSchema, type RoomSide } from '@chesslab/engine-core';
+import { normalizeNick, ROOM_BOUNDS, RoomIdSchema, type RoomSide } from '@daisychess/engine-core';
 
 /** The last nickname (prefills the create and join forms). */
-export const NICK_KEY = 'chesslab.nick';
+export const NICK_KEY = 'daisychess.nick';
 /** Per room: the seat secret for `room.attach` (ADR-013), never in the URL. */
-export const ROOM_KEY_PREFIX = 'chesslab.room.';
+export const ROOM_KEY_PREFIX = 'daisychess.room.';
 /** Seats older than this are pruned (rooms live at most a few hours on the server). */
 export const SEAT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 

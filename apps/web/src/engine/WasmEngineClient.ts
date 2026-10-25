@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, Engine } from '@chesslab/engine-core';
+import type { AnalyzeOptions, Engine } from '@daisychess/engine-core';
 import {
   currentMemoryBudget,
   defaultThreadCount,

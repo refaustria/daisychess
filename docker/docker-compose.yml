@@ -1,13 +1,13 @@
-# ChessLab server mode.   docker compose -f docker/docker-compose.yml up --build -d
+# DaisyChess server mode.   docker compose -f docker/docker-compose.yml up --build -d
 # Public entry point: http://localhost:${WEB_PORT:-8080}  (web UI, /ws, /health)
-name: chesslab
+name: daisychess
 
 services:
   server:
     build:
       context: ..
       dockerfile: docker/server.Dockerfile
-    image: chesslab-server
+    image: daisychess-server
     env_file: server.env
     init: true            # tini as PID 1 (also installed in the image)
     restart: unless-stopped
@@ -24,7 +24,7 @@ services:
     # Hash x concurrent engines must fit in memory):
     # cpus: 4
     # mem_limit: 2g
-    networks: [chesslab]
+    networks: [daisychess]
     # Publish the engine server directly (e.g. for a web app hosted elsewhere):
     # ports:
     #   - "8580:8580"
@@ -39,7 +39,7 @@ services:
     build:
       context: ..
       dockerfile: docker/web.Dockerfile
-    image: chesslab-web
+    image: daisychess-web
     restart: unless-stopped
     # nginx's master process still needs to bind :80 and drop to the nginx user.
     security_opt:
@@ -54,9 +54,9 @@ services:
     depends_on:
       server:
         condition: service_healthy
-    networks: [chesslab]
+    networks: [daisychess]
     ports:
       - "${WEB_PORT:-8080}:80"
 
 networks:
-  chesslab:
+  daisychess:

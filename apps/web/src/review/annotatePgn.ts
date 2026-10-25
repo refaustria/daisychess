@@ -1,4 +1,4 @@
-import type { ReviewSummary, Score } from '@chesslab/engine-core';
+import type { ReviewSummary, Score } from '@daisychess/engine-core';
 import type { MoveRecord } from '../store/gameStore';
 import { bestMoveSan, moveNumberLabel } from './format';
 

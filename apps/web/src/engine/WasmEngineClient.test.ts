@@ -1,4 +1,4 @@
-import type { EngineInfo } from '@chesslab/engine-core';
+import type { EngineInfo } from '@daisychess/engine-core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   engineScriptUrl,

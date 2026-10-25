@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { EngineInfo } from '@chesslab/engine-core';
+import type { EngineInfo } from '@daisychess/engine-core';
 import { fakeProcess, isRunning } from '../../test/helpers.js';
 import {
   UciProcess,

@@ -13,7 +13,7 @@
 
 export const EXPLORER_ORIGIN = 'https://explorer.lichess.org';
 export const LICHESS_EXPORT_URL = 'https://lichess.org/game/export/';
-export const TOKEN_CREATE_URL = 'https://lichess.org/account/oauth/token/create?description=ChessLab+explorer';
+export const TOKEN_CREATE_URL = 'https://lichess.org/account/oauth/token/create?description=DaisyChess+explorer';
 /** Explorer index depth: positions after this many plies (from the standard start) are not indexed. */
 export const EXPLORER_MAX_PLY = 50;
 

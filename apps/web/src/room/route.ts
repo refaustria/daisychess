@@ -1,4 +1,4 @@
-import { RoomIdSchema } from '@chesslab/engine-core';
+import { RoomIdSchema } from '@daisychess/engine-core';
 
 const ROUTE = /^#\/room\/([^/?#]+)\/?$/;
 

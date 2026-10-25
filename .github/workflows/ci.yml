@@ -68,10 +68,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
       - if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter @chesslab/web exec playwright install --with-deps chromium
+        run: pnpm --filter @daisychess/web exec playwright install --with-deps chromium
       # System libraries are not in the cache.
       - if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @chesslab/web exec playwright install-deps chromium
+        run: pnpm --filter @daisychess/web exec playwright install-deps chromium
 
       - run: pnpm build
       - run: pnpm e2e

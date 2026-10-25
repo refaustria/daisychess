@@ -2,7 +2,7 @@
  * The review, the openings drill and play share one pooled browser engine (ADR-015): instance
  * counting, waiting, out-of-memory recovery and the server fallback of a disabled browser engine.
  */
-import { DEFAULT_LIMITS } from '@chesslab/engine-core';
+import { DEFAULT_LIMITS } from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserEnginePool } from '../engine/wasmPool';

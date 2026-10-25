@@ -1,7 +1,7 @@
 import { LICHESS_SCOPES, useLichessAuth } from '../../lichess/auth';
 import styles from './LichessAccount.module.css';
 
-export const LOGIN_TOOLTIP = `Log in on lichess.org and allow ChessLab: ${LICHESS_SCOPES.join(', ')}`;
+export const LOGIN_TOOLTIP = `Log in on lichess.org and allow DaisyChess: ${LICHESS_SCOPES.join(', ')}`;
 
 /** Starts the lichess OAuth login (a full-page redirect to lichess.org). */
 export function LoginButton({ label = 'Log in with lichess' }: { label?: string }) {

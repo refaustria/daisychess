@@ -16,7 +16,7 @@ import {
   type ProtocolErrorCode,
   type ServerMessage,
   type WelcomeMessage,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import type { AnalysisEngine, EngineCapabilities } from './AnalysisController';
 import { defaultServerUrl } from './serverUrl';
 import type { AnalysisHandle } from './UciSession';
@@ -191,7 +191,7 @@ const clamp = (v: number | undefined, max: number): number | undefined =>
   v === undefined ? undefined : Math.min(v, max);
 
 /**
- * Native engine on the ChessLab server over the WebSocket protocol (ADR-006), implementing the
+ * Native engine on the DaisyChess server over the WebSocket protocol (ADR-006), implementing the
  * same {@link AnalysisEngine} shape as {@link WasmEngineClient}.
  *
  * - One connection and one server session (random `sessionId`) per client instance; every
@@ -337,7 +337,7 @@ export class RemoteEngineClient implements AnalysisEngine {
       const hello: ClientMessage = {
         type: 'hello',
         protocolVersion: PROTOCOL_VERSION,
-        client: this.options.clientInfo ?? { name: 'chesslab-web' },
+        client: this.options.clientInfo ?? { name: 'daisychess-web' },
         ...(this.options.token ? { token: this.options.token } : {}),
       };
       this.send(hello);

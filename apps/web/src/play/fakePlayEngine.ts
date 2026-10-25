@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, BestMove, EngineInfo } from '@chesslab/engine-core';
+import type { AnalyzeOptions, BestMove, EngineInfo } from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
 import type { PlayEngine } from './PlayController';
 

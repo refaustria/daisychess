@@ -65,7 +65,7 @@ const clientMessages: ClientMessage[] = [
   {
     type: 'hello',
     protocolVersion: PROTOCOL_VERSION,
-    client: { name: 'chesslab-web', version: '0.1.0' },
+    client: { name: 'daisychess-web', version: '0.1.0' },
   },
   { type: 'hello', protocolVersion: PROTOCOL_VERSION },
   analyze,

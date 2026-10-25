@@ -1,5 +1,5 @@
-import { DEFAULT_BOARD_THEME, findBoardTheme } from '@chesslab/ui-theme/boardThemes';
-import { DEFAULT_PIECE_SET, isPieceSet } from '@chesslab/ui-theme/pieceSets';
+import { DEFAULT_BOARD_THEME, findBoardTheme } from '@daisychess/ui-theme/boardThemes';
+import { DEFAULT_PIECE_SET, isPieceSet } from '@daisychess/ui-theme/pieceSets';
 import { create } from 'zustand';
 
 export type HighlightStyle = 'classic' | 'subtle' | 'none';
@@ -55,7 +55,7 @@ export function normalizeToken(raw: string): string {
   return raw.trim().slice(0, MAX_SERVER_TOKEN_LENGTH);
 }
 
-export const SETTINGS_KEY = 'chesslab.settings';
+export const SETTINGS_KEY = 'daisychess.settings';
 
 export const DEFAULT_SETTINGS: Settings = {
   boardTheme: DEFAULT_BOARD_THEME,

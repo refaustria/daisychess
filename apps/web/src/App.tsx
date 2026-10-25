@@ -1,4 +1,4 @@
-import '@chesslab/ui-theme/base.css';
+import '@daisychess/ui-theme/base.css';
 import {
   lazy,
   Suspense,
@@ -220,7 +220,10 @@ export function App() {
   return (
     <div className={styles.app}>
       <header className={styles.header}>
-        <h1 className={styles.title}>ChessLab</h1>
+        <h1 className={styles.title}>
+          <img className={styles.logo} src="/brand/daisy.svg" alt="" width={28} height={28} />
+          DaisyChess
+        </h1>
         <div className={styles.headerActions}>
           <AccountChip />
           <ThemeToggle />

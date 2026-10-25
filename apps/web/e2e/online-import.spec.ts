@@ -136,7 +136,7 @@ test('"My games" with the lichess login sends the token as a header', async ({ p
     return route.fulfill({ status: 200, headers, contentType: 'application/x-ndjson', body: `${JSON.stringify(LI_GAME)}\n` });
   });
   await page.evaluate(() =>
-    localStorage.setItem('chesslab.lichess', JSON.stringify({ token: 'lio_mine', username: 'Alice', scopes: [] })),
+    localStorage.setItem('daisychess.lichess', JSON.stringify({ token: 'lio_mine', username: 'Alice', scopes: [] })),
   );
   await page.reload();
   await page.getByRole('tab', { name: 'Import' }).click();

@@ -1,6 +1,6 @@
-# ChessLab security review (M6-3)
+# DaisyChess security review (M6-3)
 
-**Date:** 2026-10-23 · **Scope:** `apps/server`, `packages/engine-core/src/protocol.ts`, `deploy/`, `docker/`, `scripts/fetch-engines.sh`, the live host `c.referee.at` (nginx + `chesslab-server.service`) and the client-side isolation headers. Policies decided here are recorded in `docs/DECISIONS.md` ADR-008.
+**Date:** 2026-10-23 · **Scope:** `apps/server`, `packages/engine-core/src/protocol.ts`, `deploy/`, `docker/`, `scripts/fetch-engines.sh`, the live host `c.referee.at` (nginx + `daisychess-server.service`) and the client-side isolation headers. Policies decided here are recorded in `docs/DECISIONS.md` ADR-008.
 
 ## 1. Threat model
 
@@ -62,18 +62,18 @@ Public `/health` exposed per-engine busy/idle counts and the session count (tell
 
 ### 2.7 Host and container hardening — Low, fixed
 
-- **systemd** (`deploy/chesslab-server.service`, applied live, score 6.4 → see §3): `CapabilityBoundingSet=` / `AmbientCapabilities=` (none), `SystemCallFilter=@system-service` with `SystemCallErrorNumber=EPERM` and `SystemCallArchitectures=native`, `IPAddressDeny=any` + `IPAddressAllow=localhost` (the server never needs egress), `ProtectProc=invisible`, `ProtectClock`, `ProtectHostname`, `ProtectKernelLogs`, `RestrictNamespaces`, `RestrictRealtime`, `RemoveIPC`, `UMask=0077`. Kept off on purpose: `MemoryDenyWriteExecute` (V8 JIT), `ProcSubset=pid` (Stockfish/libuv read `/proc/cpuinfo`, `/proc/stat`, `/proc/meminfo`), `PrivateUsers` (not needed, breaks nothing but adds no value as a plain user). `ProtectSystem=strict` + `ProtectHome=read-only` already make the filesystem immutable for the service.
+- **systemd** (`deploy/daisychess-server.service`, applied live, score 6.4 → see §3): `CapabilityBoundingSet=` / `AmbientCapabilities=` (none), `SystemCallFilter=@system-service` with `SystemCallErrorNumber=EPERM` and `SystemCallArchitectures=native`, `IPAddressDeny=any` + `IPAddressAllow=localhost` (the server never needs egress), `ProtectProc=invisible`, `ProtectClock`, `ProtectHostname`, `ProtectKernelLogs`, `RestrictNamespaces`, `RestrictRealtime`, `RemoveIPC`, `UMask=0077`. Kept off on purpose: `MemoryDenyWriteExecute` (V8 JIT), `ProcSubset=pid` (Stockfish/libuv read `/proc/cpuinfo`, `/proc/stat`, `/proc/meminfo`), `PrivateUsers` (not needed, breaks nothing but adds no value as a plain user). `ProtectSystem=strict` + `ProtectHome=read-only` already make the filesystem immutable for the service.
 - **nginx**: `limit_req` on `/ws`; `Content-Security-Policy: frame-ancestors 'none'` (clickjacking) on every response, repeated in the locations that declare their own `add_header` (nginx inheritance rule); all security headers use `always`. The repo copy `deploy/nginx/c.referee.at.conf` had been committed **empty** (47cffbf); it is restored from the live file (pre-certbot form) so the repo is the source of truth again.
 - **Docker**: `server` runs `read_only` with a 64 MB `/tmp` tmpfs, `cap_drop: ALL`, `no-new-privileges`; `web` keeps only `CHOWN/SETGID/SETUID/NET_BIND_SERVICE` (nginx master) and `no-new-privileges`; `docker/nginx.web.conf` mirrors the production limits and headers.
 
 ### 2.8 Client side — Content-Security-Policy, fixed (M10-1)
 
-COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for threaded WASM and also isolate the page from cross-origin windows (no `window.opener` access, Spectre mitigation). `window.__chesslab` (`apps/web/src/engine/devHook.ts`) only exposes factories for code the page already ships; it grants nothing that an XSS would not already have. `localStorage` holds theme, board/piece settings and analysis settings — no secrets, no personal data — plus the lichess tokens described in §2.8a.
+COOP `same-origin` + COEP `require-corp` + CORP `same-origin` are required for threaded WASM and also isolate the page from cross-origin windows (no `window.opener` access, Spectre mitigation). `window.__daisychess` (`apps/web/src/engine/devHook.ts`) only exposes factories for code the page already ships; it grants nothing that an XSS would not already have. `localStorage` holds theme, board/piece settings and analysis settings — no secrets, no personal data — plus the lichess tokens described in §2.8a.
 
-**CSP (enforced since 2026-10-23).** Single source: `apps/web/csp.config.mjs` (`PRODUCTION_CSP`). nginx (`deploy/nginx/c.referee.at.conf`, `docker/nginx.web.conf`) holds a copy in `map $host $chesslab_csp` and sends it on every response (including `/assets/`, so the engine Workers get the same policy); `node scripts/check-csp.mjs [live conf]` fails on drift and runs in CI. `vite preview` sends the same policy (plus loopback `ws:` for the e2e engine servers, `'report-sample'` and a `report-uri`), so every Playwright spec runs under it.
+**CSP (enforced since 2026-10-23).** Single source: `apps/web/csp.config.mjs` (`PRODUCTION_CSP`). nginx (`deploy/nginx/c.referee.at.conf`, `docker/nginx.web.conf`) holds a copy in `map $host $daisychess_csp` and sends it on every response (including `/assets/`, so the engine Workers get the same policy); `node scripts/check-csp.mjs [live conf]` fails on drift and runs in CI. `vite preview` sends the same policy (plus loopback `ws:` for the e2e engine servers, `'report-sample'` and a `report-uri`), so every Playwright spec runs under it.
 
 ```
-default-src 'self'; script-src 'self' 'sha256-YOswKRJVs+FwLZbQstA9GmeqiOLqFnNMWa/1cEzxiD0=' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://lichess.org https://explorer.lichess.org https://api.chess.com wss://c.referee.at; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+default-src 'self'; script-src 'self' 'sha256-SMSqO1M1II4kAAVrbA6nO0K81/vI2V4QXj1JkHTnMm8=' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://lichess.org https://explorer.lichess.org https://api.chess.com wss://c.referee.at; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 ```
 
 | Directive | Why |
@@ -92,11 +92,11 @@ Rollout: Report-Only on the live site first (headless Chromium through the app: 
 
 ### 2.8a lichess tokens (M13-1)
 
-ChessLab holds two kinds of lichess credential, both only in this browser:
+DaisyChess holds two kinds of lichess credential, both only in this browser:
 
-- **Login token** ("Log in with lichess", `apps/web/src/lichess/auth.ts`): OAuth 2.0 authorization code flow with PKCE (S256), no client secret, `client_id` `chesslab.c.referee.at`, redirect URI = the page's own origin + path. The PKCE verifier and the random `state` live in `sessionStorage` only for the round trip and are deleted when the callback is handled; a callback whose `state` does not match is rejected without contacting lichess (CSRF). The code and state are removed from the address bar with `history.replaceState` before anything else happens. The token is requested with the scopes `board:play challenge:read challenge:write` (live games); the explorer and "My games" need no scope. It is stored in `localStorage` `chesslab.lichess` (`{token, username, scopes, expiresAt}`, lichess tokens last about a year) and sent only as `Authorization: Bearer` to `lichess.org` / `explorer.lichess.org` — `lichessFetch` refuses any other host. **Logout** deletes it locally first and then revokes it with `DELETE https://lichess.org/api/token` (failures ignored: offline logout still forgets it); a `401` on an authenticated request logs out with a message. A login that fails after the exchange revokes the half-issued token.
-- **Pasted personal access token** (Settings → lichess account, `loginWithToken`): validated with `POST /api/token/test` (token in the request body, `text/plain`, never in a URL) and stored in the same `chesslab.lichess` entry with `source: 'token'`; the same `lichessFetch` host allow-list and `401` handling apply. Logout only deletes it locally and does not revoke it, because the user created it by hand and may use it elsewhere; the UI says so. The input is `type=password`, `autocomplete=off`, cleared after saving, and the token never appears in the DOM, errors or logs.
-- **Pasted explorer token** (fallback under Explorer → Advanced): a scope-less personal token in `localStorage` `chesslab.explorer`, sent only to the explorer, unused while logged in.
+- **Login token** ("Log in with lichess", `apps/web/src/lichess/auth.ts`): OAuth 2.0 authorization code flow with PKCE (S256), no client secret, `client_id` `daisychess.c.referee.at`, redirect URI = the page's own origin + path. The PKCE verifier and the random `state` live in `sessionStorage` only for the round trip and are deleted when the callback is handled; a callback whose `state` does not match is rejected without contacting lichess (CSRF). The code and state are removed from the address bar with `history.replaceState` before anything else happens. The token is requested with the scopes `board:play challenge:read challenge:write` (live games); the explorer and "My games" need no scope. It is stored in `localStorage` `daisychess.lichess` (`{token, username, scopes, expiresAt}`, lichess tokens last about a year) and sent only as `Authorization: Bearer` to `lichess.org` / `explorer.lichess.org` — `lichessFetch` refuses any other host. **Logout** deletes it locally first and then revokes it with `DELETE https://lichess.org/api/token` (failures ignored: offline logout still forgets it); a `401` on an authenticated request logs out with a message. A login that fails after the exchange revokes the half-issued token.
+- **Pasted personal access token** (Settings → lichess account, `loginWithToken`): validated with `POST /api/token/test` (token in the request body, `text/plain`, never in a URL) and stored in the same `daisychess.lichess` entry with `source: 'token'`; the same `lichessFetch` host allow-list and `401` handling apply. Logout only deletes it locally and does not revoke it, because the user created it by hand and may use it elsewhere; the UI says so. The input is `type=password`, `autocomplete=off`, cleared after saving, and the token never appears in the DOM, errors or logs.
+- **Pasted explorer token** (fallback under Explorer → Advanced): a scope-less personal token in `localStorage` `daisychess.explorer`, sent only to the explorer, unused while logged in.
 
 Tokens never appear in a URL, a log line or an error message (the token exchange body goes in a `POST` form body; nginx logs paths without query strings anyway, §2.9). Anything able to run script in the page could read `localStorage`, so the protection is the absence of XSS: the enforced CSP (§2.8, no inline or eval'd script, `connect-src` limited to the listed hosts, so a token could not be posted elsewhere by injected markup either) and React's escaping of all lichess-provided strings. Worst case for a stolen login token: playing/challenging on the user's behalf until the user logs out here or revokes it on lichess (Preferences → Third-party access). The top-level redirect to `lichess.org/oauth` is a navigation (`location.assign`), not a form submission, so `form-action 'self'` does not apply and the CSP needs no change.
 
@@ -105,7 +105,7 @@ Tokens never appear in a URL, a log line or an error message (the token exchange
 - **HSTS** on `c.referee.at`: `Strict-Transport-Security: max-age=31536000` on every response, without `includeSubDomains`/`preload` (other `referee.at` subdomains are not ours). The certbot setup is permanent (renewal timer), which was the condition in ADR-002. Undo requires serving `max-age=0` for a while — browsers remember for a year.
 - **Docker base images pinned by digest**: `node:22-bookworm-slim@sha256:de170b39…`, `debian:bookworm-slim@sha256:7ff6ba31…`, `nginx:alpine@sha256:a3554c0d…` (multi-arch index digests, 2026-10-23; tag kept in the `FROM`). Refresh command in the Dockerfile header. `STOCKFISH_VERSION=sf_19` + `STOCKFISH_SHA256` were already pinned (verified).
 - **GitHub Actions pinned by commit SHA**: `actions/checkout` v7.0.1, `pnpm/action-setup` v6.1.0 (pnpm 12 support), `actions/setup-node` v7.1.0, `actions/cache` v6.1.0; workflow `permissions: contents: read`. The `e2e` job fetches the pinned, digest-verified Stockfish (`STOCKFISH_VERSION`/`STOCKFISH_SHA256` as in the Dockerfile) into a cache keyed by version + digest, and caches Playwright browsers keyed by the Playwright version.
-- **Abuse logging**: nginx `log_format chesslab` → `/var/log/nginx/c.referee.at.access.log` (rotated by the stock `/etc/logrotate.d/nginx`): address, time, method, **path without query string** (tokens in URLs never hit the log), status, bytes, `rt=` request time, `urt=` upstream time, `Origin`, User-Agent. No bodies. Per-IP counting: `awk '$5 ~ /^\/ws/ && ($7==403||$7==429) {print $1}' … | sort | uniq -c | sort -rn` (field numbers per the format). `deploy/fail2ban/` ships a filter (403/429 on `/ws`) and a jail (30 in 60 s → 10 min ban); fail2ban is **not installed** on the host, so nothing is active — see `deploy/README.md`.
+- **Abuse logging**: nginx `log_format daisychess` → `/var/log/nginx/c.referee.at.access.log` (rotated by the stock `/etc/logrotate.d/nginx`): address, time, method, **path without query string** (tokens in URLs never hit the log), status, bytes, `rt=` request time, `urt=` upstream time, `Origin`, User-Agent. No bodies. Per-IP counting: `awk '$5 ~ /^\/ws/ && ($7==403||$7==429) {print $1}' … | sort | uniq -c | sort -rn` (field numbers per the format). `deploy/fail2ban/` ships a filter (403/429 on `/ws`) and a jail (30 in 60 s → 10 min ban); fail2ban is **not installed** on the host, so nothing is active — see `deploy/README.md`.
 
 ## 3. Controls in place (after this review)
 
@@ -120,7 +120,7 @@ Tokens never appear in a URL, a log line or an error message (the token exchange
 | Supply chain | lockfile integrity, frozen installs, pinned `stockfish@19.0.1`, verified engine download, GitHub Actions pinned by SHA, least-privilege `GITHUB_TOKEN` |
 | Browser | enforced CSP (hash-allowed inline script only, `'wasm-unsafe-eval'`, no `unsafe-*`), checked in CI and under every e2e spec |
 
-`systemd-analyze security chesslab-server`: **6.4 MEDIUM → 1.4 OK** (2026-10-23). The remaining flagged items — `PrivateUsers`, `ProcSubset`, `MemoryDenyWriteExecute`, `SystemCallFilter=~@resources/@privileged`, `PrivateNetwork`, `RootDirectory` — are intentionally left open for Node/Stockfish and the loopback listener.
+`systemd-analyze security daisychess-server`: **6.4 MEDIUM → 1.4 OK** (2026-10-23). The remaining flagged items — `PrivateUsers`, `ProcSubset`, `MemoryDenyWriteExecute`, `SystemCallFilter=~@resources/@privileged`, `PrivateNetwork`, `RootDirectory` — are intentionally left open for Node/Stockfish and the loopback listener.
 
 ## 4. Residual risks and recommendations
 
@@ -138,15 +138,15 @@ The two P1 items (per-IP session cap, engine respawn backoff) are done, see §2.
 ## 5. How to re-verify
 
 ```bash
-pnpm --filter @chesslab/engine-core test     # isValidFen rules
-pnpm --filter @chesslab/server test          # origin.test.ts, clientIp.test.ts, ws.test.ts "Origin check"/"per-IP session cap", EnginePool "respawn backoff"
+pnpm --filter @daisychess/engine-core test     # isValidFen rules
+pnpm --filter @daisychess/server test          # origin.test.ts, clientIp.test.ts, ws.test.ts "Origin check"/"per-IP session cap", EnginePool "respawn backoff"
 node deploy/ws-smoke.mjs                     # end-to-end through nginx
 node deploy/ws-limits-check.mjs              # third session from one address → no_capacity
 curl -s http://127.0.0.1:8580/health/detail  # per engine: crashes, backoffUntil, degraded
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Origin: https://evil.example' -H 'Connection: Upgrade' \
   -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
   https://c.referee.at/ws                    # 403
-sudo systemd-analyze security chesslab-server
+sudo systemd-analyze security daisychess-server
 STOCKFISH_VERSION=sf_19 STOCKFISH_SHA256=0000…0000 bash scripts/fetch-engines.sh --force  # must abort
 curl -sI https://c.referee.at/ | grep -iE 'content-security|strict-transport|cross-origin'
 node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at   # repo + live nginx carry PRODUCTION_CSP

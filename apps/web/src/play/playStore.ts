@@ -88,7 +88,7 @@ export interface PlayActions {
    * A terminal position cannot be started (`message` is set instead).
    */
   start(setup?: Partial<PlaySetup>): void;
-  /** Changes the setup (sanitized, persisted in localStorage `chesslab.play`). */
+  /** Changes the setup (sanitized, persisted in localStorage `daisychess.play`). */
   setSetup(setup: Partial<PlaySetup>): void;
   /**
    * Charges the running clock up to `now` (monotonic ms, default `performance.now()`) and ends
@@ -146,7 +146,7 @@ interface PlayHooks {
 
 /** Interval of the clock ticker (display and flag detection; the time itself is exact). */
 export const CLOCK_TICK_MS = 100;
-export const PLAY_STORAGE_KEY = 'chesslab.play';
+export const PLAY_STORAGE_KEY = 'daisychess.play';
 
 /**
  * Returns a reason why a local engine game must not start (a live lichess game or a game against
@@ -422,7 +422,7 @@ const DEFAULT_SETUP: PlaySetup = {
   from: 'start',
 };
 
-/** The last setup from localStorage `chesslab.play` (defaults when missing or invalid). */
+/** The last setup from localStorage `daisychess.play` (defaults when missing or invalid). */
 export function readPlaySetup(): PlaySetup {
   try {
     const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(PLAY_STORAGE_KEY);

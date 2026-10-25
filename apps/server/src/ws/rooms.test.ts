@@ -6,7 +6,7 @@ import {
   type RoomStateMessage,
   type ServerMessage,
   type WelcomeMessage,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import { buildApp, type BuildAppOptions } from '../app.js';
 import { loadConfig, type ServerConfig } from '../config.js';
 import { fakeSpawner, registry, until } from '../../test/helpers.js';
@@ -356,8 +356,8 @@ describe('rooms over /ws (ADR-013)', () => {
     await nextState(guest, (s) => s.roomId === roomId && s.players.white?.connected === false);
     host.ws.terminate();
     const { app } = { app: apps[0]! };
-    await until(() => app.chesslab.ws.rooms.stats().members === 1);
-    expect(app.chesslab.ws.rooms.stats()).toMatchObject({ rooms: 2, waiting: 1, playing: 1 });
+    await until(() => app.daisychess.ws.rooms.stats().members === 1);
+    expect(app.daisychess.ws.rooms.stats()).toMatchObject({ rooms: 2, waiting: 1, playing: 1 });
     const res = await app.inject({ method: 'GET', url: '/health/detail' });
     expect(res.json()).toMatchObject({ rooms: { rooms: 2, members: 1 } });
   });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import styles from './ThemeToggle.module.css';
 
 type Theme = 'light' | 'dark';
-const KEY = 'chesslab.theme';
+const KEY = 'daisychess.theme';
 
 function systemTheme(): Theme {
   try {

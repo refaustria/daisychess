@@ -1,4 +1,4 @@
-import type { MoveClass } from '@chesslab/engine-core';
+import type { MoveClass } from '@daisychess/engine-core';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
 

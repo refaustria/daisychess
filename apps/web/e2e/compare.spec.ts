@@ -53,7 +53,7 @@ test.describe('multi-engine comparison', () => {
     test.setTimeout(120_000);
     if (!existsSync(SERVER_ENTRY) || !existsSync(`${REPO}packages/engine-core/dist/index.js`)) {
       execSync(
-        'pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server build',
+        'pnpm --filter @daisychess/engine-core build && pnpm --filter @daisychess/server build',
         { cwd: REPO, stdio: 'inherit' },
       );
     }
@@ -84,7 +84,7 @@ test.describe('multi-engine comparison', () => {
     page.on('pageerror', (e) => errors.push(e.message));
     await page.addInitScript(
       ({ url }) => {
-        const key = 'chesslab.analysis';
+        const key = 'daisychess.analysis';
         if (!localStorage.getItem(key)) {
           localStorage.setItem(
             key,

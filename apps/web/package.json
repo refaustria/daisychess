@@ -1,5 +1,5 @@
 {
-  "name": "@chesslab/web",
+  "name": "@daisychess/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@chesslab/engine-core": "workspace:*",
-    "@chesslab/ui-theme": "workspace:*",
+    "@daisychess/engine-core": "workspace:*",
+    "@daisychess/ui-theme": "workspace:*",
     "chess.js": "^1.4.0",
     "chessground": "^9.2.1",
     "react": "^18.3.1",

@@ -4,7 +4,7 @@ import {
   type ReviewedMove,
   type ReviewSummary,
   type Score,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import { convertPv } from '../engine/pvToSan';
 import type { BatchGame, PositionResult } from './BatchAnalyzer';
 

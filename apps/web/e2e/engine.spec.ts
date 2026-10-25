@@ -25,7 +25,7 @@ interface RunResult {
   runs: { infos: Info[]; ms: number; bestMove: { move: string } | null }[];
 }
 
-/** Loads a WasmEngineClient in the page through the `window.__chesslab` hook and runs searches. */
+/** Loads a WasmEngineClient in the page through the `window.__daisychess` hook and runs searches. */
 async function runEngine(
   page: Page,
   options: { crossOriginIsolated?: boolean; build?: 'lite' | 'lite-single' | 'full' },
@@ -42,8 +42,8 @@ async function runEngine(
         dispose(): Promise<void>;
       };
       const hook = (
-        window as unknown as { __chesslab: { createWasmEngine(o: object): Promise<Client> } }
-      ).__chesslab;
+        window as unknown as { __daisychess: { createWasmEngine(o: object): Promise<Client> } }
+      ).__daisychess;
       const engine = await hook.createWasmEngine(options);
       const t0 = performance.now();
       await engine.load();

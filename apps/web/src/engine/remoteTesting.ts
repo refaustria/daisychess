@@ -6,7 +6,7 @@ import {
   type ClientMessage,
   type ServerMessage,
   type WelcomeMessage,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import type { WebSocketLike } from './RemoteEngineClient';
 
 export const TEST_WELCOME: WelcomeMessage = {

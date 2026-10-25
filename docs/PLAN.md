@@ -1,4 +1,4 @@
-# ChessLab — Plan
+# DaisyChess — Plan
 
 Status legend: `todo` · `in-progress` · `review` · `done` · `blocked`
 
@@ -148,4 +148,4 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M21 — Rename to DaisyChess (requested 2026-10-25)
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M21-1 | Rename ChessLab → DaisyChess everywhere: UI (title, header with logo), README/docs/runbook, daisy SVG logo + favicons/apple-touch-icon, package scope `@daisychess/*`, storage keys `daisychess.*` with one-time migration, systemd unit `daisychess-server` (deploy script retires the old unit), lichess OAuth client id; domain unchanged | senior | todo (after M20-1) |
+| M21-1 | Rename ChessLab → DaisyChess everywhere: UI (title, header with logo), README/docs/runbook, daisy SVG logo + favicons/apple-touch-icon, package scope `@daisychess/*`, storage keys `daisychess.*` with one-time migration, systemd unit `daisychess-server` (deploy script retires the old unit), lichess OAuth client id; domain unchanged | senior | done |

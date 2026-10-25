@@ -23,14 +23,14 @@ describe('ThemeToggle', () => {
     render(<ThemeToggle />);
     fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }));
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    expect(localStorage.getItem('chesslab.theme')).toBe('dark');
+    expect(localStorage.getItem('daisychess.theme')).toBe('dark');
     fireEvent.click(screen.getByRole('button', { name: 'Switch to light theme' }));
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    expect(localStorage.getItem('chesslab.theme')).toBe('light');
+    expect(localStorage.getItem('daisychess.theme')).toBe('light');
   });
 
   it('reads the stored theme when no attribute is set', () => {
-    localStorage.setItem('chesslab.theme', 'dark');
+    localStorage.setItem('daisychess.theme', 'dark');
     render(<ThemeToggle />);
     expect(screen.getByRole('button', { name: 'Switch to light theme' })).toBeTruthy();
   });

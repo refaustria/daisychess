@@ -1,4 +1,4 @@
-import type { EngineInfo } from '@chesslab/engine-core';
+import type { EngineInfo } from '@daisychess/engine-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UciSession, type AnalysisHandle } from './UciSession';
 import { FakeUciEngine, flush } from './testing';

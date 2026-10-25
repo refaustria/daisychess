@@ -3,7 +3,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 /**
  * Live lichess game through the Board API, with every lichess request mocked by `page.route()`:
- * logged in via the stored auth (`chesslab.lichess`), quick pairing → `gameStart` on the event
+ * logged in via the stored auth (`daisychess.lichess`), quick pairing → `gameStart` on the event
  * stream → game stream (`gameFull` + the opponent's move) → the user's reply goes to the move
  * endpoint → a final `gameState` (mate) → finished, auto review. Also checks the fair-play lock.
  */
@@ -102,7 +102,7 @@ async function mockLichess(
 
   await page.addInitScript((items: Record<string, unknown>) => {
     localStorage.setItem(
-      'chesslab.lichess',
+      'daisychess.lichess',
       JSON.stringify({ token: 'e2e-token', username: 'Me', scopes: ['board:play', 'challenge:read', 'challenge:write'] }),
     );
     for (const [k, v] of Object.entries(items)) localStorage.setItem(k, JSON.stringify(v));
@@ -259,7 +259,7 @@ test('premove queue (settings: queue): two premoves while waiting, sent in order
       const [first] = mock.moves;
       return game(`e2e4 e7e5 ${first} b8c6 ${second}`, { status: 'resign', winner: 'white' });
     },
-    { 'chesslab.settings': { premoves: 'queue' } },
+    { 'daisychess.settings': { premoves: 'queue' } },
   );
 
   await startSeek(page);

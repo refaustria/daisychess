@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import type { InfoMessage } from '@chesslab/engine-core';
+import type { InfoMessage } from '@daisychess/engine-core';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { TestClient } from '../test/ws-client.js';

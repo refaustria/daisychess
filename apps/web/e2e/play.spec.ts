@@ -46,7 +46,7 @@ test('loads without console errors, square board, 32 pieces', async ({ page }) =
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   page.on('pageerror', (e) => errors.push(e.message));
   await page.reload();
-  await expect(page).toHaveTitle('ChessLab');
+  await expect(page).toHaveTitle('DaisyChess');
   await expect(page.locator('piece:not(.ghost)')).toHaveCount(32);
   const board = (await page.locator('cg-board').boundingBox())!;
   expect(board.width).toBeGreaterThan(300);
@@ -149,7 +149,7 @@ test('PGN import: checkmate, move list, click to navigate', async ({ page }) => 
 });
 
 test('PGN import via file upload', async ({ page }) => {
-  const dir = mkdtempSync(join(tmpdir(), 'chesslab-'));
+  const dir = mkdtempSync(join(tmpdir(), 'daisychess-'));
   const file = join(dir, 'game.pgn');
   writeFileSync(file, `[White "Ann"]\n[Black "Bob"]\n[Result "1-0"]\n\n${SCHOLAR} 1-0\n`);
   await page.getByRole('tab', { name: 'Import' }).click();
@@ -174,7 +174,7 @@ test('FEN import and invalid FEN error', async ({ page }) => {
 
 test('theme toggle: dark persists across reload, screenshots', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.evaluate(() => localStorage.removeItem('chesslab.theme'));
+  await page.evaluate(() => localStorage.removeItem('daisychess.theme'));
   await page.emulateMedia({ colorScheme: 'light' });
   await page.reload();
   await expect(page.locator('cg-board')).toBeVisible();

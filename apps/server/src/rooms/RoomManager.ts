@@ -6,7 +6,7 @@ import type {
   RoomErrorCode,
   RoomSide,
   ServerMessage,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import type { PoolLogger } from '../engines/EnginePool.js';
 import { Room } from './room.js';
 

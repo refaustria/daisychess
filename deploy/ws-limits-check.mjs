@@ -3,11 +3,11 @@
 // sessions; the first two must stream `info`, the third must get `no_capacity` ("too many
 // sessions from your address"). Everything is released afterwards.
 // Usage: node deploy/ws-limits-check.mjs [wss://c.referee.at/ws]   (Node 22+, global WebSocket)
-//   CHESSLAB_TOKEN=<token> node ...   for a server that requires an access token
+//   DAISYCHESS_TOKEN=<token> node ...   for a server that requires an access token
 // Assumes MAX_SESSIONS_PER_IP=2 and no other sessions from this address.
 const url = process.argv[2] ?? 'wss://c.referee.at/ws';
 // Access token of a server with ACCESS_TOKEN set (ADR-010); never printed.
-const token = process.env.CHESSLAB_TOKEN || undefined;
+const token = process.env.DAISYCHESS_TOKEN || undefined;
 const FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 function connect(name) {
@@ -30,7 +30,7 @@ function connect(name) {
       messages.push(m);
       if (m.type === 'welcome') resolve(conn);
       else if (m.type === 'error' && m.code === 'unauthorized')
-        reject(new Error(`${name}: unauthorized (set CHESSLAB_TOKEN)`));
+        reject(new Error(`${name}: unauthorized (set DAISYCHESS_TOKEN)`));
       for (const w of waiters.splice(0)) w();
     };
     const conn = {

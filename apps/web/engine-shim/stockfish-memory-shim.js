@@ -1,6 +1,6 @@
 /* global self, importScripts */
 /**
- * ChessLab: worker shim for the multi-threaded Stockfish builds on memory-constrained devices
+ * DaisyChess: worker shim for the multi-threaded Stockfish builds on memory-constrained devices
  * (docs/DECISIONS.md, ADR-015). Shipped next to the engine files by vite-plugin-stockfish.ts.
  *
  * `stockfish-19-lite.js` creates its shared memory with
@@ -32,7 +32,7 @@
       }
       var memory = new Memory(d);
       // Diagnostics (console, e2e): the engine's memory and its effective maximum in pages.
-      self.__chesslabMemory = { memory: memory, maximum: d && d.maximum };
+      self.__daisychessMemory = { memory: memory, maximum: d && d.maximum };
       return memory;
     };
     Capped.prototype = Memory.prototype;

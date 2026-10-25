@@ -1,4 +1,4 @@
-import type { ReviewedMove } from '@chesslab/engine-core';
+import type { ReviewedMove } from '@daisychess/engine-core';
 import { describe, expect, it } from 'vitest';
 import { gameToBatch } from './reviewStore';
 import {

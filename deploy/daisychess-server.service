@@ -1,7 +1,7 @@
-# systemd unit for the ChessLab engine server (ADR-001: 127.0.0.1:8580).
+# systemd unit for the DaisyChess engine server (ADR-001: 127.0.0.1:8580).
 # Install/refresh with deploy/deploy-server.sh (see deploy/README.md).
 [Unit]
-Description=ChessLab engine server
+Description=DaisyChess engine server
 After=network.target
 
 [Service]

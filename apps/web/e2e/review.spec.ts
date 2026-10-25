@@ -21,8 +21,8 @@ function runReview(
   return page.evaluate(
     (o) =>
       (
-        window as unknown as { __chesslab: { runReview(x: typeof o): Promise<Result> } }
-      ).__chesslab.runReview(o),
+        window as unknown as { __daisychess: { runReview(x: typeof o): Promise<Result> } }
+      ).__daisychess.runReview(o),
     opts,
   );
 }

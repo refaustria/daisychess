@@ -1,6 +1,6 @@
 /**
  * Persistent review cache (ADR-016): finished reviews and the analysed positions of review runs,
- * in IndexedDB (`chesslab-reviews`), with an in-memory fallback when IndexedDB is unavailable
+ * in IndexedDB (`daisychess-reviews`), with an in-memory fallback when IndexedDB is unavailable
  * (private mode, blocked storage, tests). Framework-free; the review store drives it.
  *
  * - `reviews`: one record per game (key {@link gameKey}), the strongest preset reviewed so far.
@@ -11,7 +11,7 @@
  * Every public function swallows storage errors (a failing cache must never fail a review): reads
  * then return nothing, writes are dropped.
  */
-import type { ReviewSummary } from '@chesslab/engine-core';
+import type { ReviewSummary } from '@daisychess/engine-core';
 import type { PositionResult } from './BatchAnalyzer';
 import type { MoveDetails } from './details';
 import type { ReviewEngineInfo } from './reviewStore';
@@ -19,7 +19,7 @@ import { sha256Hex } from './sha256';
 
 /** Schema version: bumping it drops all stored data of older versions. */
 export const REVIEW_CACHE_VERSION = 1;
-export const REVIEW_DB_NAME = 'chesslab-reviews';
+export const REVIEW_DB_NAME = 'daisychess-reviews';
 export const MAX_STORED_REVIEWS = 500;
 export const MAX_STORED_POSITIONS = 20_000;
 /** Games shorter than this are not cached. */
@@ -43,7 +43,7 @@ export const strongerPreset = (a: ReviewPreset | undefined, b: ReviewPreset): Re
  * viewed ply and the SAN spelling do not matter.
  */
 export function gameKey(startFen: string, uciMoves: readonly string[]): string {
-  return sha256Hex(`chesslab-review-v1\n${startFen.trim()}\n${uciMoves.join(' ')}`);
+  return sha256Hex(`daisychess-review-v1\n${startFen.trim()}\n${uciMoves.join(' ')}`);
 }
 
 export interface StoredReview {

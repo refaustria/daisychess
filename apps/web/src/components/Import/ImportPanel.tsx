@@ -29,7 +29,7 @@ export function gameLabel(game: string, i: number): string {
   return `${w ?? '?'} – ${b ?? '?'}${r ? ` (${r})` : ''}`;
 }
 
-const STORAGE_KEY = 'chesslab.import.online';
+const STORAGE_KEY = 'daisychess.import.online';
 const SITES: OnlineSite[] = ['lichess', 'chesscom'];
 
 interface Saved {

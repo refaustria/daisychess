@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RoomStateMessage, ServerMessage } from '@chesslab/engine-core';
+import type { RoomStateMessage, ServerMessage } from '@daisychess/engine-core';
 import {
   DEFAULT_ROOM_CONFIG,
   RoomManager,

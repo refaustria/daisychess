@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 # Base images are pinned by digest (docs/SECURITY.md, supply chain); the tag is kept for
 # readability. Refresh: docker pull <tag> && docker image inspect --format '{{index .RepoDigests 0}}' <tag>
-# ChessLab engine server. Build from the repo root:
-#   docker build -f docker/server.Dockerfile -t chesslab-server .
+# DaisyChess engine server. Build from the repo root:
+#   docker build -f docker/server.Dockerfile -t daisychess-server .
 
 # ---- build: compile TS and create a pruned production tree -------------------------
 FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
@@ -17,16 +17,16 @@ COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/engine-core/package.json packages/engine-core/
 COPY packages/ui-theme/package.json packages/ui-theme/
-RUN pnpm install --frozen-lockfile --filter @chesslab/server...
+RUN pnpm install --frozen-lockfile --filter @daisychess/server...
 
 COPY tsconfig.base.json ./
 COPY packages/engine-core packages/engine-core
 COPY apps/server apps/server
-RUN pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server build
+RUN pnpm --filter @daisychess/engine-core build && pnpm --filter @daisychess/server build
 # pnpm >= 10 refuses `deploy` unless inject-workspace-packages is set (workspace deps
 # are then copied, not symlinked, which is what we want in an image). --legacy keeps
 # the old behaviour without touching workspace config.
-RUN pnpm --filter @chesslab/server deploy --prod --legacy /out
+RUN pnpm --filter @daisychess/server deploy --prod --legacy /out
 
 # ---- engine: Stockfish release binary -----------------------------------------------
 FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS engine
@@ -53,13 +53,13 @@ FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae
 # and reaps zombie Stockfish processes. Compose also works with `init: true`.
 RUN apt-get update && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin chesslab
+    && useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin daisychess
 WORKDIR /app/server
-COPY --from=build --chown=chesslab:chesslab /out /app/server
-COPY --from=engine --chown=chesslab:chesslab /repo/engines/stockfish /app/engines/stockfish
-COPY --chown=chesslab:chesslab docker/engines.docker.json /app/server/engines.json
+COPY --from=build --chown=daisychess:daisychess /out /app/server
+COPY --from=engine --chown=daisychess:daisychess /repo/engines/stockfish /app/engines/stockfish
+COPY --chown=daisychess:daisychess docker/engines.docker.json /app/server/engines.json
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8580 ENGINES_CONFIG=/app/server/engines.json
-USER chesslab
+USER daisychess
 EXPOSE 8580
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["node","-e","fetch('http://127.0.0.1:8580/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

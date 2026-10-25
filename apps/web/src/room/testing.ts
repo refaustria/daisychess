@@ -1,4 +1,4 @@
-import type { RoomStateMessage, WelcomeMessage } from '@chesslab/engine-core';
+import type { RoomStateMessage, WelcomeMessage } from '@daisychess/engine-core';
 import { FakeWebSocket, TEST_WELCOME } from '../engine/remoteTesting';
 import { START_FEN } from '../store/gameStore';
 

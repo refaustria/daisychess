@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { parseUciBestMove, parseUciInfo, type BestMove, type EngineInfo } from '@chesslab/engine-core';
+import { parseUciBestMove, parseUciInfo, type BestMove, type EngineInfo } from '@daisychess/engine-core';
 
 /**
  * UCI options a client request can ever reach a native process with. Everything else

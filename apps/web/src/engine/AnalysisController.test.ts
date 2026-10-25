@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, BestMove, EngineInfo } from '@chesslab/engine-core';
+import type { AnalyzeOptions, BestMove, EngineInfo } from '@daisychess/engine-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AnalysisController,

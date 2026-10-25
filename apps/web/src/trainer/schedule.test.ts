@@ -162,7 +162,7 @@ describe('parse / serialize / storage', () => {
     expect(parsed[`k${MAX_ENTRIES + 2}`]).toBeUndefined();
   });
 
-  it('loads and saves under chesslab.trainer, surviving blocked storage', () => {
+  it('loads and saves under daisychess.trainer, surviving blocked storage', () => {
     const st = memoryStorage();
     const s = recordResult({}, 'C50 Italian Game', true, NOW);
     saveSchedule(st, s);

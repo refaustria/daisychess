@@ -372,7 +372,7 @@ export class LiveGameController {
       const from = k === 0 ? this.startFen : this.records[k - 1]!.fen;
       const r = replay(from, moves.slice(k));
       this.records = [...this.records, ...r.records];
-      if (!r.ok) this.o.onError('lichess sent a move ChessLab cannot replay');
+      if (!r.ok) this.o.onError('lichess sent a move DaisyChess cannot replay');
     }
     const confirmed = this.records.map(moveToUci);
     if (this.pending && confirmed.length > g.moves.length) {

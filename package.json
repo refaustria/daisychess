@@ -1,5 +1,5 @@
 {
-  "name": "chesslab",
+  "name": "daisychess",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,14 +8,14 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev:web": "pnpm --filter @chesslab/web dev",
+    "dev:web": "pnpm --filter @daisychess/web dev",
     "fetch-engines": "bash scripts/fetch-engines.sh",
-    "dev:server": "pnpm --filter @chesslab/server dev",
+    "dev:server": "pnpm --filter @daisychess/server dev",
     "build": "pnpm -r build",
     "lint": "eslint . && pnpm -r typecheck",
     "test": "pnpm -r test",
     "format": "prettier --write .",
-    "e2e": "pnpm --filter @chesslab/web e2e"
+    "e2e": "pnpm --filter @daisychess/web e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

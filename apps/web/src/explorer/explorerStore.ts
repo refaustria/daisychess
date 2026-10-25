@@ -22,7 +22,7 @@ import {
  * aborted, and responses are cached per (db, filters, position) for the session (LRU).
  */
 
-export const STORAGE_KEY = 'chesslab.explorer';
+export const STORAGE_KEY = 'daisychess.explorer';
 export const DEBOUNCE_MS = 300;
 export const CACHE_SIZE = 200;
 export const DEFAULT_SPEEDS: Speed[] = [...SPEEDS];

@@ -1,4 +1,4 @@
-import { evalBarShare, formatScore, type Score } from '@chesslab/engine-core';
+import { evalBarShare, formatScore, type Score } from '@daisychess/engine-core';
 import { useRef } from 'react';
 import { selectPrimary, useAnalysisStore, type TerminalKind } from '../../store/analysisStore';
 import { useGameStore, type Orientation } from '../../store/gameStore';

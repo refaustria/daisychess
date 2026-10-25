@@ -79,7 +79,7 @@ export interface DrillState {
   /** Engine of the checks (after the first check). */
   runsOn?: ReviewEngineInfo;
   engineNotice?: string;
-  /** Spaced repetition per variation (localStorage `chesslab.trainer`). */
+  /** Spaced repetition per variation (localStorage `daisychess.trainer`). */
   schedule: Schedule;
 }
 

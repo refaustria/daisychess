@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, BestMove, Engine, EngineInfo } from '@chesslab/engine-core';
+import type { AnalyzeOptions, BestMove, Engine, EngineInfo } from '@daisychess/engine-core';
 
 /** What the controller needs from an engine: the shared {@link Engine} plus optional metadata. */
 export interface AnalysisEngine extends Engine {

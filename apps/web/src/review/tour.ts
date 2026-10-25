@@ -1,4 +1,4 @@
-import type { ReviewedMove, ReviewSummary } from '@chesslab/engine-core';
+import type { ReviewedMove, ReviewSummary } from '@daisychess/engine-core';
 import { CLASS_INFO } from './format';
 import type { MoveDetails } from './details';
 

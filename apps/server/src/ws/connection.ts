@@ -16,7 +16,7 @@ import {
   type Limits,
   type ProtocolErrorCode,
   type ServerMessage,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import type { EnginePool, Lease, PoolLogger } from '../engines/EnginePool.js';
 import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
 import type { IpSessionLedger } from './clientIp.js';

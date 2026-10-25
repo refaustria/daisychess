@@ -10,7 +10,7 @@ import { challengeS256, createState, createVerifier } from './pkce';
  * and navigates to lichess.org/oauth. lichess redirects back to the same page with
  * `?code=&state=`; `handleCallback()` (called once from main.tsx) checks the state, exchanges the
  * code for a token, reads the username from /api/account, stores `{token, username, scopes}` in
- * localStorage `chesslab.lichess` and removes the parameters from the URL.
+ * localStorage `daisychess.lichess` and removes the parameters from the URL.
  *
  * The token is only ever sent as an `Authorization: Bearer` header to lichess hosts. It never
  * appears in a URL, a log line or an error message.
@@ -21,13 +21,13 @@ export const LICHESS_AUTHORIZE_URL = `${LICHESS_ORIGIN}/oauth`;
 export const LICHESS_TOKEN_URL = `${LICHESS_ORIGIN}/api/token`;
 export const LICHESS_ACCOUNT_URL = `${LICHESS_ORIGIN}/api/account`;
 export const LICHESS_TOKEN_TEST_URL = `${LICHESS_ORIGIN}/api/token/test`;
-export const LICHESS_CLIENT_ID = 'chesslab.c.referee.at';
+export const LICHESS_CLIENT_ID = 'daisychess.c.referee.at';
 /** Requested at login so live games can use the same token (the explorer needs no scope). */
 export const LICHESS_SCOPES: readonly string[] = ['board:play', 'challenge:read', 'challenge:write'];
 /** Where to create a personal access token; lichess prefills the scopes and description from the query. */
-export const LICHESS_TOKEN_CREATE_URL = `${LICHESS_ORIGIN}/account/oauth/token/create?${LICHESS_SCOPES.map((x) => `scopes[]=${x}`).join('&')}&description=ChessLab`;
-export const AUTH_STORAGE_KEY = 'chesslab.lichess';
-export const PENDING_STORAGE_KEY = 'chesslab.lichess.pkce';
+export const LICHESS_TOKEN_CREATE_URL = `${LICHESS_ORIGIN}/account/oauth/token/create?${LICHESS_SCOPES.map((x) => `scopes[]=${x}`).join('&')}&description=DaisyChess`;
+export const AUTH_STORAGE_KEY = 'daisychess.lichess';
+export const PENDING_STORAGE_KEY = 'daisychess.lichess.pkce';
 /** Hosts that may receive the token. */
 const TOKEN_HOSTS = new Set(['lichess.org', 'explorer.lichess.org']);
 

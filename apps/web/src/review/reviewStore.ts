@@ -1,4 +1,4 @@
-import type { Engine, ReviewSummary } from '@chesslab/engine-core';
+import type { Engine, ReviewSummary } from '@daisychess/engine-core';
 import { create } from 'zustand';
 import { UNAUTHORIZED_MESSAGE, useAnalysisStore } from '../store/analysisStore';
 import { useGameStore, type GameState } from '../store/gameStore';
@@ -143,7 +143,7 @@ const createRemoteClient: CreateServerReviewClient = async () => {
     ...(url ? { url } : {}),
     ...(token ? { token } : {}),
     handshakeTimeoutMs: REVIEW_HANDSHAKE_TIMEOUT_MS,
-    clientInfo: { name: 'chesslab-web-review' },
+    clientInfo: { name: 'daisychess-web-review' },
   });
 };
 

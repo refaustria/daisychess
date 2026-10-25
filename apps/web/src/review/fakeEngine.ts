@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, BestMove, Engine, EngineInfo, Score } from '@chesslab/engine-core';
+import type { AnalyzeOptions, BestMove, Engine, EngineInfo, Score } from '@daisychess/engine-core';
 
 export interface Script {
   score: Score;

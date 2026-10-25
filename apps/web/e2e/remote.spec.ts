@@ -66,11 +66,11 @@ async function stopServer(): Promise<void> {
  * The whole thing is sent as one expression string: Playwright evaluates it over the DevTools
  * protocol, which the page's CSP does not govern, whereas `new Function` inside the page would
  * need 'unsafe-eval' (the preview server enforces the production CSP, docs/SECURITY.md).
- * Page-side API: src/engine/devHook.ts (`window.__chesslab.createRemoteEngine`).
+ * Page-side API: src/engine/devHook.ts (`window.__daisychess.createRemoteEngine`).
  */
 function inPage<T>(page: Page, script: string): Promise<T> {
   const expression = `(async () => {
-    const engine = await window.__chesslab.createRemoteEngine({ url: ${JSON.stringify(WS_URL)} });
+    const engine = await window.__daisychess.createRemoteEngine({ url: ${JSON.stringify(WS_URL)} });
     await engine.load();
     const collect = async (h) => {
       const infos = [];
@@ -94,7 +94,7 @@ test.describe('remote engine (server mode)', () => {
   test.beforeAll(async () => {
     test.setTimeout(120_000);
     if (!existsSync(SERVER_ENTRY) || !existsSync(`${REPO}packages/engine-core/dist/index.js`)) {
-      execSync('pnpm --filter @chesslab/engine-core build && pnpm --filter @chesslab/server build', {
+      execSync('pnpm --filter @daisychess/engine-core build && pnpm --filter @daisychess/server build', {
         cwd: REPO,
         stdio: 'inherit',
       });

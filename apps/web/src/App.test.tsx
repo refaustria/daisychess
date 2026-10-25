@@ -17,7 +17,7 @@ beforeEach(() => useGameStore.getState().reset());
 describe('App', () => {
   it('renders title, controls and status', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: 'ChessLab' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'DaisyChess' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'New game' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Flip' })).toBeTruthy();
     expect(screen.getByTestId('status').textContent).toBe('White to move');

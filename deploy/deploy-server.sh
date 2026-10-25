@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Build and (re)deploy the ChessLab engine server as the systemd unit chesslab-server.
+# Build and (re)deploy the DaisyChess engine server as the systemd unit daisychess-server.
 # Usage: deploy/deploy-server.sh   (from anywhere inside the repo; needs sudo)
 set -euo pipefail
 
 # /health/detail (pool stats) is only served on the loopback listener; nginx proxies /health alone.
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8580/health/detail}"
-UNIT=chesslab-server
+UNIT=daisychess-server
+# Unit name before the rename (ADR-018); replaced by $UNIT on the first deploy after it.
+LEGACY_UNIT=chesslab-server
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 pnpm install --frozen-lockfile
-pnpm --filter @chesslab/engine-core build
-pnpm --filter @chesslab/server build
+pnpm --filter @daisychess/engine-core build
+pnpm --filter @daisychess/server build
 pnpm fetch-engines
 
 if [[ ! -f apps/server/dist/index.js ]]; then
@@ -20,7 +22,17 @@ if [[ ! -f apps/server/dist/index.js ]]; then
   exit 1
 fi
 
-sudo install -m 644 deploy/chesslab-server.service "/etc/systemd/system/${UNIT}.service"
+# Rename (ADR-018): stop, disable and remove the old unit first so it cannot hold port 8580.
+if [[ -f "/etc/systemd/system/${LEGACY_UNIT}.service" ]] || systemctl list-unit-files "${LEGACY_UNIT}.service" --no-legend 2>/dev/null | grep -q .; then
+  echo "Replacing legacy unit ${LEGACY_UNIT} with ${UNIT}"
+  sudo systemctl stop "$LEGACY_UNIT" || true
+  sudo systemctl disable "$LEGACY_UNIT" || true
+  sudo rm -f "/etc/systemd/system/${LEGACY_UNIT}.service"
+  sudo systemctl daemon-reload
+  sudo systemctl reset-failed "$LEGACY_UNIT" 2>/dev/null || true
+fi
+
+sudo install -m 644 deploy/daisychess-server.service "/etc/systemd/system/${UNIT}.service"
 sudo systemctl daemon-reload
 sudo systemctl enable "$UNIT"
 sudo systemctl restart "$UNIT"

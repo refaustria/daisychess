@@ -1,7 +1,7 @@
 /** Lazy loaders for piece-set CSS. Each set is fetched once, on first use. */
 const loaders: Record<string, () => Promise<unknown>> = {
   cburnett: () => import('chessground/assets/chessground.cburnett.css'),
-  letters: () => import('@chesslab/ui-theme/pieces/letters.css'),
+  letters: () => import('@daisychess/ui-theme/pieces/letters.css'),
 };
 
 const loaded = new Map<string, Promise<void>>();

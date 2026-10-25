@@ -1,4 +1,4 @@
-import { formatScore, type ReviewSummary } from '@chesslab/engine-core';
+import { formatScore, type ReviewSummary } from '@daisychess/engine-core';
 import { explainMove, findJump, type MoveDetail, type MoveDetails } from '../../review/details';
 import { CLASS_INFO } from '../../review/format';
 import { alternativesText } from '../../review/openingFocus';

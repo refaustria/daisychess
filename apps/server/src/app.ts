@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { access, readFile } from 'node:fs/promises';
 import Fastify, { type FastifyInstance } from 'fastify';
-import type { EngineDescriptor, Limits } from '@chesslab/engine-core';
+import type { EngineDescriptor, Limits } from '@daisychess/engine-core';
 import { loadConfig, type ServerConfig } from './config.js';
 import { EnginePool, type EnginePoolOptions, type SpawnEngine } from './engines/EnginePool.js';
 import { loadEngineRegistry, type EngineConfig, type EngineRegistry } from './engines/registry.js';
@@ -45,7 +45,7 @@ export interface BuildAppOptions {
 
 declare module 'fastify' {
   interface FastifyInstance {
-    chesslab: { pool: EnginePool; ws: WsServerHandle; config: ServerConfig };
+    daisychess: { pool: EnginePool; ws: WsServerHandle; config: ServerConfig };
   }
 }
 
@@ -91,7 +91,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     ...(opts.roomManager ? { roomManager: opts.roomManager } : {}),
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
   });
-  app.decorate('chesslab', { pool, ws, config });
+  app.decorate('daisychess', { pool, ws, config });
 
   // Public liveness probe (nginx proxies exactly `/health`): no capacity details, which would
   // tell anyone whether other people are analysing right now (docs/SECURITY.md).

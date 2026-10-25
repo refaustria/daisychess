@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PROTOCOL_VERSION, type EngineInfo } from '@chesslab/engine-core';
+import { PROTOCOL_VERSION, type EngineInfo } from '@daisychess/engine-core';
 import { RemoteEngineClient, RemoteEngineError, randomSessionId, type RemoteEngineClientOptions } from './RemoteEngineClient';
 import { FakeWebSocket, TEST_WELCOME } from './remoteTesting';
 import { describeRemoteError, UNAUTHORIZED_MESSAGE } from '../store/analysisStore';
@@ -74,7 +74,7 @@ describe('RemoteEngineClient handshake', () => {
     expect(withToken.socket().sent[0]).toEqual({
       type: 'hello',
       protocolVersion: PROTOCOL_VERSION,
-      client: { name: 'chesslab-web' },
+      client: { name: 'daisychess-web' },
       token: 'tok-123',
     });
     const empty = await loaded({ token: '' });

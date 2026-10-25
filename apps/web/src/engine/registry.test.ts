@@ -1,4 +1,4 @@
-import type { EngineDescriptor as ServerEngine } from '@chesslab/engine-core';
+import type { EngineDescriptor as ServerEngine } from '@daisychess/engine-core';
 import { describe, expect, it } from 'vitest';
 import {
   maxWasmInstances,

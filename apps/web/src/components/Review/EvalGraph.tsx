@@ -1,4 +1,4 @@
-import type { ReviewSummary } from '@chesslab/engine-core';
+import type { ReviewSummary } from '@daisychess/engine-core';
 import { useId, type PointerEvent, type MouseEvent } from 'react';
 import { CLASS_INFO, whiteProbs } from '../../review/format';
 import styles from './EvalGraph.module.css';

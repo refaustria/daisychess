@@ -24,7 +24,7 @@ export interface ScheduleEntry {
 
 export type Schedule = Readonly<Record<string, ScheduleEntry>>;
 
-export const TRAINER_KEY = 'chesslab.trainer';
+export const TRAINER_KEY = 'daisychess.trainer';
 export const DAY_MS = 86_400_000;
 export const GROWTH = 2.5;
 /** Upper bound of an interval (days), so a stored value never overflows a date. */

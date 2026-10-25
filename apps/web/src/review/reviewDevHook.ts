@@ -1,8 +1,8 @@
 /**
- * `window.__chesslab.runReview` (Playwright / console): loads a PGN into the game store and
+ * `window.__daisychess.runReview` (Playwright / console): loads a PGN into the game store and
  * reviews it with the review store's engine. Imported lazily by `engine/devHook.ts`.
  */
-import type { ReviewSummary } from '@chesslab/engine-core';
+import type { ReviewSummary } from '@daisychess/engine-core';
 import { useGameStore } from '../store/gameStore';
 import { useReviewStore, type ReviewStatus } from './reviewStore';
 
@@ -21,7 +21,7 @@ export interface RunReviewResult {
 }
 
 declare module '../engine/devHook' {
-  interface ChessLabDevHook {
+  interface DaisyChessDevHook {
     runReview(options: RunReviewOptions): Promise<RunReviewResult>;
   }
 }

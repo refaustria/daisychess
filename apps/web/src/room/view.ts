@@ -1,4 +1,4 @@
-import type { RoomEndReason, RoomSide, RoomStateMessage } from '@chesslab/engine-core';
+import type { RoomEndReason, RoomSide, RoomStateMessage } from '@daisychess/engine-core';
 import type { ClockState } from '../clock/Clock';
 import type { BoardPlayers, PlayerInfo } from '../components/PlayerBar/boardPlayers';
 import { sideToMoveAt } from './RoomMirror';

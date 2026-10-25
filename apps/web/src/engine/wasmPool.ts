@@ -1,4 +1,4 @@
-import type { AnalyzeOptions, BestMove, Engine, EngineInfo } from '@chesslab/engine-core';
+import type { AnalyzeOptions, BestMove, Engine, EngineInfo } from '@daisychess/engine-core';
 
 /**
  * The one shared browser engine for batch work (ADR-015): the game review, the openings drill and

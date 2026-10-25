@@ -37,7 +37,7 @@ describe('stockfish-memory-shim.js', () => {
     );
     expect(r.imported).toEqual(['https://c.test/assets/engine/stockfish-19.0.1/stockfish-19-lite.js']);
     expect(r.created).toEqual([{ initial: 2048, maximum: 8192, shared: true }]);
-    expect(r.shimSelf.__chesslabMemory).toMatchObject({ maximum: 8192 });
+    expect(r.shimSelf.__daisychessMemory).toMatchObject({ maximum: 8192 });
   });
 
   it('never lowers the maximum below the initial size; without maxPages nothing is patched', () => {

@@ -3,7 +3,7 @@ import type {
   AnalyzeOptions,
   EngineDescriptor as ServerEngine,
   EngineInfo,
-} from '@chesslab/engine-core';
+} from '@daisychess/engine-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalysisEngine } from '../engine/AnalysisController';
 import type { ProbeClient } from '../engine/registry';

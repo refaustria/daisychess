@@ -64,7 +64,7 @@ async function mockExplorer(page: Page, opts: { anonymous401?: boolean } = {}) {
 async function openExplorer(page: Page, token?: string) {
   if (token !== undefined) {
     await page.addInitScript((t) => {
-      localStorage.setItem('chesslab.explorer', JSON.stringify({ db: 'masters', token: t }));
+      localStorage.setItem('daisychess.explorer', JSON.stringify({ db: 'masters', token: t }));
     }, token);
   }
   await page.goto('/');
