@@ -9,8 +9,15 @@ import { IpSessionLedger, resolveClientIp, type TrustedProxies } from './clientI
 import { RoomManager, type RoomConfig, type RoomManagerOptions } from '../rooms/RoomManager.js';
 import { ReviewService } from '../review/ReviewService.js';
 import type { ReviewStore } from '../review/ReviewStore.js';
+import type { EnginePool } from '../engines/EnginePool.js';
+import type { AnalysisBackend } from '../sessions/AnalysisBackend.js';
+import { LocalBackend } from '../sessions/LocalBackend.js';
 
-export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'review'> {
+export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'review' | 'backend'> {
+  /** This server's engine pool; analysis runs on it through a {@link LocalBackend}. */
+  pool: EnginePool;
+  /** Overrides the backend built over `pool` (tests, ADR-020 roles). */
+  backend?: AnalysisBackend;
   /** Room policy (ADR-013). */
   roomConfig: RoomConfig;
   /** Review store (ADR-017); null when disabled or it failed to open. Closed with the server. */
@@ -69,7 +76,13 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     putPerIpPerDay: opts.reviewPutPerIpPerDay,
     logger: opts.logger,
   });
-  const connOpts: ConnectionOptions = { ...opts, rooms, review };
+  const { pool, backend, ...rest } = opts;
+  const connOpts: ConnectionOptions = {
+    ...rest,
+    backend: backend ?? new LocalBackend(pool),
+    rooms,
+    review,
+  };
   let closing = false;
 
   const reject = (socket: Duplex, status: string) => {

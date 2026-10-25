@@ -1,39 +1,31 @@
 import WebSocket, { type RawData } from 'ws';
 import {
-  BestMoveSchema,
   PROTOCOL_VERSION,
   SearchIdSchema,
   ServerMessageSchema,
   SessionIdSchema,
-  checkAnalyzeLimits,
   parseClientMessage,
-  resolveEngineNodes,
-  type AnalyzeMessage,
-  type BestMove,
-  type BestMoveMessage,
   type EngineDescriptor,
-  type EngineInfo,
   type ErrorMessage,
   type Limits,
   type ProtocolErrorCode,
   type ServerMessage,
 } from '@daisychess/engine-core';
-import type { EnginePool, Lease, PoolLogger } from '../engines/EnginePool.js';
-import type { ExitInfo, GoParams } from '../engines/UciProcess.js';
+import type { PoolLogger } from '../engines/EnginePool.js';
 import type { IpSessionLedger } from './clientIp.js';
 import type { RoomClient, RoomManager } from '../rooms/RoomManager.js';
 import type { ReviewService } from '../review/ReviewService.js';
+import type { AnalysisBackend } from '../sessions/AnalysisBackend.js';
+import { ClientSessions } from '../sessions/ClientSessions.js';
+import { allowRate, type RateLimit } from '../sessions/rateLimit.js';
 import { tokenMatches } from './token.js';
 
 export { tokenMatches };
-
-export interface RateLimit {
-  max: number;
-  windowMs: number;
-}
+export type { RateLimit };
 
 export interface ConnectionOptions {
-  pool: EnginePool;
+  /** Where analysis sessions lease their engines (`LocalBackend` over the pool). */
+  backend: AnalysisBackend;
   limits: Limits;
   /** Engines as announced in `welcome` (disabled ones are rejected with `unknown_engine`). */
   engines: readonly EngineDescriptor[];
@@ -76,48 +68,13 @@ export interface ConnectionPeer {
   ledger: IpSessionLedger;
 }
 
-type TerminalMessage = BestMoveMessage | ErrorMessage;
-
-interface Search {
-  readonly searchId: number;
-  terminated: boolean;
-  stopReason: 'stopped' | 'limit' | null;
-  readonly done: Promise<void>;
-  resolveDone: () => void;
-  capTimer: ReturnType<typeof setTimeout> | null;
-  stopTimer: ReturnType<typeof setTimeout> | null;
-  /** Most recent relayed `info` of this search; re-sent with `policy` before `bestmove` (ADR-019). */
-  lastInfo: EngineInfo | null;
-}
-
-interface Session {
-  readonly id: string;
-  lease: Lease | null;
-  offExit: (() => void) | null;
-  current: Search | null;
-  /** searchId of the most recent accepted `analyze`; 0 after `stop`/`release`. */
-  latest: number;
-  /** Serialises every operation on this session (analyze, stop, release, idle release). */
-  chain: Promise<void>;
-  pending: number;
-  idleTimer: ReturnType<typeof setTimeout> | null;
-  retired: boolean;
-  /** Holds one of the client address's slots in the per-IP ledger (from acquire to drop). */
-  ipSlot: boolean;
-}
-
 let nextConnectionId = 1;
 
 /**
- * One WebSocket client (ADR-006).
- *
- * Ordering: every operation on a session runs on that session's promise chain. An `analyze`
- * first stops the running search and awaits its terminal message (sent from the `bestmove`
- * handler) before it sends `position`/`go`, so no `info` of the new search can precede the old
- * search's `bestmove`. Each search has a single `finishSearch()` guarded by a flag, which is the
- * only place terminal messages are sent: exactly one per accepted search. Queued `analyze`s that
- * were superseded before they started are terminated with `bestmove null, reason: stopped`
- * without ever reaching the engine.
+ * One WebSocket client (ADR-006): handshake, access token, Origin-independent rate limits, rooms
+ * and the review store. Analysis messages (`analyze`/`stop`/`release`) are delegated to a
+ * transport-agnostic {@link ClientSessions}, which owns sessions, searches, leases, ordering and
+ * the terminal-message guarantee.
  */
 export class Connection implements RoomClient {
   readonly id = nextConnectionId++;
@@ -125,24 +82,18 @@ export class Connection implements RoomClient {
   /** False on a token-protected server when this connection's `hello.token` was missing/wrong. */
   private analysisAllowed = true;
   private closed = false;
-  private readonly sessions = new Map<string, Session>();
-  /** Chains of released sessions still stopping/returning their engine, by sessionId. */
-  private readonly retiring = new Map<string, Promise<void>>();
-  private readonly analyzeTimes: number[] = [];
+  private readonly analysis: ClientSessions;
   private readonly messageTimes: number[] = [];
   private readonly roomTimes: number[] = [];
   private readonly reviewGetTimes: number[] = [];
   private readonly reviewPutTimes: number[] = [];
   private handshakeTimer: ReturnType<typeof setTimeout> | null;
-  private readonly enginesById: Map<string, EngineDescriptor>;
   private readonly closedPromise: Promise<void>;
   private resolveClosed!: () => void;
   private droppedInfos = 0;
   /** Heartbeat bookkeeping (managed by the server). */
   isAlive = true;
 
-  private readonly stopTimeoutMs: number;
-  private readonly analyzeRate: RateLimit;
   private readonly messageRate: RateLimit;
   private readonly roomRate: RateLimit;
   private readonly reviewGetRate: RateLimit;
@@ -155,16 +106,29 @@ export class Connection implements RoomClient {
     private readonly opts: ConnectionOptions,
     private readonly peer: ConnectionPeer,
   ) {
-    this.stopTimeoutMs = opts.stopTimeoutMs ?? 5_000;
-    this.analyzeRate = opts.analyzeRateLimit ?? { max: 20, windowMs: 1_000 };
     this.messageRate = opts.messageRateLimit ?? { max: 100, windowMs: 1_000 };
     this.roomRate = opts.roomRateLimit ?? { max: 10, windowMs: 1_000 };
     this.reviewGetRate = opts.reviewGetRateLimit ?? { max: 20, windowMs: 1_000 };
     this.reviewPutRate = opts.reviewPutRateLimit ?? { max: 20, windowMs: 4_000 };
     this.maxBufferedBytes = opts.maxBufferedBytes ?? 1024 * 1024;
     this.log = opts.logger;
-    this.enginesById = new Map(opts.engines.map((e) => [e.id, e]));
     this.closedPromise = new Promise((r) => (this.resolveClosed = r));
+    this.analysis = new ClientSessions(
+      (msg) => this.send(msg),
+      { ip: peer.ip, id: this.id },
+      {
+        backend: opts.backend,
+        limits: opts.limits,
+        engines: opts.engines,
+        logger: opts.logger,
+        ledger: peer.ledger,
+        sessionIdleMs: opts.sessionIdleMs,
+        ...(opts.stopTimeoutMs !== undefined ? { stopTimeoutMs: opts.stopTimeoutMs } : {}),
+        ...(opts.analyzeRateLimit ? { analyzeRateLimit: opts.analyzeRateLimit } : {}),
+        forbidden: () =>
+          this.opts.rooms.isPlaying(this) ? 'no analysis while you play in a room' : null,
+      },
+    );
 
     this.handshakeTimer = setTimeout(() => {
       this.handshakeTimer = null;
@@ -207,7 +171,7 @@ export class Connection implements RoomClient {
   }
 
   get sessionCount(): number {
-    return this.sessions.size;
+    return this.analysis.sessionCount;
   }
 
   /** Client address (see `resolveClientIp`). */
@@ -222,7 +186,7 @@ export class Connection implements RoomClient {
 
   /** Fair play: a game started in this connection's room; its engine sessions are dropped. */
   onGameStarted(): void {
-    for (const session of [...this.sessions.values()]) this.retire(session);
+    this.analysis.retireAll();
   }
 
   // -------------------------------------------------------------------------------------------
@@ -230,7 +194,7 @@ export class Connection implements RoomClient {
 
   private onMessage(data: RawData, isBinary: boolean): void {
     if (this.closed) return;
-    if (!this.allow(this.messageTimes, this.messageRate)) {
+    if (!allowRate(this.messageTimes, this.messageRate)) {
       this.sendError('rate_limited', 'too many messages; closing connection');
       this.close(1008, 'rate limited');
       return;
@@ -297,13 +261,20 @@ export class Connection implements RoomClient {
     }
     switch (msg.type) {
       case 'analyze':
-        this.onAnalyze(msg);
+        if (!this.analysisAllowed) {
+          this.sendError(
+            'unauthorized',
+            'access token required or wrong',
+            msg.sessionId,
+            msg.searchId,
+          );
+          return;
+        }
+        this.analysis.handle(msg);
         break;
       case 'stop':
-        this.onStop(msg.sessionId);
-        break;
       case 'release':
-        this.onRelease(msg.sessionId);
+        this.analysis.handle(msg);
         break;
       case 'ping':
         this.send(msg.t === undefined ? { type: 'pong' } : { type: 'pong', t: msg.t });
@@ -317,7 +288,7 @@ export class Connection implements RoomClient {
       case 'room.abort':
       case 'room.claim':
       case 'room.leave':
-        if (!this.allow(this.roomTimes, this.roomRate)) {
+        if (!allowRate(this.roomTimes, this.roomRate)) {
           this.sendError('rate_limited', 'too many room requests');
           return;
         }
@@ -326,7 +297,7 @@ export class Connection implements RoomClient {
       case 'review.get':
       case 'review.positions.get':
       case 'review.stats.get':
-        if (!this.allow(this.reviewGetTimes, this.reviewGetRate)) {
+        if (!allowRate(this.reviewGetTimes, this.reviewGetRate)) {
           this.sendError('rate_limited', 'too many review requests');
           return;
         }
@@ -334,7 +305,7 @@ export class Connection implements RoomClient {
         break;
       case 'review.put':
       case 'review.positions.put':
-        if (!this.allow(this.reviewPutTimes, this.reviewPutRate)) {
+        if (!allowRate(this.reviewPutTimes, this.reviewPutRate)) {
           this.sendError('rate_limited', 'too many review writes');
           return;
         }
@@ -347,405 +318,8 @@ export class Connection implements RoomClient {
     return { id: this.id, ip: this.peer.ip, analysisAllowed: this.analysisAllowed };
   }
 
-  private onAnalyze(msg: AnalyzeMessage): void {
-    const { sessionId, searchId } = msg;
-    if (!this.analysisAllowed) {
-      this.sendError('unauthorized', 'access token required or wrong', sessionId, searchId);
-      return;
-    }
-    if (this.opts.rooms.isPlaying(this)) {
-      this.sendError('forbidden', 'no analysis while you play in a room', sessionId, searchId);
-      return;
-    }
-    if (!this.allow(this.analyzeTimes, this.analyzeRate)) {
-      this.sendError('rate_limited', 'too many analyze requests', sessionId, searchId);
-      return;
-    }
-    const engine = this.enginesById.get(msg.engine);
-    if (!engine || !engine.enabled) {
-      this.sendError('unknown_engine', `unknown engine "${msg.engine}"`, sessionId, searchId);
-      return;
-    }
-    const violation = checkAnalyzeLimits(msg, this.opts.limits);
-    if (violation) {
-      this.sendError('limit_exceeded', violation, sessionId, searchId);
-      return;
-    }
-    // Per-engine node cap (ADR-019): Maia never searches more than its policy move.
-    const nodes = resolveEngineNodes(msg, engine);
-    if (!nodes.ok) {
-      this.sendError('limit_exceeded', nodes.message, sessionId, searchId);
-      return;
-    }
-    let session = this.sessions.get(sessionId);
-    if (!session) {
-      if (this.sessions.size >= this.opts.limits.maxSessionsPerConnection) {
-        this.sendError(
-          'limit_exceeded',
-          `at most ${this.opts.limits.maxSessionsPerConnection} sessions per connection`,
-          sessionId,
-          searchId,
-        );
-        return;
-      }
-      session = this.createSession(sessionId);
-    }
-    session.latest = searchId;
-    const s = session;
-    this.enqueue(s, () => this.runAnalyze(s, msg, engine));
-  }
-
-  private onStop(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      this.sendError('session_not_found', `no session "${sessionId}"`, sessionId);
-      return;
-    }
-    session.latest = 0; // queued analyzes of this session are superseded
-    this.enqueue(session, () => this.stopCurrent(session, 'stopped'));
-  }
-
-  private onRelease(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (session) this.retire(session);
-  }
-
-  // -------------------------------------------------------------------------------------------
-  // Sessions
-
-  private createSession(id: string): Session {
-    const session: Session = {
-      id,
-      lease: null,
-      offExit: null,
-      current: null,
-      latest: 0,
-      // A released session with the same id may still be finishing; keep the order.
-      chain: this.retiring.get(id) ?? Promise.resolve(),
-      pending: 0,
-      idleTimer: null,
-      retired: false,
-      ipSlot: false,
-    };
-    this.sessions.set(id, session);
-    return session;
-  }
-
-  /** Removes the session from the connection; stops its search and returns its engine. */
-  private retire(session: Session): Promise<void> {
-    this.sessions.delete(session.id);
-    session.retired = true;
-    session.latest = 0;
-    this.clearIdleTimer(session);
-    const p = this.enqueue(session, async () => {
-      await this.stopCurrent(session, 'stopped');
-      this.dropLease(session);
-    });
-    this.retiring.set(session.id, p);
-    void p.then(() => {
-      if (this.retiring.get(session.id) === p) this.retiring.delete(session.id);
-    });
-    return p;
-  }
-
-  private enqueue(session: Session, op: () => Promise<void>): Promise<void> {
-    this.clearIdleTimer(session);
-    session.pending++;
-    const run = async () => {
-      try {
-        await op();
-      } catch (err) {
-        this.log.error({ conn: this.id, session: session.id, err }, 'session operation failed');
-      } finally {
-        session.pending--;
-        this.maybeArmIdleTimer(session);
-      }
-    };
-    session.chain = session.chain.then(run, run);
-    return session.chain;
-  }
-
-  private maybeArmIdleTimer(session: Session): void {
-    if (session.retired || this.closed || session.pending > 0 || !session.lease) return;
-    if (session.current && !session.current.terminated) return;
-    this.clearIdleTimer(session);
-    const t = setTimeout(() => {
-      session.idleTimer = null;
-      this.enqueue(session, async () => {
-        if (session.pending > 1) return; // new work arrived meanwhile
-        if (session.current && !session.current.terminated) return;
-        this.log.debug({ conn: this.id, session: session.id }, 'idle session releases engine');
-        this.dropLease(session);
-      });
-    }, this.opts.sessionIdleMs);
-    t.unref?.();
-    session.idleTimer = t;
-  }
-
-  private clearIdleTimer(session: Session): void {
-    if (session.idleTimer) clearTimeout(session.idleTimer);
-    session.idleTimer = null;
-  }
-
-  private attachLease(session: Session, lease: Lease): void {
-    session.lease = lease;
-    session.offExit = lease.engine.onExit((exit) => this.onEngineExit(session, lease, exit));
-  }
-
-  /** Gives the engine back to the pool (which resets or kills it in the background). */
-  private dropLease(session: Session): void {
-    this.releaseIpSlot(session);
-    const lease = session.lease;
-    if (!lease) return;
-    session.lease = null;
-    session.offExit?.();
-    session.offExit = null;
-    void this.opts.pool.release(lease);
-  }
-
-  private releaseIpSlot(session: Session): void {
-    if (!session.ipSlot) return;
-    session.ipSlot = false;
-    this.peer.ledger.release(this.peer.ip);
-  }
-
-  private onEngineExit(session: Session, lease: Lease, exit: ExitInfo): void {
-    if (session.lease !== lease) return;
-    this.dropLease(session);
-    this.log.warn(
-      {
-        conn: this.id,
-        session: session.id,
-        pid: lease.engine.pid,
-        code: exit.code,
-        signal: exit.signal,
-      },
-      'engine crashed during session',
-    );
-    const s = session.current;
-    if (s && !s.terminated) {
-      this.finishSearch(
-        session,
-        s,
-        this.errorMessage('engine_crashed', 'engine process crashed', session.id, s.searchId),
-      );
-    } else if (!session.retired) {
-      this.sendError('engine_crashed', 'engine process crashed', session.id);
-    }
-  }
-
-  // -------------------------------------------------------------------------------------------
-  // Searches
-
-  private async runAnalyze(
-    session: Session,
-    msg: AnalyzeMessage,
-    engine: EngineDescriptor,
-  ): Promise<void> {
-    const { searchId } = msg;
-    await this.stopCurrent(session, 'stopped');
-    if (this.closed) return;
-    if (session.latest !== searchId) {
-      this.sendTerminalNow(session.id, searchId);
-      return;
-    }
-    if (session.lease && session.lease.engineId !== msg.engine) this.dropLease(session);
-    if (!session.lease) {
-      // Per-IP cap: reserved synchronously before the (async) acquire, so concurrent sessions
-      // of other connections from the same address cannot overshoot it.
-      if (!session.ipSlot) {
-        if (!this.peer.ledger.tryReserve(this.peer.ip)) {
-          this.log.info(
-            { conn: this.id, session: session.id, ip: this.peer.ip },
-            'per-address session cap reached',
-          );
-          this.sendError(
-            'no_capacity',
-            `too many sessions from your address (at most ${this.peer.ledger.maxPerIp})`,
-            session.id,
-            searchId,
-          );
-          return;
-        }
-        session.ipSlot = true;
-      }
-      const res = await this.opts.pool.acquire(msg.engine);
-      if (!res.ok) {
-        this.releaseIpSlot(session);
-        this.sendError(res.code, res.message, session.id, searchId);
-        return;
-      }
-      if (this.closed || session.retired) {
-        this.releaseIpSlot(session);
-        void this.opts.pool.release(res.lease);
-        if (!this.closed) this.sendTerminalNow(session.id, searchId);
-        return;
-      }
-      this.attachLease(session, res.lease);
-      this.log.info(
-        { conn: this.id, session: session.id, engine: msg.engine, pid: res.lease.engine.pid },
-        'session leased engine',
-      );
-    }
-    const lease = session.lease;
-    if (!lease) return;
-    const proc = lease.engine;
-    const search = this.createSearch(searchId);
-    session.current = search;
-    try {
-      await proc.setOptions({
-        Threads: msg.threads ?? engine.defaults.threads,
-        Hash: msg.hash ?? engine.defaults.hash,
-        MultiPV: msg.multipv ?? 1,
-      });
-      if (search.terminated) return; // crashed meanwhile
-      if (session.latest !== searchId || session.lease !== lease) {
-        this.finishSearch(
-          session,
-          search,
-          this.bestMoveMessage(session.id, searchId, null, 'stopped'),
-        );
-        return;
-      }
-      this.log.debug({ conn: this.id, session: session.id, searchId, fen: msg.fen }, 'go');
-      proc.position(msg.fen);
-      const params: GoParams = {};
-      if (msg.depth !== undefined) params.depth = msg.depth;
-      if (msg.movetime !== undefined) params.movetime = msg.movetime;
-      // Validated in onAnalyze; a capped engine (Maia) runs its cap when the client sent none.
-      const nodes = resolveEngineNodes(msg, engine);
-      if (nodes.ok && nodes.nodes !== undefined) params.nodes = nodes.nodes;
-      const result = proc.go(params, (info) => this.onInfo(session, search, info));
-      result.then(
-        (r) => {
-          this.opts.pool.reportHealthy(lease);
-          // Policy distribution (ADR-019): one more `info`, the last one plus `policy`.
-          if (r.policy && r.policy.length > 0 && search.lastInfo && !search.terminated) {
-            this.onInfo(session, search, { ...search.lastInfo, policy: r.policy });
-          }
-          this.finishSearch(
-            session,
-            search,
-            this.bestMoveMessage(
-              session.id,
-              searchId,
-              r.bestMove,
-              search.stopReason ?? 'completed',
-            ),
-          );
-        },
-        () =>
-          this.finishSearch(
-            session,
-            search,
-            this.errorMessage('engine_crashed', 'engine process crashed', session.id, searchId),
-          ),
-      );
-      // Wall-clock cap for every search (infinite ones in particular).
-      const cap =
-        msg.movetime !== undefined ? msg.movetime + 2_000 : this.opts.limits.maxMovetimeMs;
-      search.capTimer = setTimeout(() => this.requestStop(session, search, 'limit'), cap);
-      search.capTimer.unref?.();
-    } catch (err) {
-      if (search.terminated) return;
-      this.log.warn(
-        { conn: this.id, session: session.id, err: (err as Error).message },
-        'engine failed to start search',
-      );
-      this.finishSearch(
-        session,
-        search,
-        this.errorMessage('engine_crashed', 'engine not responding', session.id, searchId),
-      );
-      this.dropLease(session); // the pool kills it if it stays unresponsive
-    }
-  }
-
-  private onInfo(session: Session, search: Search, info: EngineInfo): void {
-    if (search.terminated || session.current !== search || this.closed) return;
-    search.lastInfo = info;
-    this.send({ type: 'info', sessionId: session.id, searchId: search.searchId, info });
-  }
-
-  private createSearch(searchId: number): Search {
-    let resolveDone!: () => void;
-    const done = new Promise<void>((r) => (resolveDone = r));
-    return {
-      searchId,
-      terminated: false,
-      stopReason: null,
-      done,
-      resolveDone,
-      capTimer: null,
-      stopTimer: null,
-      lastInfo: null,
-    };
-  }
-
-  /** Stops the session's running search (if any) and waits until its terminal message is out. */
-  private async stopCurrent(session: Session, reason: 'stopped' | 'limit'): Promise<void> {
-    const s = session.current;
-    if (!s || s.terminated) return;
-    this.requestStop(session, s, reason);
-    await s.done;
-  }
-
-  private requestStop(session: Session, search: Search, reason: 'stopped' | 'limit'): void {
-    if (search.terminated) return;
-    search.stopReason ??= reason;
-    if (search.stopTimer) return;
-    const proc = session.lease?.engine;
-    if (proc) {
-      try {
-        // The rejection path is handled by the go() handler in runAnalyze.
-        proc.stop().catch(() => {});
-      } catch {
-        // process already gone; the exit handler terminates the search
-      }
-    }
-    search.stopTimer = setTimeout(() => {
-      if (search.terminated) return;
-      this.log.warn({ conn: this.id, session: session.id }, 'engine did not answer stop; dropping');
-      this.finishSearch(
-        session,
-        search,
-        this.errorMessage('engine_crashed', 'engine not responding', session.id, search.searchId),
-      );
-      this.dropLease(session); // pool reset times out and kills the process
-    }, this.stopTimeoutMs);
-    search.stopTimer.unref?.();
-  }
-
-  /** The only place a search's terminal message is sent. */
-  private finishSearch(session: Session, search: Search, msg: TerminalMessage): void {
-    if (search.terminated) return;
-    search.terminated = true;
-    if (search.capTimer) clearTimeout(search.capTimer);
-    if (search.stopTimer) clearTimeout(search.stopTimer);
-    if (session.current === search) session.current = null;
-    this.send(msg);
-    search.resolveDone();
-    this.maybeArmIdleTimer(session);
-  }
-
-  /** Terminal message for a search that never reached the engine (superseded while queued). */
-  private sendTerminalNow(sessionId: string, searchId: number): void {
-    this.send(this.bestMoveMessage(sessionId, searchId, null, 'stopped'));
-  }
-
   // -------------------------------------------------------------------------------------------
   // Outgoing
-
-  private bestMoveMessage(
-    sessionId: string,
-    searchId: number,
-    bestMove: BestMove | null,
-    reason: BestMoveMessage['reason'],
-  ): BestMoveMessage {
-    // A move the schema cannot represent (should not happen with standard chess) becomes null.
-    const valid = bestMove && BestMoveSchema.safeParse(bestMove).success ? bestMove : null;
-    return { type: 'bestmove', sessionId, searchId, bestMove: valid, reason };
-  }
 
   private errorMessage(
     code: ProtocolErrorCode,
@@ -800,23 +374,13 @@ export class Connection implements RoomClient {
 
   // -------------------------------------------------------------------------------------------
 
-  private allow(times: number[], limit: RateLimit): boolean {
-    const now = Date.now();
-    while (times.length > 0 && now - times[0]! >= limit.windowMs) times.shift();
-    if (times.length >= limit.max) return false;
-    times.push(now);
-    return true;
-  }
-
   private dispose(): void {
     if (this.closed) return;
     this.closed = true;
     if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
     this.handshakeTimer = null;
     this.opts.rooms.disconnect(this);
-    const pending = [...this.sessions.values()].map((s) => this.retire(s));
-    pending.push(...this.retiring.values());
-    void Promise.allSettled(pending).then(() => this.resolveClosed());
+    void this.analysis.close().then(() => this.resolveClosed());
     this.log.debug({ conn: this.id }, 'connection closed');
   }
 }
