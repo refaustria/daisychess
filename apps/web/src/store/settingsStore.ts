@@ -45,6 +45,8 @@ export interface Settings {
    * that needs protection from this browser's user.
    */
   serverToken: string;
+  /** The one-time community-pool privacy notice was accepted (ADR-020). */
+  poolNoticeAccepted: boolean;
   /** Human-like hints (Maia, server only) for the mistakes of a review (M23-3). */
   maiaHints: boolean;
   /** Maia level (1100…1900) for a side without a PGN rating (M23-3). */
@@ -75,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
   premoves: 'single',
   reviewEngine: 'auto',
   serverToken: '',
+  poolNoticeAccepted: false,
   maiaHints: true,
   maiaRating: 1500,
 };
@@ -128,6 +131,7 @@ export function parseSettings(raw: string | null): Settings {
     out.reviewEngine = o.reviewEngine as ReviewEnginePreference;
   }
   if (typeof o.serverToken === 'string') out.serverToken = normalizeToken(o.serverToken);
+  if (typeof o.poolNoticeAccepted === 'boolean') out.poolNoticeAccepted = o.poolNoticeAccepted;
   if (typeof o.maiaHints === 'boolean') out.maiaHints = o.maiaHints;
   if (typeof o.maiaRating === 'number' && MAIA_RATINGS.includes(o.maiaRating)) {
     out.maiaRating = o.maiaRating;
@@ -175,6 +179,7 @@ function pick(s: Settings): Settings {
     premoves: s.premoves,
     reviewEngine: s.reviewEngine,
     serverToken: s.serverToken,
+    poolNoticeAccepted: s.poolNoticeAccepted,
     maiaHints: s.maiaHints,
     maiaRating: s.maiaRating,
   };
@@ -203,6 +208,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
       ...DEFAULT_SETTINGS,
       serverToken: get().serverToken,
       reviewEngine: get().reviewEngine,
+      poolNoticeAccepted: get().poolNoticeAccepted,
       customBoard: undefined,
     });
     persist(pick(get()));

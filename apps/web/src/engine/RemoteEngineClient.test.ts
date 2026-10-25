@@ -102,6 +102,73 @@ describe('RemoteEngineClient handshake', () => {
     expect(client.status).toBe('error');
   });
 
+  it('keeps unauthorized for no_token/bad_token and maps other denials precisely', async () => {
+    for (const reason of ['no_token', 'bad_token'] as const) {
+      const { client } = setup({}, (s) => {
+        s.welcome = { ...TEST_WELCOME, engines: [], capabilities: { analysis: false, rooms: true }, analysisDenied: reason };
+      });
+      const err = (await client.load().catch((e: unknown) => e)) as RemoteEngineError;
+      expect(err.code).toBe('unauthorized');
+      expect(err.deniedReason).toBe(reason);
+    }
+    const expected = {
+      expired: 'Your server access token has expired — ask the node operator for a new one',
+      revoked: 'Your server access token was revoked',
+      node_offline: 'Your engine node is offline — try again later',
+      no_capacity: 'All engines are busy — try again in a moment',
+      budget_exhausted: "Today's community pool time is used up — it resets at midnight UTC",
+    } as const;
+    for (const [reason, text] of Object.entries(expected)) {
+      const { client } = setup({}, (s) => {
+        s.welcome = {
+          ...TEST_WELCOME,
+          engines: [],
+          capabilities: { analysis: false, rooms: true },
+          analysisDenied: reason as keyof typeof expected,
+        };
+      });
+      const err = (await client.load().catch((e: unknown) => e)) as RemoteEngineError;
+      expect(err.code).toBe('denied');
+      expect(describeRemoteError(err)).toBe(text);
+    }
+  });
+
+  it('exposes welcome.node', async () => {
+    const { client } = setup({}, (s) => {
+      s.welcome = { ...TEST_WELCOME, node: { name: 'fast-box', operator: 'bojan', shared: true } };
+    });
+    expect(client.node).toBeUndefined();
+    await client.load();
+    expect(client.node).toEqual({ name: 'fast-box', operator: 'bojan', shared: true });
+    const legacy = setup();
+    await legacy.client.load();
+    expect(legacy.client.node).toBeUndefined();
+  });
+
+  it('close code 1012 (node lost): engine_crashed, then node_lost; load() reconnects with a new hello', async () => {
+    const { client, sockets, socket } = setup();
+    await client.load();
+    const run = collect(client.analyze(START, { depth: 10 })).catch((e: unknown) => e);
+    await flush();
+    const first = socket();
+    first.emit({
+      type: 'error',
+      sessionId: client.sessionId,
+      code: 'engine_crashed',
+      message: 'node lost',
+    });
+    first.serverClose(1012, 'node lost');
+    await flush();
+    expect(await run).toMatchObject({ code: 'engine_crashed' });
+    expect(client.status).toBe('closed');
+    expect(client.lastCode).toBe('node_lost');
+    await client.load();
+    expect(client.status).toBe('ready');
+    expect(sockets).toHaveLength(2);
+    expect(socket().ofType('hello')).toHaveLength(1);
+    expect(client.lastCode).toBeUndefined();
+  });
+
   it('accepts a welcome with capabilities.analysis true', async () => {
     const { client } = setup({}, (s) => {
       s.welcome = { ...TEST_WELCOME, capabilities: { analysis: true, rooms: true } };

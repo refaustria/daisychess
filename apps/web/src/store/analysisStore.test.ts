@@ -284,6 +284,8 @@ type StatusCb = (status: string, error?: string) => void;
 class FakeRemote extends ScriptedEngine {
   listeners = new Set<StatusCb>();
   loadError: (Error & { code?: string }) | null = null;
+  lastCode: string | undefined;
+  node: { name: string; shared: boolean } | undefined;
   limits = {
     maxDepth: 30,
     maxMultipv: 3,
@@ -811,6 +813,31 @@ describe('server probe', () => {
     });
   });
 
+  it('a precise denial (node offline) becomes the probe error text', async () => {
+    stop();
+    stop = startAnalysisController({
+      createEngine: () => new ScriptedEngine(),
+      createProbeClient: () =>
+        new RemoteEngineClient({
+          createSocket: (url) => {
+            const s = new FakeWebSocket(url);
+            s.welcome = {
+              ...TEST_WELCOME,
+              engines: [],
+              capabilities: { analysis: false, rooms: true },
+              analysisDenied: 'node_offline',
+            };
+            return s;
+          },
+        }),
+    });
+    await useAnalysisStore.getState().probeServer({ force: true });
+    expect(useAnalysisStore.getState().serverProbe).toMatchObject({
+      status: 'error',
+      error: 'Your engine node is offline — try again later',
+    });
+  });
+
   it('enabling a server engine probes the server', async () => {
     useAnalysisStore.getState().setEngineEnabled(REMOTE, true);
     await settle();
@@ -902,6 +929,44 @@ describe('server engines: status, errors and reconnect', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(remotes).toHaveLength(4);
     expect(primary()).toMatchObject({ status: 'error', backendError: 'Connection lost' });
+  });
+
+  it('node lost (close 1012): reconnects at once, once, and re-probes', async () => {
+    useAnalysisStore.getState().setEnabled(true);
+    await settle();
+    const probes = FakeProbe.created;
+    remotes[0]!.node = { name: 'old', shared: false };
+    nextLoadError = Object.assign(new Error('nope'), { code: 'closed' });
+    remotes[0]!.lastCode = 'node_lost';
+    remotes[0]!.emit('closed', 'Connection closed (code 1012)');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(remotes).toHaveLength(2);
+    expect(FakeProbe.created).toBe(probes + 1);
+    // The retry failed: the normal backoff applies, no second immediate node-lost reconnect.
+    remotes[1]!.lastCode = 'node_lost';
+    remotes[1]!.emit('closed', 'again');
+    await vi.advanceTimersByTimeAsync(999);
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(remotes).toHaveLength(3);
+  });
+
+  it('shows where a server engine runs (welcome.node)', async () => {
+    stop();
+    stop = startAnalysisController({
+      debounceMs: 80,
+      createProbeClient: () => new FakeProbe(),
+      createEngine: (spec) => {
+        if (spec.backend !== 'remote') return new ScriptedEngine();
+        const r = new FakeRemote();
+        r.node = { name: 'fast-box', shared: true };
+        remotes.push(r);
+        return r;
+      },
+    });
+    useAnalysisStore.getState().setEnabled(true);
+    await settle();
+    expect(primary().node).toEqual({ name: 'fast-box', shared: true });
   });
 
   it('a successful reconnect resumes analysis and resets the attempt counter', async () => {

@@ -1,6 +1,12 @@
-import type { Engine, ReviewSummary } from '@daisychess/engine-core';
+import type { AnalysisDeniedReason, Engine, ReviewSummary } from '@daisychess/engine-core';
 import { create } from 'zustand';
-import { authMessage, authReviewHint, isAuthText } from '../server/tokenMessages';
+import {
+  authMessage,
+  authReviewHint,
+  deniedMessage,
+  isAuthText,
+  isDeniedText,
+} from '../server/tokenMessages';
 import { useAnalysisStore } from '../store/analysisStore';
 import { useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore, type ReviewEnginePreference } from '../store/settingsStore';
@@ -227,6 +233,9 @@ export function serverConfigured(): boolean {
 export function serverFailureReason(err: unknown, midRun = false): string {
   const code = (err as { code?: unknown } | null)?.code;
   if (code === 'unauthorized') return authMessage();
+  if (code === 'denied')
+    return deniedMessage((err as { deniedReason?: AnalysisDeniedReason }).deniedReason);
+  if (code === 'node_lost') return midRun ? 'engine node lost' : 'engine node unavailable';
   if (code === 'closed') return midRun ? 'connection lost' : 'not reachable';
   if (code === 'timeout') return 'no response';
   if (code === 'no_capacity' || code === 'limit_exceeded') return 'too many sessions, busy';
@@ -236,7 +245,7 @@ export function serverFailureReason(err: unknown, midRun = false): string {
 }
 
 export const fallbackNotice = (reason: string): string =>
-  isAuthText(reason)
+  isAuthText(reason) || isDeniedText(reason)
     ? `${reason} — reviewing in the browser`
     : `Server unavailable (${reason}) — reviewing in the browser`;
 
@@ -244,6 +253,9 @@ const serverKey = (): string =>
   `${useAnalysisStore.getState().settings.remoteUrl ?? ''}\n${useSettingsStore.getState().serverToken}`;
 
 /** `auto` falls back silently when the server only refuses the (missing/wrong) token. */
+const isNodeLost = (err: unknown): boolean =>
+  (err as { code?: unknown } | null)?.code === 'node_lost';
+
 const isUnauthorized = (err: unknown): boolean =>
   (err as { code?: unknown } | null)?.code === 'unauthorized';
 
@@ -341,11 +353,21 @@ async function selectEngine(
   if (pref === 'auto' && failed && failed.until > Date.now()) {
     return browser(noticeFor(pref, failed.reason, failed.silent));
   }
-  let server: ServerReviewEngine | null = null;
+  let server = null as ServerReviewEngine | null;
   trace.server = true;
   try {
-    server = new ServerReviewEngine(await factory());
-    await server.load();
+    let first: ServerReviewEngine | null = null;
+    try {
+      first = new ServerReviewEngine(await factory());
+      server = first;
+      await first.load();
+    } catch (err) {
+      // The node was lost (close 1012): a fresh `hello` is routed again, so try once more.
+      if (!isNodeLost(err)) throw err;
+      if (first) void first.dispose().catch(() => undefined);
+      server = new ServerReviewEngine(await factory());
+      await server.load();
+    }
     serverFailures.delete(key);
     return {
       engine: server,
@@ -778,6 +800,7 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
         const forRun = runCache(fens, batchOptions);
         const cache = forRun.cache;
         let recreated = false;
+        let nodeRetried = false;
         try {
           for (;;) {
             const analyzer = new BatchAnalyzer({
@@ -826,6 +849,14 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
               // far stay in `cache` (same key for both engines), so only the rest is searched.
               selected = null; // disposed here, not again in `finally`
               void server.dispose().catch(() => undefined);
+              if (isNodeLost(err) && !nodeRetried) {
+                // The routed node was lost: one fresh session (routed afresh); done positions stay cached.
+                nodeRetried = true;
+                selected = await selectEngine(pref, browser, trace);
+                if (isCurrent()) set({ runsOn: selected.runsOn, engineNotice: selected.notice });
+                if (cancelled) throw abortError();
+                continue;
+              }
               const reason = serverFailureReason(err, true);
               trace.serverError = err;
               trace.serverMidRun = true;

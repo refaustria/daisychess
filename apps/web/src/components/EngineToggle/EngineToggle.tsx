@@ -1,5 +1,7 @@
+import type { WelcomeNode } from '@daisychess/engine-core';
 import { lockText, useHumanGameLockReason } from '../../live/lock';
-import { authMessage, isAuthError } from '../../server/tokenMessages';
+import { authMessage, isAuthError, isTokenFixText } from '../../server/tokenMessages';
+import { useSettingsStore } from '../../store/settingsStore';
 import {
   isRemoteKey,
   useAnalysisStore,
@@ -10,6 +12,18 @@ import {
 import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import styles from './EngineToggle.module.css';
 
+/** Where a server engine runs: "on box · operator · community pool", or "server" (no node info). */
+export function nodeParts(node: WelcomeNode | undefined): string[] {
+  if (!node) return ['server'];
+  const parts = [`on ${node.name}`];
+  if (node.operator) parts.push(node.operator);
+  if (node.shared) parts.push('community pool');
+  return parts;
+}
+
+export const POOL_NOTICE =
+  "Your positions are analysed by a community node operated by a volunteer. Don't use the pool for private games.";
+
 /** Status line of the (primary) engine; `remote` marks a server engine. */
 export function engineStatusText(
   s: Pick<AnalysisState, 'enabled' | 'terminal'> &
@@ -17,7 +31,7 @@ export function engineStatusText(
     Partial<
       Pick<
         EngineInstanceState,
-        'error' | 'engineName' | 'capabilities' | 'backendStatus' | 'backendError'
+        'error' | 'engineName' | 'capabilities' | 'backendStatus' | 'backendError' | 'node'
       >
     > & { remote?: boolean },
 ): string {
@@ -36,7 +50,7 @@ export function engineStatusText(
   const name = /^Stockfish \S+/.exec(full)?.[0] ?? full;
   const n = s.capabilities?.threadCount;
   const parts = [name];
-  if (remote) parts.push('server');
+  if (remote) parts.push(...nodeParts(s.node));
   if (n !== undefined) parts.push(`${n} thread${n === 1 ? '' : 's'}`);
   const depth = s.lines[0]?.depth;
   if (s.terminal) parts.push('game over');
@@ -57,8 +71,11 @@ export function EngineToggle() {
   const primary = usePrimaryAnalysis();
   const s = { ...primary, enabled, terminal, remote };
   const rawText = engineStatusText(s);
-  const auth = s.status === 'error' && remote && isAuthError(rawText);
-  const text = auth ? authMessage() : rawText;
+  const auth =
+    s.status === 'error' && remote && (isAuthError(rawText) || isTokenFixText(rawText));
+  const accepted = useSettingsStore((x) => x.poolNoticeAccepted);
+  const showPoolNotice = remote && s.node?.shared === true && !accepted && s.status !== 'error';
+  const text = auth && isAuthError(rawText) ? authMessage() : rawText;
   return (
     <div className={styles.engine}>
       <label
@@ -101,6 +118,18 @@ export function EngineToggle() {
         <button type="button" className={styles.retry} onClick={fallBackToBrowser}>
           Use browser engine
         </button>
+      )}
+      {showPoolNotice && (
+        <span className={styles.notice} role="note" data-testid="pool-notice">
+          {POOL_NOTICE}{' '}
+          <button
+            type="button"
+            className={styles.retry}
+            onClick={() => useSettingsStore.getState().set({ poolNoticeAccepted: true })}
+          >
+            Got it
+          </button>
+        </span>
       )}
     </div>
   );

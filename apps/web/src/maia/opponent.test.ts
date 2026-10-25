@@ -225,6 +225,16 @@ describe('MaiaOpponent (real RemoteEngineClient on a fake server)', () => {
     await maia.dispose();
   });
 
+  it('a lost node (close 1012, code node_lost) is retried like a dropped connection', async () => {
+    const server = new FakeMaiaServer();
+    server.replies = [{ kind: 'close', code: 1012 }, { kind: 'move', best: 'e7e5' }];
+    const maia = server.opponent();
+    await maia.load();
+    expect((await moveOf(maia, AFTER_E4)).best).toBe('e7e5');
+    expect(maia.stats.reconnects).toBe(1);
+    await maia.dispose();
+  });
+
   it('a dropped connection is reconnected once per move', async () => {
     const server = new FakeMaiaServer();
     server.replies = [{ kind: 'close' }, { kind: 'move', best: 'e7e5' }];

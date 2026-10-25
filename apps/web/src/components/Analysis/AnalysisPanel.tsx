@@ -28,7 +28,14 @@ import {
   type EngineSettingsOverride,
   type EngineSettingsPatch,
 } from '../../store/analysisStore';
-import { authMessage, displayError, isAuthError } from '../../server/tokenMessages';
+import {
+  authMessage,
+  displayError,
+  isAuthError,
+  isDeniedText,
+  isTokenFixText,
+} from '../../server/tokenMessages';
+import { nodeParts } from '../EngineToggle/EngineToggle';
 import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import { usePreviewStore } from '../../store/previewStore';
 import styles from './AnalysisPanel.module.css';
@@ -268,6 +275,17 @@ function EnginePicker() {
               {authMessage()} <OpenSettingsButton className={styles.linkButton} />
             </p>
           )}
+          {probe.status === 'error' && probe.error !== undefined && isDeniedText(probe.error) && (
+            <p className={styles.hint} data-testid="denied-hint">
+              {probe.error}{' '}
+              {isTokenFixText(probe.error) && <OpenSettingsButton className={styles.linkButton} />}
+            </p>
+          )}
+          {probe.status === 'ok' && probe.node && (
+            <p className={styles.hint} data-testid="node-hint">
+              Server engines run {nodeParts(probe.node).join(' · ')}
+            </p>
+          )}
           {probe.status === 'error' && (
             <button
               type="button"
@@ -449,7 +467,9 @@ export function AnalysisPanel() {
           ? displayError(inst.backendError ?? inst.error ?? 'Engine unavailable.')
           : 'Thinking…'}
       </p>
-      {inst.status === 'error' && isAuthError(inst.backendError ?? inst.error) && (
+      {inst.status === 'error' &&
+        (isAuthError(inst.backendError ?? inst.error) ||
+          isTokenFixText(inst.backendError ?? inst.error ?? '')) && (
         <p className={styles.authHint} data-testid="auth-hint">
           <OpenSettingsButton className={styles.linkButton} />
         </p>

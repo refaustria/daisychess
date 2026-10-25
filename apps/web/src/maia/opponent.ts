@@ -1,6 +1,12 @@
-import type { AnalyzeOptions, BestMove, EngineInfo, PolicyEntry } from '@daisychess/engine-core';
+import type {
+  AnalysisDeniedReason,
+  AnalyzeOptions,
+  BestMove,
+  EngineInfo,
+  PolicyEntry,
+} from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
-import { authMessage } from '../server/tokenMessages';
+import { authMessage, deniedMessage } from '../server/tokenMessages';
 import type { PlayEngine } from '../play/PlayController';
 
 /**
@@ -333,7 +339,7 @@ export class MaiaOpponent implements PlayEngine {
           if (my !== this.gen) return null;
           continue;
         }
-        if ((code === 'closed' || code === 'timeout') && !reconnected) {
+        if ((code === 'closed' || code === 'timeout' || code === 'node_lost') && !reconnected) {
           // The connection dropped (server restart, network): one new session per move.
           reconnected = true;
           this.stats.reconnects++;
@@ -404,11 +410,16 @@ function mapError(err: unknown): Error {
   const code = codeOf(err);
   const msg = err instanceof Error ? err.message : String(err);
   if (code === 'unauthorized') return new MaiaError(authMessage(), code);
+  if (code === 'denied')
+    return new MaiaError(
+      deniedMessage((err as { deniedReason?: AnalysisDeniedReason }).deniedReason),
+      code,
+    );
   if (code === 'no_capacity') return new MaiaError(MAIA_BUSY_MESSAGE, code);
   if (code === 'forbidden')
     return new MaiaError(`The server refuses the engine now (${msg})`, code);
   if (code === 'unknown_engine') return new MaiaError(`Maia is not available on the server`, code);
-  if (code === 'closed' || code === 'timeout')
+  if (code === 'closed' || code === 'timeout' || code === 'node_lost')
     return new MaiaError(`${SERVER_UNAVAILABLE_MESSAGE} (${msg})`, code);
   return err instanceof Error ? err : new Error(msg);
 }

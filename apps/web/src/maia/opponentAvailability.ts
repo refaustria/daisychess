@@ -1,6 +1,6 @@
 import type { EngineDescriptor } from '@daisychess/engine-core';
 import type { ServerProbeState } from '../engine/registry';
-import { authMessage, isAuthError } from '../server/tokenMessages';
+import { authMessage, isAuthError, isDeniedText } from '../server/tokenMessages';
 import { SERVER_UNAVAILABLE_MESSAGE } from './opponent';
 
 /**
@@ -36,7 +36,9 @@ export function humanAvailability(probe: ServerProbeState): HumanAvailability {
       ok: false,
       reason: isAuthError(probe.error)
         ? authMessage()
-        : SERVER_UNAVAILABLE_MESSAGE,
+        : probe.error !== undefined && isDeniedText(probe.error)
+          ? probe.error
+          : SERVER_UNAVAILABLE_MESSAGE,
     };
   }
   return { ok: false, reason: CHECKING_SERVER_MESSAGE, pending: true };

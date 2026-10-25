@@ -366,6 +366,29 @@ describe('reviewStore: review engine selection (ADR-014)', () => {
     expect(remote.disposed).toBe(true);
   });
 
+  it('auto: a node lost at the handshake (1012) is retried once on the server', async () => {
+    const real = remote.load.bind(remote);
+    let calls = 0;
+    remote.load = () => (calls++ === 0 ? Promise.reject(remoteError('lost', 'node_lost')) : real());
+    const summary = await useReviewStore.getState().start({ ...REVIEW_PRESETS.fast });
+    expect(summary?.moves).toHaveLength(7);
+    expect(calls).toBe(2);
+    expect(serverCreated).toBe(2);
+    expect(browserCreated).toBe(0);
+    expect(useReviewStore.getState().runsOn).toMatchObject({ kind: 'server' });
+    expect(useReviewStore.getState().engineNotice).toBeUndefined();
+  });
+
+  it('maps denial and node-loss reasons', () => {
+    expect(serverFailureReason(Object.assign(remoteError('x', 'denied'), { deniedReason: 'node_offline' }))).toBe(
+      'Your engine node is offline — try again later',
+    );
+    expect(serverFailureReason(remoteError('x', 'node_lost'), true)).toBe('engine node lost');
+    expect(fallbackNotice('Your engine node is offline — try again later')).toBe(
+      'Your engine node is offline — try again later — reviewing in the browser',
+    );
+  });
+
   it('maps failure reasons', () => {
     expect(serverFailureReason(remoteError('x', 'timeout'))).toBe('no response');
     expect(serverFailureReason(remoteError('x', 'engine_crashed'))).toBe('engine crashed');

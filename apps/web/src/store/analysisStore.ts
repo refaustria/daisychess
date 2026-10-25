@@ -1,4 +1,10 @@
-import type { EngineInfo, Limits, Score } from '@daisychess/engine-core';
+import type {
+  AnalysisDeniedReason,
+  EngineInfo,
+  Limits,
+  Score,
+  WelcomeNode,
+} from '@daisychess/engine-core';
 import { Chess } from 'chess.js';
 import { create } from 'zustand';
 import {
@@ -28,7 +34,7 @@ import {
 import { browserEnginePool } from '../engine/wasmPool';
 import { allowWasmRetry, clearWasmNotice, subscribeWasmHealth, wasmHealth } from '../engine/wasmHealth';
 import { currentFen, useGameStore } from './gameStore';
-import { isAuthError, UNAUTHORIZED_MESSAGE } from '../server/tokenMessages';
+import { deniedMessage, isAuthError, UNAUTHORIZED_MESSAGE } from '../server/tokenMessages';
 import { useSettingsStore } from './settingsStore';
 
 export type { AnalysisStatus, EngineCapabilities, EngineKey, TerminalKind };
@@ -76,6 +82,8 @@ export interface EngineInstanceState {
   backendError?: string;
   /** Limits announced by the server (after a successful connect). */
   remoteLimits?: Limits;
+  /** Where the server engine runs (`welcome.node`, ADR-020); absent on a standalone server. */
+  node?: WelcomeNode;
 }
 
 export interface AnalysisState {
@@ -380,6 +388,11 @@ export function describeRemoteError(err: unknown): string {
   if (code === 'closed' || code === 'timeout') return 'Server unreachable';
   if (code === 'no_capacity') return 'Server busy, try again';
   if (code === 'unauthorized') return UNAUTHORIZED_MESSAGE;
+  if (code === 'denied') {
+    const reason = (err as { deniedReason?: AnalysisDeniedReason }).deniedReason;
+    return deniedMessage(reason);
+  }
+  if (code === 'node_lost') return 'Engine node lost';
   if (code === 'unknown_engine') return err instanceof Error ? err.message : 'Unknown engine';
   return err instanceof Error ? err.message : String(err);
 }
@@ -388,6 +401,9 @@ export function describeRemoteError(err: unknown): string {
 export interface RemoteLikeEngine extends AnalysisEngine {
   onStatus?(cb: (status: string, error?: string) => void): () => void;
   readonly limits?: Limits;
+  readonly node?: WelcomeNode;
+  /** Code of the last connection loss (`node_lost`: close code 1012). */
+  readonly lastCode?: string;
 }
 
 /** What {@link startAnalysisController} installs so the store actions reach the controllers. */
@@ -607,6 +623,7 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => {
               status: 'ok',
               engines: result.engines,
               ...(result.limits ? { limits: result.limits } : {}),
+              ...(result.node ? { node: result.node } : {}),
               lastProbe: Date.now(),
             },
           });
@@ -685,7 +702,11 @@ interface Runner {
   /** The remote engine whose status is mirrored (events of older instances are ignored). */
   remote: RemoteLikeEngine | null;
   /** Auto-reconnect bookkeeping (server engines). */
-  reconnect: { attempts: number; wasReady: boolean; timer: ReturnType<typeof setTimeout> | null };
+  reconnect: { attempts: number; wasReady: boolean;
+    /** The one immediate reconnect after a node loss (close 1012) was used. */
+    nodeLostRetried: boolean;
+    timer: ReturnType<typeof setTimeout> | null;
+  };
   makeEngine(): Promise<AnalysisEngine>;
 }
 
@@ -694,6 +715,7 @@ function resetReconnect(r: Runner): void {
   r.reconnect.timer = null;
   r.reconnect.attempts = 0;
   r.reconnect.wasReady = false;
+  r.reconnect.nodeLostRetried = false;
 }
 
 /**
@@ -731,7 +753,7 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
       key,
       spec,
       remote: null,
-      reconnect: { attempts: 0, wasReady: false, timer: null },
+      reconnect: { attempts: 0, wasReady: false, nodeLostRetried: false, timer: null },
       makeEngine: async () => {
         const engine = await create(spec, effectiveSettings(get(), key));
         if (spec.backend !== 'remote') return engine;
@@ -757,7 +779,7 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
               patch(r, { backendError: describeRemoteError(err) });
             throw err;
           }
-          if (current()) patch(r, { remoteLimits: engine.limits });
+          if (current()) patch(r, { remoteLimits: engine.limits, node: engine.node });
         };
         return engine;
       },
@@ -778,10 +800,18 @@ export function startAnalysisController(opts: StartAnalysisOptions = {}): () => 
         r.reconnect.wasReady = true;
         p.backendError = undefined;
         p.remoteLimits = r.remote?.limits;
+        p.node = r.remote?.node;
       } else if ((status === 'closed' || status === 'error') && r.reconnect.wasReady) {
         // Lost an established session (or a reconnect attempt failed): back off and retry.
+        // Node lost (close 1012): the hub routes a fresh `hello` to another node, so reconnect
+        // at once (one attempt) and re-probe where the engines run now.
+        const nodeLost = r.remote?.lastCode === 'node_lost' && !r.reconnect.nodeLostRetried;
+        if (nodeLost) {
+          r.reconnect.nodeLostRetried = true;
+          void get().probeServer({ force: true });
+        }
         if (r.reconnect.attempts < RECONNECT_MAX_ATTEMPTS && get().enabled) {
-          const delay = RECONNECT_BASE_MS * 2 ** r.reconnect.attempts++;
+          const delay = nodeLost ? 0 : RECONNECT_BASE_MS * 2 ** r.reconnect.attempts++;
           if (r.reconnect.timer !== null) clearTimeout(r.reconnect.timer);
           r.reconnect.timer = setTimeout(() => {
             r.reconnect.timer = null;

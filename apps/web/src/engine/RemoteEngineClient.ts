@@ -16,6 +16,8 @@ import {
   type ProtocolErrorCode,
   type ServerMessage,
   type WelcomeMessage,
+  type WelcomeNode,
+  type AnalysisDeniedReason,
 } from '@daisychess/engine-core';
 import type { AnalysisEngine, EngineCapabilities } from './AnalysisController';
 import { defaultServerUrl } from './serverUrl';
@@ -34,6 +36,9 @@ export interface WebSocketLike {
 
 /** `WebSocket.OPEN` (not referenced through the global so the module also loads without one). */
 const WS_OPEN = 1;
+
+/** WebSocket close code of a lost node (service restart); the client should reconnect once. */
+export const NODE_LOST_CLOSE_CODE = 1012;
 
 export type RemoteEngineStatus = 'idle' | 'connecting' | 'ready' | 'closed' | 'error';
 
@@ -67,7 +72,17 @@ export interface RemoteEngineCapabilities extends EngineCapabilities {
 export class RemoteEngineError extends Error {
   constructor(
     message: string,
-    readonly code?: ProtocolErrorCode | 'timeout' | 'closed' | 'invalid_request',
+    readonly code?:
+      | ProtocolErrorCode
+      | 'timeout'
+      | 'closed'
+      | 'invalid_request'
+      /** Restricted `welcome` with a precise `analysisDenied` reason other than a token problem. */
+      | 'denied'
+      /** The routed node was lost (close code 1012, ADR-020); a new `hello` is routed afresh. */
+      | 'node_lost',
+    /** `welcome.analysisDenied`, set for `unauthorized` (no_token/bad_token) and `denied`. */
+    readonly deniedReason?: AnalysisDeniedReason,
   ) {
     super(message);
     this.name = 'RemoteEngineError';
@@ -228,6 +243,7 @@ export class RemoteEngineClient implements AnalysisEngine {
   private stopWaiters: (() => void)[] = [];
   private currentStatus: RemoteEngineStatus = 'idle';
   private statusError: string | undefined;
+  private statusCode: string | undefined;
   private readonly listeners = new Set<(status: RemoteEngineStatus, error?: string) => void>();
 
   constructor(options: RemoteEngineClientOptions = {}) {
@@ -252,6 +268,16 @@ export class RemoteEngineClient implements AnalysisEngine {
   onStatus(cb: (status: RemoteEngineStatus, error?: string) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
+  }
+
+  /** Where the engines run (`welcome.node`, ADR-020); undefined on a standalone server. */
+  get node(): WelcomeNode | undefined {
+    return this.welcome?.node;
+  }
+
+  /** Code of the last connection loss/failure (`node_lost` after a close with code 1012). */
+  get lastCode(): string | undefined {
+    return this.statusCode;
   }
 
   /** Display name of the selected engine (after {@link load}). */
@@ -304,6 +330,7 @@ export class RemoteEngineClient implements AnalysisEngine {
   }
 
   private connect(): Promise<void> {
+    this.statusCode = undefined;
     this.setStatus('connecting');
     this.welcome = null;
     this.engine = null;
@@ -358,12 +385,20 @@ export class RemoteEngineClient implements AnalysisEngine {
         // Restricted welcome (ADR-013): the token was missing or wrong; rooms work, analysis
         // does not. Mapped to the same error as the former `unauthorized` handshake failure.
         if (msg.capabilities?.analysis === false) {
-          handshake.reject(
-            new RemoteEngineError(
-              'Engine server: access token required or wrong',
-              'unauthorized',
-            ),
-          );
+          const reason = msg.analysisDenied;
+          if (reason === undefined || reason === 'no_token' || reason === 'bad_token') {
+            handshake.reject(
+              new RemoteEngineError(
+                'Engine server: access token required or wrong',
+                'unauthorized',
+                reason,
+              ),
+            );
+          } else {
+            handshake.reject(
+              new RemoteEngineError(`Engine server: analysis denied (${reason})`, 'denied', reason),
+            );
+          }
           return;
         }
         try {
@@ -392,10 +427,11 @@ export class RemoteEngineClient implements AnalysisEngine {
         handshake.reject(new RemoteEngineError(why, serverError?.code ?? 'closed'));
         return;
       }
+      // 1012 (service restart): the routed node was lost; the hub sent `engine_crashed` first.
       this.onConnectionLost(
         new RemoteEngineError(
           `Connection to engine server closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ''})`,
-          'closed',
+          ev.code === NODE_LOST_CLOSE_CODE ? 'node_lost' : 'closed',
         ),
       );
     };
@@ -646,6 +682,7 @@ export class RemoteEngineClient implements AnalysisEngine {
     if (this.currentStatus === 'closed') return;
     this.finishAll(null, err);
     this.loading = null;
+    this.statusCode = err.code;
     this.setStatus('closed', err.message);
   }
 

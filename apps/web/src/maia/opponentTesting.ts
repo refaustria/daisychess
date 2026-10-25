@@ -31,7 +31,7 @@ export type MaiaReply =
   /** `error no_capacity` for the search (all Maia processes busy). */
   | { kind: 'busy' }
   /** The connection drops (server restart, network). */
-  | { kind: 'close' }
+  | { kind: 'close'; code?: number }
   /** No answer (the test answers or stops). */
   | { kind: 'hang' };
 
@@ -84,7 +84,7 @@ export class FakeMaiaServer {
             searchId,
           });
         } else if (reply.kind === 'close') {
-          ws.serverClose(1006, 'gone');
+          ws.serverClose(reply.code ?? 1006, 'gone');
         } else if (reply.kind === 'move') {
           // A terminal position (null bestmove) relays no info (Lc0 prints none, ADR-019).
           if (reply.best)

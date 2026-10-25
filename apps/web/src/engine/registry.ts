@@ -1,5 +1,9 @@
-import type { EngineDescriptor as ServerEngine, Limits } from '@daisychess/engine-core';
-import { authMessage, isAuthError } from '../server/tokenMessages';
+import type {
+  EngineDescriptor as ServerEngine,
+  Limits,
+  WelcomeNode,
+} from '@daisychess/engine-core';
+import { authMessage, isAuthError, isDeniedText } from '../server/tokenMessages';
 import {
   budgetReason,
   currentMemoryBudget,
@@ -58,6 +62,8 @@ export interface ServerProbeState {
   status: 'idle' | 'probing' | 'ok' | 'error';
   engines?: readonly ServerEngine[];
   limits?: Limits;
+  /** Where the server's engines run (`welcome.node`, ADR-020); absent on a standalone server. */
+  node?: WelcomeNode;
   error?: string;
   /** `Date.now()` of the last finished probe (success or failure). */
   lastProbe?: number;
@@ -282,7 +288,9 @@ export function serverEngines(
       : probe.status === 'error'
         ? isAuthError(probe.error)
           ? authMessage()
-          : `Server unavailable: ${probe.error ?? 'unknown error'}`
+          : isDeniedText(probe.error ?? '')
+            ? probe.error
+            : `Server unavailable: ${probe.error ?? 'unknown error'}`
         : 'Not offered by the server';
   const wanted = enabledKeys.filter((k) => k.startsWith('remote:'));
   // Before the first answer, offer the default server engine as a placeholder.
@@ -373,11 +381,13 @@ export interface ProbeClient {
   dispose(): Promise<void>;
   readonly engines: readonly ServerEngine[];
   readonly limits?: Limits;
+  readonly node?: WelcomeNode;
 }
 
 export interface ProbeResult {
   engines: readonly ServerEngine[];
   limits?: Limits;
+  node?: WelcomeNode;
 }
 
 /**
@@ -390,7 +400,11 @@ export async function probeServer(
   const client = await createClient();
   try {
     await client.load();
-    return { engines: [...client.engines], ...(client.limits ? { limits: client.limits } : {}) };
+    return {
+      engines: [...client.engines],
+      ...(client.limits ? { limits: client.limits } : {}),
+      ...(client.node ? { node: client.node } : {}),
+    };
   } finally {
     await client.dispose().catch(() => undefined);
   }

@@ -262,7 +262,14 @@ export const HINT_MIN_INTERVAL_MS = 60;
 export const HINT_TIMEOUT_MS = 10_000;
 
 const RETRY_CODES = new Set(['no_capacity', 'rate_limited']);
-const FATAL_CODES = new Set(['closed', 'timeout', 'unknown_engine', 'engine_crashed']);
+const FATAL_CODES = new Set([
+  'closed',
+  'timeout',
+  'unknown_engine',
+  'engine_crashed',
+  'node_lost',
+  'denied',
+]);
 
 const codeOf = (err: unknown): string | undefined => {
   const c = (err as { code?: unknown } | null)?.code;
@@ -336,74 +343,92 @@ export async function runHintJobs(
 
   for (const [rating, group] of groups) {
     if (aborted()) return 'aborted';
-    const engineId = maiaEngineId(rating);
-    let client: MaiaClient | undefined;
-    const release = async () => {
-      const c = client;
-      client = undefined;
-      if (c) await c.dispose().catch(() => undefined);
-    };
-    try {
-      client = await opts.createClient(engineId);
-      await withTimeout(client.load(), timeoutMs);
-    } catch (err) {
-      await release();
-      return codeOf(err) === 'unauthorized' ? 'unauthorized' : 'unavailable';
-    }
-    const descriptor = client.engines?.find((e) => e.id === engineId);
-    if (client.engines && (!descriptor || !descriptor.enabled || descriptor.style !== 'human')) {
-      await release();
-      return 'unavailable';
-    }
-    if (aborted()) {
-      await release();
-      return 'aborted';
-    }
+    // Jobs of this group done so far; a lost node (close 1012) gets one fresh session for the rest.
+    let next = 0;
+    let nodeRetried = false;
+    const runGroup = async (): Promise<HintRunStatus | 'retry' | undefined> => {
+      const engineId = maiaEngineId(rating);
+      let client: MaiaClient | undefined;
+      const release = async () => {
+        const c = client;
+        client = undefined;
+        if (c) await c.dispose().catch(() => undefined);
+      };
+      try {
+        client = await opts.createClient(engineId);
+        await withTimeout(client.load(), timeoutMs);
+      } catch (err) {
+        await release();
+        return codeOf(err) === 'unauthorized' ? 'unauthorized' : 'unavailable';
+      }
+      const descriptor = client.engines?.find((e) => e.id === engineId);
+      if (client.engines && (!descriptor || !descriptor.enabled || descriptor.style !== 'human')) {
+        await release();
+        return 'unavailable';
+      }
+      if (aborted()) {
+        await release();
+        return 'aborted';
+      }
 
-    let lastSent = -Infinity;
-    for (const job of group) {
-      let attempt = 0;
-      for (;;) {
-        if (aborted()) {
-          await release();
-          return 'aborted';
-        }
-        const wait = lastSent + minInterval - now();
-        if (wait > 0) await sleep(wait, opts.signal);
-        if (aborted()) {
-          await release();
-          return 'aborted';
-        }
-        lastSent = now();
-        try {
-          const policy = await withTimeout(queryPolicy(client, job.fenBefore), timeoutMs);
-          const hint = policy ? hintFromPolicy(job, policy) : undefined;
-          if (hint && !aborted()) opts.onHint(hint);
-          break;
-        } catch (err) {
-          const code = codeOf(err);
-          if (code !== undefined && RETRY_CODES.has(code)) {
-            if (attempt >= delays.length) {
-              await release();
-              return 'busy';
+      let lastSent = -Infinity;
+      for (; next < group.length; next++) {
+        const job = group[next]!;
+        let attempt = 0;
+        for (;;) {
+          if (aborted()) {
+            await release();
+            return 'aborted';
+          }
+          const wait = lastSent + minInterval - now();
+          if (wait > 0) await sleep(wait, opts.signal);
+          if (aborted()) {
+            await release();
+            return 'aborted';
+          }
+          lastSent = now();
+          try {
+            const policy = await withTimeout(queryPolicy(client, job.fenBefore), timeoutMs);
+            const hint = policy ? hintFromPolicy(job, policy) : undefined;
+            if (hint && !aborted()) opts.onHint(hint);
+            break;
+          } catch (err) {
+            const code = codeOf(err);
+            if (code !== undefined && RETRY_CODES.has(code)) {
+              if (attempt >= delays.length) {
+                await release();
+                return 'busy';
+              }
+              await sleep(delays[attempt]!, opts.signal);
+              attempt++;
+              continue;
             }
-            await sleep(delays[attempt]!, opts.signal);
-            attempt++;
-            continue;
+            if (code === 'node_lost' && !nodeRetried) {
+              nodeRetried = true;
+              await release();
+              return 'retry';
+            }
+            if (code === 'unauthorized') {
+              await release();
+              return 'unauthorized';
+            }
+            if (code === undefined || FATAL_CODES.has(code) || err instanceof HintTimeout) {
+              await release();
+              return 'unavailable';
+            }
+            break; // per-position rejection (invalid_request, limit_exceeded, …): skip the job
           }
-          if (code === 'unauthorized') {
-            await release();
-            return 'unauthorized';
-          }
-          if (code === undefined || FATAL_CODES.has(code) || err instanceof HintTimeout) {
-            await release();
-            return 'unavailable';
-          }
-          break; // per-position rejection (invalid_request, limit_exceeded, …): skip the job
         }
       }
+      await release();
+      return undefined;
+    };
+    for (;;) {
+      const status = await runGroup();
+      if (status === 'retry') continue;
+      if (status) return status;
+      break;
     }
-    await release();
   }
   return aborted() ? 'aborted' : 'done';
 }

@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-import { NO_TOKEN_MESSAGE, TOKEN_REJECTED_MESSAGE } from '../../server/tokenMessages';
+import {
+  EXPIRED_MESSAGE,
+  NODE_OFFLINE_MESSAGE,
+  NO_TOKEN_MESSAGE,
+  TOKEN_REJECTED_MESSAGE,
+} from '../../server/tokenMessages';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useUiStore } from '../../store/uiStore';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -99,6 +104,80 @@ describe('engineStatusText', () => {
     render(<EngineToggle />);
     expect(screen.getByTestId('engine-status').textContent).toBe(TOKEN_REJECTED_MESSAGE);
     useSettingsStore.getState().setServerToken('');
+  });
+});
+
+describe('engine node (ADR-020)', () => {
+  const remote = {
+    ...base,
+    remote: true,
+    backendStatus: 'ready' as const,
+    engineName: 'Stockfish 19 (native)',
+    capabilities: { threads: true as const, build: 'x', threadCount: 4 },
+  };
+
+  it('names the private node and its operator; legacy servers say "server"', () => {
+    expect(engineStatusText({ ...remote, node: { name: 'fast-box', shared: false } })).toBe(
+      'Stockfish 19 · on fast-box · 4 threads',
+    );
+    expect(
+      engineStatusText({ ...remote, node: { name: 'fast-box', operator: 'bojan', shared: false } }),
+    ).toBe('Stockfish 19 · on fast-box · bojan · 4 threads');
+    expect(engineStatusText(remote)).toBe('Stockfish 19 · server · 4 threads');
+  });
+
+  it('marks the community pool', () => {
+    expect(
+      engineStatusText({ ...remote, node: { name: 'pool-1', operator: 'vol', shared: true } }),
+    ).toBe('Stockfish 19 · on pool-1 · vol · community pool · 4 threads');
+  });
+
+  it('shows the pool privacy notice once, until accepted', () => {
+    const key = 'remote:stockfish';
+    const setNode = (shared: boolean) =>
+      useAnalysisStore.setState({
+        enabled: true,
+        enabledEngines: [key],
+        instances: {
+          [key]: { key, status: 'analysing', lines: [], backendStatus: 'ready', node: { name: 'p', shared } },
+        },
+      });
+    useSettingsStore.getState().set({ poolNoticeAccepted: false });
+    setNode(false);
+    render(<EngineToggle />);
+    expect(screen.queryByTestId('pool-notice')).toBeNull();
+    cleanup();
+    setNode(true);
+    render(<EngineToggle />);
+    expect(screen.getByTestId('pool-notice').textContent).toContain(
+      "Don't use the pool for private games.",
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(useSettingsStore.getState().poolNoticeAccepted).toBe(true);
+    expect(screen.queryByTestId('pool-notice')).toBeNull();
+    cleanup();
+    render(<EngineToggle />);
+    expect(screen.queryByTestId('pool-notice')).toBeNull();
+    useSettingsStore.getState().set({ poolNoticeAccepted: false });
+  });
+
+  it('shows a precise denial with the settings button for expired tokens only', () => {
+    const key = 'remote:stockfish';
+    const show = (backendError: string) => {
+      useAnalysisStore.setState({
+        enabled: true,
+        enabledEngines: [key],
+        instances: { [key]: { key, status: 'error', lines: [], backendError } },
+      });
+      render(<EngineToggle />);
+    };
+    show(EXPIRED_MESSAGE);
+    expect(screen.getByTestId('engine-status').textContent).toBe(EXPIRED_MESSAGE);
+    expect(screen.queryByTestId('open-token-settings')).not.toBeNull();
+    cleanup();
+    show(NODE_OFFLINE_MESSAGE);
+    expect(screen.getByTestId('engine-status').textContent).toBe(NODE_OFFLINE_MESSAGE);
+    expect(screen.queryByTestId('open-token-settings')).toBeNull();
   });
 });
 

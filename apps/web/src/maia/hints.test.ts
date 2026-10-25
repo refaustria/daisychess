@@ -282,6 +282,19 @@ describe('runHintJobs', () => {
     expect(notHuman.queries).toEqual([]);
   });
 
+  it('node lost mid-run (1012): one fresh session finishes the remaining jobs', async () => {
+    let n = 0;
+    const server = fakeMaiaServer(() => (n++ === 1 ? coded('node_lost', 'node lost') : POLICY));
+    const hints: MaiaHint[] = [];
+    const status = await runHintJobs(jobsAt([1500, 1500, 1500]), {
+      createClient: server.createClient,
+      onHint: (h) => hints.push(h),
+      minIntervalMs: 0,
+    });
+    expect(status).toBe('done');
+    expect(hints).toHaveLength(3);
+  });
+
   it('connection lost mid-run: unavailable with the hints so far', async () => {
     let n = 0;
     const server = fakeMaiaServer(() => (n++ === 1 ? coded('closed', 'connection lost') : POLICY));
