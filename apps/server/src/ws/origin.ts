@@ -9,7 +9,7 @@
 export type OriginPolicy = readonly string[] | '*' | null;
 
 /**
- * Parses `ALLOWED_ORIGINS`: a comma-separated list of origins (`https://c.referee.at`), or `*`.
+ * Parses `ALLOWED_ORIGINS`: a comma-separated list of origins (`https://play.daisychess.org`), or `*`.
  * Entries are normalised to `scheme://host[:port]` in lower case; anything that is not an
  * absolute http(s) origin throws, so a typo cannot silently disable the check.
  */

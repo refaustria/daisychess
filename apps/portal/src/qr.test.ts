@@ -3,7 +3,7 @@ import { qrMatrix, qrPath } from './qr';
 
 describe('qr', () => {
   it('builds a square matrix with finder patterns', () => {
-    const m = qrMatrix('https://c.referee.at/#setup-token=dc1_ABCD2345_SECRET');
+    const m = qrMatrix('https://play.daisychess.org/#setup-token=dc1_ABCD2345_SECRET');
     expect(m.length).toBeGreaterThanOrEqual(21);
     expect(m.every((r) => r.length === m.length)).toBe(true);
     // top-left finder pattern: 7 dark modules across the first row

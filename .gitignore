@@ -14,3 +14,5 @@ playwright-report
 apps/server/data/
 apps/portal/test-results
 apps/portal/dist-e2e
+apps/site/test-results
+apps/site/dist-e2e

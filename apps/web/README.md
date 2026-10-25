@@ -58,7 +58,7 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 
 ## lichess login
 
-"Log in with lichess" (Settings → lichess account, or the account chip in the header, which opens Settings) uses the OAuth 2.0 authorization code flow with PKCE (`src/lichess/`; no client secret, `client_id` `daisychess.c.referee.at`, redirect URI = `location.origin + location.pathname`, so it works on `https://c.referee.at/` and `http://localhost:4180/`).
+"Log in with lichess" (Settings → lichess account, or the account chip in the header, which opens Settings) uses the OAuth 2.0 authorization code flow with PKCE (`src/lichess/`; no client secret, `client_id` `play.daisychess.org` (ADR-021), redirect URI = `location.origin + location.pathname`, so it works on `https://play.daisychess.org/` and `http://localhost:4180/`).
 
 - `login()` stores a random verifier + `state` in sessionStorage `daisychess.lichess.pkce` and navigates to `https://lichess.org/oauth` with the S256 challenge and the scopes `board:play challenge:read challenge:write` (for live games; shown in the button's tooltip).
 - `main.tsx` calls `handleCallback()` once at startup: with `?code&state` and a matching state it exchanges the code (`POST /api/token`), reads the username (`GET /api/account`), stores `{token, username, scopes, expiresAt}` in localStorage `daisychess.lichess` and removes the parameters with `history.replaceState`. `?error=` and a state mismatch end in status `error` with a message.
@@ -96,6 +96,24 @@ The Live tab (`components/Live/LivePanel`, state in `src/live/`) plays real lich
 - **Auto review:** `src/review/autoReview.ts` (installed by `App`) watches the game store. A load is a change that replaces `headers` or `startFen` and leaves at least 2 moves (`loadPgn`: PGN paste/file, online import); moves, takebacks, navigation, New game and FEN loads never qualify. With `settings.autoReview` on (Settings → "Analyse games automatically after loading", default on) and no game against the engine running, it resets the review store, starts `REVIEW_PRESETS.fast` with `{ auto: true }` and opens the Review tab. The panel then shows a dismissible "Auto review (fast) — run Deep for more accuracy" line; Start (or Run Deep) always restarts with the chosen preset.
 - **Data:** `BatchAnalyzer` caches `eval`, `bestMove` and `pv` (UCI, at most 8 plies) per FEN and exposes the analysed `results` of a run. The review store keeps the unchanged engine-core `ReviewSummary` plus `moveDetails[ply]` (`review/details.ts`: played/best SAN, best line in SAN via `convertPv`, White-POV evals before/after, `evalIfBest`, mover-POV swing text, class), built incrementally while the review runs.
 - **UI:** the Review tab shows a "Current move" card (`aria-live="polite"`) following the viewed ply: class with win-chance loss, "Better: …" with the clickable best line (board preview), eval before → after and a template sentence (`explainMove`); buttons jump to the previous/next mistake or blunder. When done: accuracy, counts, eval graph and per side "Good moves" (best/excellent, top 5) and "Moves to improve" (inaccuracy/mistake/blunder by loss). While the Review tab is open and a review exists, the board arrows are the played move (red mistake/blunder, orange inaccuracy, green otherwise) and the engine's best move (green) instead of the live-analysis arrow (`reviewShapes` in `components/Analysis/shapes.ts`).
+
+## Move from c.referee.at (`src/migrate/`, `legacy/`)
+
+The app moved from `https://c.referee.at` to `https://play.daisychess.org` (ADR-021). `legacy/` is
+the static "moved" page nginx serves on the old name (`deploy/deploy-legacy.sh`; no build step,
+plain ESM, tested in `legacy/migrate-core.test.ts`): it reads the `daisychess.*` localStorage keys,
+encodes them (`CompressionStream('deflate-raw')` + base64url, plain JSON when unavailable; at most
+16 000 characters, dropping the largest non-essential keys and the trainer schedule last) and
+replaces the location with `https://play.daisychess.org/#migrate=<payload>`. A follow-up route of
+the old URL (`#/room/<id>`, `#setup-token=…`) travels inside the payload.
+
+`src/migrate/runMigrateLink.ts` (imported in `main.tsx` after the ChessLab rename migration and
+before the setup link and every store) consumes the fragment synchronously (`inflate.ts` is a small
+RFC 1951 decoder with an output cap, because `DecompressionStream` is async): only from a
+`https://c.referee.at` referrer, only allow-listed keys with value checks and size caps, never over
+an existing key; then `replaceState` removes the fragment (keeping a valid follow-up route) and a
+one-time notice says "Your settings were moved from c.referee.at". Reviews in IndexedDB are not
+moved. e2e: `e2e/migrate.spec.ts` (including the real legacy page behind a Playwright route).
 
 ## Tests
 

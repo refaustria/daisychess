@@ -23,12 +23,26 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
-/** The hub's link endpoint for node setup snippets: build-time `VITE_HUB_URL` or derived from this origin. */
-export function hubLinkUrl(): string {
-  const configured = import.meta.env.VITE_HUB_URL as string | undefined;
+/**
+ * Canonical link endpoints of known public hubs, by portal host (ADR-021): the portal lives on
+ * play.daisychess.org, nodes connect to hub.daisychess.org (`/link` on play is only an alias).
+ */
+export const KNOWN_HUB_LINKS: Readonly<Record<string, string>> = {
+  'play.daisychess.org': 'wss://hub.daisychess.org/link',
+};
+
+/**
+ * The hub's link endpoint for node setup snippets: build-time `VITE_HUB_URL`, else the canonical
+ * endpoint of a known hub, else derived from this origin (self-hosted hubs).
+ */
+export function hubLinkUrl(
+  configured: string | undefined = import.meta.env.VITE_HUB_URL as string | undefined,
+  loc: Pick<Location, 'protocol' | 'host'> = globalThis.location,
+): string {
   if (configured) return configured;
-  const { protocol, host } = globalThis.location;
-  return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/link`;
+  const known = KNOWN_HUB_LINKS[loc.host];
+  if (known) return known;
+  return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/link`;
 }
 
 export function composeSnippet(hubUrl: string, nodeToken: string, pool: boolean): string {

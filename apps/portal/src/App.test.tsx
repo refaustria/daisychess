@@ -237,7 +237,7 @@ describe('tokens', () => {
       'GET /tokens': () => ({ json: { tokens: listed } }),
       'POST /tokens': () => {
         listed = [...listed, created];
-        return { status: 201, json: { token: created, playerToken: 'dc1_ZZZZ2222_PLAYERSECRET', setupLink: 'https://c.referee.at/#setup-token=dc1_ZZZZ2222_PLAYERSECRET' } };
+        return { status: 201, json: { token: created, playerToken: 'dc1_ZZZZ2222_PLAYERSECRET', setupLink: 'https://play.daisychess.org/#setup-token=dc1_ZZZZ2222_PLAYERSECRET' } };
       },
     });
     render(<App fetchImpl={hub.fetchImpl} />);

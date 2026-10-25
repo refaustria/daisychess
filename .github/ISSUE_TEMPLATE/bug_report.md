@@ -12,6 +12,6 @@ labels: bug
 **Environment**
 - Browser and version:
 - Mode: browser (WASM) / server
-- Self-hosted or https://c.referee.at:
+- Self-hosted or https://play.daisychess.org:
 
 **Screenshots, PGN or console output** (no tokens or secrets, please)

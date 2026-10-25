@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeSnippet, formatAgo, formatDuration, lastDays, npxSnippet } from './format';
+import { composeSnippet, formatAgo, formatDuration, hubLinkUrl, lastDays, npxSnippet } from './format';
 
 describe('format', () => {
   const now = Date.UTC(2026, 9, 25, 12);
@@ -22,5 +22,18 @@ describe('format', () => {
   it('fills the token into the snippets', () => {
     expect(composeSnippet('wss://h/link', 'dcn_a_b', true)).toContain('NODE_POOL: "on"');
     expect(npxSnippet('wss://h/link', 'dcn_a_b', false)).toBe('HUB_URL=wss://h/link NODE_TOKEN=dcn_a_b POOL=off npx -y @daisychess/node');
+  });
+});
+
+describe('hubLinkUrl', () => {
+  it('prefers the build-time VITE_HUB_URL', () => {
+    expect(hubLinkUrl('wss://h.example/link', { protocol: 'https:', host: 'play.daisychess.org' })).toBe('wss://h.example/link');
+  });
+  it('uses the canonical hub host for the public portal (ADR-021)', () => {
+    expect(hubLinkUrl(undefined, { protocol: 'https:', host: 'play.daisychess.org' })).toBe('wss://hub.daisychess.org/link');
+  });
+  it('derives the endpoint from the origin of a self-hosted hub', () => {
+    expect(hubLinkUrl(undefined, { protocol: 'https:', host: 'chess.example:8443' })).toBe('wss://chess.example:8443/link');
+    expect(hubLinkUrl('', { protocol: 'http:', host: 'localhost:3000' })).toBe('ws://localhost:3000/link');
   });
 });

@@ -2,6 +2,7 @@
 # lent to a DaisyChess hub over one outbound WebSocket. No port is published; nothing listens
 # on the host. Quickstart (deploy/README.md, "Run a community node"):
 #   cp docker/node.env.example docker/.env.node   # set NODE_TOKEN (portal), adjust limits
+#   (HUB_URL defaults to the public hub wss://hub.daisychess.org/link; set it for your own hub)
 #   docker compose -f docker/docker-compose.node.yml --env-file docker/.env.node up -d
 #   docker compose -f docker/docker-compose.node.yml logs -f node
 # `--env-file` feeds the ${…} values below (cpus, memory, image); `env_file` passes the same file

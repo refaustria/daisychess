@@ -21,7 +21,8 @@ export const LICHESS_AUTHORIZE_URL = `${LICHESS_ORIGIN}/oauth`;
 export const LICHESS_TOKEN_URL = `${LICHESS_ORIGIN}/api/token`;
 export const LICHESS_ACCOUNT_URL = `${LICHESS_ORIGIN}/api/account`;
 export const LICHESS_TOKEN_TEST_URL = `${LICHESS_ORIGIN}/api/token/test`;
-export const LICHESS_CLIENT_ID = 'daisychess.c.referee.at';
+/** Shown by lichess on the consent page (ADR-021; was `daisychess.c.referee.at`). */
+export const LICHESS_CLIENT_ID = 'play.daisychess.org';
 /** Requested at login so live games can use the same token (the explorer needs no scope). */
 export const LICHESS_SCOPES: readonly string[] = ['board:play', 'challenge:read', 'challenge:write'];
 /** Where to create a personal access token; lichess prefills the scopes and description from the query. */
@@ -155,7 +156,7 @@ export function resetLichessAuth(): void {
 
 // --- helpers ------------------------------------------------------------------------------------
 
-/** Redirect URI: this page without query or hash (https://c.referee.at/, http://localhost:4180/). */
+/** Redirect URI: this page without query or hash (https://play.daisychess.org/, http://localhost:4180/). */
 export function redirectUri(): string {
   return `${globalThis.location.origin}${globalThis.location.pathname}`;
 }

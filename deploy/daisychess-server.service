@@ -11,8 +11,9 @@ Group=bojan
 WorkingDirectory=/home/bojan/gitchess/apps/server
 ExecStart=/usr/bin/node dist/index.js
 Environment=PORT=8580 HOST=127.0.0.1 NODE_ENV=production
-# Browser origin allowed on /ws (ADR-008); .env.production may override.
-Environment=ALLOWED_ORIGINS=https://c.referee.at
+# Browser origins allowed on /ws (ADR-008); .env.production may override. ADR-021: the app is on
+# play.daisychess.org; the legacy c.referee.at stays listed (old tabs) until its sunset date.
+Environment=ALLOWED_ORIGINS=https://play.daisychess.org,https://c.referee.at
 # Overrides (MAX_SESSIONS, MAX_THREADS, LOG_LEVEL, ...); git-ignored, optional.
 EnvironmentFile=-/home/bojan/gitchess/apps/server/.env.production
 # always: also restart after a clean exit, e.g. a stray SIGTERM (2026-10-25 outage).

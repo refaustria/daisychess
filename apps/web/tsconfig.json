@@ -8,5 +8,5 @@
     "baseUrl": ".",
     "paths": { "@daisychess/engine-core": ["../../packages/engine-core/src/index.ts"] }
   },
-  "include": ["src", "vite.config.ts", "vite-plugin-stockfish.ts", "csp.config.d.mts"]
+  "include": ["src", "legacy", "vite.config.ts", "vite-plugin-stockfish.ts", "csp.config.d.mts"]
 }

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Build apps/portal (the operator portal, base /portal/) and publish it to the nginx web root of
-# https://c.referee.at under /portal/. Does not touch the main app (deploy/deploy-web.sh excludes
+# https://play.daisychess.org under /portal/. Does not touch the main app (deploy/deploy-web.sh excludes
 # /portal/ from its --delete).
 # Usage: deploy/deploy-portal.sh   (from anywhere inside the repo)
 # Optional: VITE_HUB_URL=wss://hub.example/link  (HUB_URL shown in the node setup snippets;
-# default: derived from the page origin, wss://<host>/link).
+# default: wss://hub.daisychess.org/link on play.daisychess.org, else derived from the page
+# origin, wss://<host>/link; see apps/portal/src/format.ts).
 set -euo pipefail
 
-WEB_ROOT="${WEB_ROOT:-/var/www/c.referee.at}"
-SITE_URL="${SITE_URL:-https://c.referee.at/portal/}"
+WEB_ROOT="${WEB_ROOT:-/var/www/play.daisychess.org}"
+SITE_URL="${SITE_URL:-https://play.daisychess.org/portal/}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"

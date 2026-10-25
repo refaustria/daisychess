@@ -8,14 +8,14 @@ Two analysis backends are offered and can be switched at runtime:
 - **Server mode** — native Stockfish (and optionally other engines) runs on a dedicated machine and streams results over WebSocket. Stronger, faster, multi-threaded.
 
 > **License:** GPL-3.0-or-later (see [`LICENSE`](./LICENSE), third-party components in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)).
-> **Live instance:** <https://c.referee.at> · **Source:** <https://github.com/refaustria/gitchess>
+> **Live instance:** <https://play.daisychess.org> (formerly c.referee.at, which now redirects) · **Community site:** <https://daisychess.org> · **Source:** <https://github.com/refaustria/daisychess>
 > **Run your own:** a single host with nginx and systemd is described in [`deploy/README.md`](./deploy/README.md); a Docker Compose setup (web + engine server) is in [`docker/`](./docker/). Want to contribute? See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 > **For Claude Code:** this repository is run by an orchestrating Claude Code session that acts as project manager only. It does not implement features itself; it plans, delegates to sub-agents, reviews and integrates. See [`CLAUDE.md`](./CLAUDE.md) and the section *Working Model for Claude Code* below.
 
 ## Status
 
-All milestones M0–M10 are implemented (play, browser and server analysis, game review, play vs engine, online import, theming, hardening); the live site is https://c.referee.at. Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
+All milestones M0–M10 are implemented (play, browser and server analysis, game review, play vs engine, online import, theming, hardening); the live app is https://play.daisychess.org (moved from c.referee.at in ADR-021; the old address hands browser settings over once and redirects). Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
 
 | Area | State |
 |---|---|
@@ -154,7 +154,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 { "type": "room.error", "roomId": "…", "code": "not_your_turn", "message": "it is not your turn" }
 ```
 
-- Link: `https://c.referee.at/#/room/<roomId>` (22 URL-safe chars, 128 random bits). The `playerToken` (43 chars, 256 bits) is kept in `localStorage`, never in the URL.
+- Link: `https://play.daisychess.org/#/room/<roomId>` (22 URL-safe chars, 128 random bits). The `playerToken` (43 chars, 256 bits) is kept in `localStorage`, never in the URL.
 - Clocks: Fischer increment; the first two plies are untimed; from the third the server charges on move arrival and flags (`reason: timeout`; a draw if the opponent cannot mate). Displayed time of `clock.running` = `clock[running] - (now - receivedAt)`.
 - Disconnects: the seat stays, the clock runs; the opponent may `room.claim` from `claimableAt` (60 s); both gone → `abandoned`. `abort` only before both sides moved; `reason` is one of `checkmate stalemate draw resign timeout abort abandoned agreement` (no `result` = no game was played).
 - Fair play: a player in a running room gets `forbidden` on `analyze`. Limits: `ROOM_MAX_ROOMS` 200, 10 creations / 10 min per address, waiting rooms expire after 15 min, finished rooms are kept 10 min, 10 spectators per room, nick 1–20 chars.
@@ -236,7 +236,7 @@ Protocol (additive, `PROTOCOL_VERSION` stays 1):
 - Play tab: pick colour, strength (Elo presets) and thinking time; promotion dialog, takeback, resign, rematch, "Review this game". Live analysis and Review are paused during a game; loading a position or PGN aborts it.
 
 ### Play a friend via link
-- Friend tab: pick a nickname, time control (presets, custom or no clock) and colour, then "Create link" and send the link (`https://c.referee.at/#/room/<id>`) to your friend. No account and no server token needed.
+- Friend tab: pick a nickname, time control (presets, custom or no clock) and colour, then "Create link" and send the link (`https://play.daisychess.org/#/room/<id>`) to your friend. No account and no server token needed.
 - Your friend opens the link, picks a nickname and joins; the game starts. Anyone opening the link after both seats are taken watches.
 - The server runs the rules and the clocks (shown in the player bars; the first move of each side is untimed). Draw offers, resign, abort before both have moved, and "Claim victory" when the opponent stays disconnected for 60 s. A reload or a lost connection re-attaches to your seat (the seat secret stays in this browser's localStorage).
 - Engines, review and explorer are locked while you play (fair play); the game is reviewed automatically afterwards. "Play again" creates a new link with colours swapped.
@@ -275,12 +275,12 @@ A **node** lends the engines of one machine (Stockfish, optionally Lc0 with the 
 - **Private node:** only the people you give a player token (`dc1_…`) in the portal can use it. A token can list several of your nodes and optionally fall back to the pool.
 - **Pool node:** you also donate part of the machine to strangers (`NODE_POOL=on` plus the pool switch in the portal). The hub spot-checks pool results; nodes whose answers disagree are removed from the pool, and a repeat offender is banned from it.
 
-1. Open the operator portal at `/portal/` of the hub (currently <https://c.referee.at/portal/>), log in with lichess, create a node and copy its node token (`dcn_<id>_<secret>`, shown once).
+1. Open the operator portal at `/portal/` of the hub (<https://play.daisychess.org/portal/>), log in with lichess, create a node and copy its node token (`dcn_<id>_<secret>`, shown once).
 2. Run the node:
 
 ```bash
-git clone https://github.com/refaustria/gitchess && cd gitchess
-cp docker/node.env.example docker/.env.node      # set NODE_TOKEN, limits, NODE_POOL
+git clone https://github.com/refaustria/daisychess && cd daisychess
+cp docker/node.env.example docker/.env.node      # set NODE_TOKEN, limits, NODE_POOL (HUB_URL: wss://hub.daisychess.org/link)
 docker compose -f docker/docker-compose.node.yml --env-file docker/.env.node up -d
 docker compose -f docker/docker-compose.node.yml logs -f node    # "link: registered with the hub"
 ```
@@ -295,7 +295,7 @@ docker compose -f docker/docker-compose.node.yml logs -f node    # "link: regist
 
 The hub is `apps/server` with `ROLE=hub`: everything the standalone server does, plus the `/link` endpoint for nodes, token routing, the shared pool, spot-checks, a SQLite store for operators, nodes and tokens, and the operator portal API. The portal itself is the static SPA `apps/portal`, served under `/portal/`.
 
-The hub domain is currently **c.referee.at** and may change; every URL is configurable (`PUBLIC_ORIGIN`, the nodes' `HUB_URL`). Moving the hub means re-issuing setup links and updating each node's `HUB_URL`.
+The public hub (ADR-021) runs the app and portal on **play.daisychess.org** (`PUBLIC_ORIGIN`) and takes node links on **wss://hub.daisychess.org/link** (`/link` on play.daisychess.org is an alias; the old `wss://c.referee.at/link` keeps working until its sunset date). Every URL is configurable (`PUBLIC_ORIGIN`, `ALLOWED_ORIGINS`, the nodes' `HUB_URL`), so a self-hosted hub uses its own names.
 
 Required environment (all variables with defaults: [`apps/server/.env.example`](./apps/server/.env.example), section "ROLE=hub"):
 
@@ -381,7 +381,7 @@ Server configuration is read from the environment (see `apps/server/.env.example
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` / `HOST` | `8580` / `127.0.0.1` | listen address |
-| `ALLOWED_ORIGINS` | same host as the request | comma-separated `scheme://host[:port]` allowed to open `/ws`, or `*` (ADR-008); production sets `https://c.referee.at` |
+| `ALLOWED_ORIGINS` | same host as the request | comma-separated `scheme://host[:port]` allowed to open `/ws`, or `*` (ADR-008); production sets `https://play.daisychess.org,https://c.referee.at` (the legacy origin until its sunset, ADR-021) |
 | `MAX_SESSIONS` | `4` | global cap on leased engine instances |
 | `MAX_SESSIONS_PER_IP` | unset | per-client-address cap, must not exceed `MAX_SESSIONS` |
 | `MAX_SESSIONS_PER_CONNECTION`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_THREADS`, `MAX_HASH_MB`, `MAX_MOVETIME_MS` | see `.env.example` | per-request limits announced in `welcome.limits` |

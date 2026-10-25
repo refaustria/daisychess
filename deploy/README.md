@@ -1,46 +1,134 @@
-# Deployment: https://c.referee.at
+# Deployment: https://play.daisychess.org
 
-Single host (Debian 13), nginx + Let's Encrypt (certbot nginx plugin). See
-`docs/DECISIONS.md` ADR-001 (ports), ADR-002 (hosting model) and ADR-008 (security
-policies); the threat model and hardening checklist are in `docs/SECURITY.md`.
+Single host (Debian 13), nginx + Let's Encrypt. See `docs/DECISIONS.md` ADR-001 (ports), ADR-002
+(hosting model), ADR-008 (security policies) and ADR-021 (move from c.referee.at to
+daisychess.org); the threat model and hardening checklist are in `docs/SECURITY.md`.
 
 | What | Where |
 |---|---|
-| Static web build | `/var/www/c.referee.at` (owner `bojan:bojan`) |
-| nginx site | `/etc/nginx/sites-available/c.referee.at` → symlink in `sites-enabled/` |
-| Repo copy (pre-certbot) | `deploy/nginx/c.referee.at.conf` |
-| TLS cert | `/etc/letsencrypt/live/c.referee.at/` |
-| Engine server | `127.0.0.1:8580`, proxied at `/ws` and `/health` (`/health/detail` is loopback-only) |
+| Web app build | `/var/www/play.daisychess.org` (owner `bojan:bojan`), `deploy/deploy-web.sh` |
+| Operator portal build | `/var/www/play.daisychess.org/portal/`, `deploy/deploy-portal.sh` |
+| Shared nginx declarations | `deploy/nginx/daisychess-common.conf` → `/etc/nginx/conf.d/daisychess-common.conf` (CSP maps, `log_format daisychess`, rate-limit zones) |
+| App vhost | `deploy/nginx/play.daisychess.org.conf` → `/etc/nginx/sites-available/play.daisychess.org` |
+| Hub link vhost | `deploy/nginx/hub.daisychess.org.conf` → `/etc/nginx/sites-available/hub.daisychess.org` (`/link`, `/health` only) |
+| Legacy vhost | `deploy/nginx/c.referee.at.conf` → `/etc/nginx/sites-available/c.referee.at` ("moved" page from `/var/www/c.referee.at-legacy`, `deploy/deploy-legacy.sh`) |
+| TLS cert | `/etc/letsencrypt/live/daisychess.org/` (daisychess.org, www, play, hub); legacy: `/etc/letsencrypt/live/c.referee.at/` |
+| Engine server | `127.0.0.1:8580`, proxied at `/ws`, `/link`, `/api/portal/` and `/health` (`/health/detail` is loopback-only) |
 | Server unit | `deploy/daisychess-server.service` (installed by `deploy/deploy-server.sh`) |
 
-The site sends `Cross-Origin-Opener-Policy: same-origin` and
+The app sends `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` (multi-threaded WASM), plus CORP,
 nosniff, Referrer-Policy, an enforced `Content-Security-Policy` and
 `Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`, no
 preload). `/assets/*` is cached immutably, `index.html` is `no-cache`, unknown
 paths fall back to `index.html` (SPA).
 
-## First-time setup (already done on 2026-10-23)
+The vhost files are complete TLS versions (no certbot `--nginx` run needed: the certificate
+lineage exists). They declare no `map`, `log_format` or zone themselves: nginx rejects duplicates,
+and a `log_format` must come before its first use, which `conf.d/` guarantees (Debian includes it
+before `sites-enabled/`). `node scripts/check-csp.mjs [live files…]` verifies all CSP copies.
+Always `sudo nginx -t` before `sudo systemctl reload nginx`.
+
+## Legacy c.referee.at (ADR-021)
+
+The app lived at https://c.referee.at until 2026-10. Browsers keep localStorage per origin, so the
+old name now serves a tiny "moved" page (`apps/web/legacy/`) whose script packs this origin's
+`daisychess.*` keys (settings incl. server token, lichess login, theme, trainer schedule, room
+seats, …; not the PKCE round trip) into the URL **fragment** and replaces the location with
+`https://play.daisychess.org/#migrate=<payload>`. The app imports them once on start
+(`apps/web/src/migrate/`): only from a `https://c.referee.at` referrer, only allow-listed keys with
+size caps, never over an existing key, fragment stripped with `replaceState`, one-time notice "Your
+settings were moved from c.referee.at". Above ~16 kB the page drops the largest non-essential keys
+(trainer schedule last) and the notice names what was not moved. Reviews cached in IndexedDB are
+not moved (token holders get them back from the server review store; others re-run them).
 
 ```bash
-sudo mkdir -p /var/www/c.referee.at
-sudo chown bojan:bojan /var/www/c.referee.at
-# placeholder index.html written to /var/www/c.referee.at/
-
-sudo cp deploy/nginx/c.referee.at.conf /etc/nginx/sites-available/c.referee.at
-sudo ln -s /etc/nginx/sites-available/c.referee.at /etc/nginx/sites-enabled/c.referee.at
-sudo nginx -t && sudo systemctl reload nginx
-
-sudo certbot --nginx -d c.referee.at --non-interactive --agree-tos --redirect -m <your-email>
-sudo nginx -t && sudo systemctl reload nginx
+deploy/deploy-legacy.sh          # rsync apps/web/legacy/{index.html,moved.js,migrate-core.js,moved.css}
+                                 # to /var/www/c.referee.at-legacy/
 ```
 
-Certbot edits the installed file in place (adds `listen 443 ssl`, the
-certificate lines and a port-80 redirect server block). If you change
-`deploy/nginx/c.referee.at.conf` later, apply the change to the installed file
-by hand (keep the `# managed by Certbot` lines), or re-copy it and run
-`sudo certbot --nginx -d c.referee.at --reinstall --redirect` to re-inject TLS.
-Always `sudo nginx -t` before `sudo systemctl reload nginx`.
+Transition (until the **sunset date, to be set by the owner**; placeholder in
+`deploy/nginx/c.referee.at.conf`): `/ws`, `/link` and `/health` on c.referee.at are still
+proxied (open tabs, nodes with the old `HUB_URL`), `/assets/` is served from the last app build in
+`/var/www/c.referee.at/assets/` (do not delete it before the sunset), everything else is a 301 to
+the same path on play.daisychess.org. `ALLOWED_ORIGINS` keeps `https://c.referee.at` as its second
+entry until then.
+
+## Cut-over c.referee.at → play.daisychess.org (ADR-021, one-time)
+
+Preconditions: DNS for play.daisychess.org and hub.daisychess.org points at this host; the lineage
+`/etc/letsencrypt/live/daisychess.org/` covers daisychess.org, www, play and hub
+(`sudo certbot certificates`). Nothing below touches the running app until step 5.
+
+```bash
+cd /home/bojan/gitchess && git pull && pnpm install --frozen-lockfile && pnpm build
+pnpm lint && pnpm test && node scripts/check-csp.mjs
+
+# 1. web roots (the old /var/www/c.referee.at stays: its assets/ serve open tabs until the sunset)
+sudo install -d -o bojan -g bojan /var/www/play.daisychess.org /var/www/c.referee.at-legacy
+deploy/deploy-web.sh && deploy/deploy-portal.sh && deploy/deploy-legacy.sh
+
+# 2. back up the live nginx files
+sudo cp -a /etc/nginx/sites-available/c.referee.at /etc/nginx/sites-available/c.referee.at.bak-$(date +%Y%m%d-%H%M%S)
+
+# 3. nginx: shared declarations, the three vhosts, the lichess egress proxy (if not yet installed).
+#    Install them together: the old c.referee.at file declares the same maps/zones/log format.
+sudo cp deploy/nginx/daisychess-common.conf /etc/nginx/conf.d/daisychess-common.conf
+sudo cp deploy/nginx/lichess-egress.conf.snippet /etc/nginx/conf.d/daisychess-lichess-egress.conf
+sudo cp deploy/nginx/play.daisychess.org.conf /etc/nginx/sites-available/play.daisychess.org
+sudo cp deploy/nginx/hub.daisychess.org.conf /etc/nginx/sites-available/hub.daisychess.org
+sudo cp deploy/nginx/c.referee.at.conf /etc/nginx/sites-available/c.referee.at
+sudo ln -s /etc/nginx/sites-available/play.daisychess.org /etc/nginx/sites-enabled/play.daisychess.org
+sudo ln -s /etc/nginx/sites-available/hub.daisychess.org /etc/nginx/sites-enabled/hub.daisychess.org
+node scripts/check-csp.mjs /etc/nginx/conf.d/daisychess-common.conf \
+  /etc/nginx/sites-available/play.daisychess.org /etc/nginx/sites-available/hub.daisychess.org \
+  /etc/nginx/sites-available/c.referee.at
+sudo nginx -t      # must pass before the reload; on failure restore the .bak and remove the new files
+
+# 4. server environment: edit apps/server/.env.production (keys only, values below)
+#    ALLOWED_ORIGINS=https://play.daisychess.org,https://c.referee.at
+#    PUBLIC_ORIGIN=https://play.daisychess.org
+#    ROLE=hub, HUB_ADMIN_LICHESS=<lichess name>   (unchanged if already set)
+#    TRUSTED_PROXIES stays unset (nginx connects from loopback)
+
+# 5. switch: reload nginx and restart the server (deploy-server.sh also installs the unit with
+#    the new ALLOWED_ORIGINS default; .env.production wins anyway)
+sudo systemctl reload nginx
+deploy/deploy-server.sh            # or: sudo systemctl restart daisychess-server
+```
+
+Verify:
+
+```bash
+curl -s https://play.daisychess.org/health                       # {"status":"ok",...}
+curl -s https://hub.daisychess.org/health                        # same
+curl -s https://c.referee.at/health                              # same (transition proxy)
+curl -sI https://play.daisychess.org/ | grep -iE 'content-security|strict-transport|cross-origin'
+curl -sI https://play.daisychess.org/portal/ | grep -i content-security   # portal policy
+curl -sI https://c.referee.at/ | grep -iE 'content-security|referrer-policy'   # legacy policy, strict-origin
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://c.referee.at/portal/   # 301 → play
+curl -s -o /dev/null -w '%{http_code}\n' https://hub.daisychess.org/    # 404
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Origin: https://evil.example' -H 'Connection: Upgrade' \
+  -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  https://play.daisychess.org/ws                                 # 403
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  https://hub.daisychess.org/link                                # 101 (then 1008 without node.hello)
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://play.daisychess.org/api/portal/tokens   # 401
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8581/lichess/api/account            # 401
+node deploy/ws-smoke.mjs                                         # wss://play.daisychess.org/ws
+node deploy/ws-smoke.mjs wss://c.referee.at/ws                   # transition proxy
+```
+
+Then in a browser that used c.referee.at: open `https://c.referee.at/` → lands on
+play.daisychess.org with the notice "Your settings were moved from c.referee.at"; Settings shows
+the server token. Portal: log in again at `https://play.daisychess.org/portal/` (the session
+cookie is per host). Tell node operators to set `HUB_URL=wss://hub.daisychess.org/link`; once
+fail2ban is installed, copy the updated jails (they read all three access logs).
+
+Rollback: restore `sites-available/c.referee.at` from the `.bak`, remove the two `sites-enabled`
+links and `conf.d/daisychess-common.conf`, `sudo nginx -t && sudo systemctl reload nginx`; the old
+build in `/var/www/c.referee.at` was never touched. Revert the two env keys and restart.
 
 ## Operator portal (`/portal/`)
 
@@ -48,14 +136,13 @@ Always `sudo nginx -t` before `sudo systemctl reload nginx`.
 deploy/deploy-portal.sh
 ```
 
-Builds `apps/portal` and rsyncs it to `/var/www/c.referee.at/portal/` (`deploy-web.sh` leaves that
-directory alone). First time: re-apply `deploy/nginx/c.referee.at.conf` (new `$daisychess_portal_csp`
-map, `/portal/` locations, `/api/portal/` proxy with `client_max_body_size 16k`) and reload nginx.
-The API only exists on a `ROLE=hub` server with `PUBLIC_ORIGIN=https://c.referee.at`,
-`HUB_ADMIN_LICHESS` and the lichess egress proxy (ADR-020). lichess OAuth client id:
-`daisychess-portal.c.referee.at` (public PKCE client; lichess needs no registration; redirect URI
-`https://c.referee.at/portal/`). `VITE_HUB_URL` at build time overrides the `HUB_URL` shown in node
-snippets.
+Builds `apps/portal` and rsyncs it to `/var/www/play.daisychess.org/portal/` (`deploy-web.sh`
+leaves that directory alone). The API only exists on a `ROLE=hub` server with
+`PUBLIC_ORIGIN=https://play.daisychess.org`, `HUB_ADMIN_LICHESS` and the lichess egress proxy
+(ADR-020). lichess OAuth client id: `portal.daisychess.org` (public PKCE client; lichess needs no
+registration; redirect URI `https://play.daisychess.org/portal/`). Node snippets show
+`HUB_URL=wss://hub.daisychess.org/link` on play.daisychess.org (`apps/portal/src/format.ts`);
+`VITE_HUB_URL` at build time overrides it, other hosts derive `wss://<host>/link`.
 
 ## Redeploy the web app
 
@@ -64,7 +151,7 @@ deploy/deploy-web.sh
 ```
 
 Runs `pnpm install --frozen-lockfile`, `pnpm --filter @daisychess/web build`,
-then `rsync -a --delete apps/web/dist/ /var/www/c.referee.at/`. No nginx reload
+then `rsync -a --delete --exclude /portal/ apps/web/dist/ /var/www/play.daisychess.org/`. No nginx reload
 needed.
 The build includes the opt-in full-strength Stockfish build
 (`assets/engine/stockfish-<version>/stockfish-19.wasm`, ~99 MB; ADR-010), so `dist/`
@@ -88,17 +175,17 @@ rename; the first run of `deploy/deploy-server.sh` after it stops, disables and
 removes the old unit (`LEGACY_UNIT` in the script) before installing
 `daisychess-server`, so nothing else has to be done for the server
 (`apps/server/.env.production` is unchanged). For the web app, run
-`deploy/deploy-web.sh` and apply `deploy/nginx/c.referee.at.conf` to the installed
+`deploy/deploy-web.sh` and apply the nginx files to the installed
 site (new CSP hash of the inline theme script, renamed `log_format`/`limit_*`
 zones/CSP map variable, `location = /manifest.webmanifest`), keeping the certbot
 lines, then `sudo nginx -t && sudo systemctl reload nginx`;
-`node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at` verifies the CSP.
+`node scripts/check-csp.mjs /etc/nginx/conf.d/daisychess-common.conf /etc/nginx/sites-available/play.daisychess.org` verifies the CSP.
 
 Verify:
 
 ```bash
 systemctl status daisychess-server
-curl -s https://c.referee.at/health            # {status, version} only
+curl -s https://play.daisychess.org/health     # {status, version} only
 curl -s http://127.0.0.1:8580/health/detail   # pool stats, sessions, connections (loopback)
 node deploy/ws-smoke.mjs            # hello -> analyze depth 12 -> bestmove (Node 22+)
 # with ACCESS_TOKEN set: without the token the smoke test fails (restricted welcome, `unauthorized`)
@@ -109,7 +196,7 @@ DAISYCHESS_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" n
 `apps/server/.env.production` via `EnvironmentFile=-` (optional file, not
 created by the script; copy from `apps/server/.env.example`; currently
 `MAX_SESSIONS=4`, `MAX_THREADS=4`, `LOG_LEVEL=info`). The unit itself sets
-`ALLOWED_ORIGINS=https://c.referee.at` (ADR-008: browser origins allowed on `/ws`;
+`ALLOWED_ORIGINS=https://play.daisychess.org,https://c.referee.at` (ADR-008: browser origins allowed on `/ws`; ADR-021: the legacy origin until its sunset;
 other origins get 403 at the upgrade). Edit it, then
 `sudo systemctl restart daisychess-server`. Per-engine defaults and
 `maxInstances` live in `apps/server/engines.json`. Resource caps (`MemoryMax`,
@@ -223,12 +310,12 @@ orphaned `stockfish` processes remain.
 
 **nginx.** `/ws` has `limit_conn daisychess_ws 10` (per IP) and
 `limit_req zone=daisychess_ws_req burst=20 nodelay` (5 handshakes/s per IP);
-excess gets 429. The two `*_zone` lines, the `$daisychess_csp` map and the
-`daisychess` log format sit at the top of the site file (http context).
-`deploy/nginx/c.referee.at.conf` is the source; the live file additionally has
-the certbot lines. Apply a change by merging it into the live file, then
-`sudo nginx -t && sudo systemctl reload nginx` (back the live file up first:
-`sudo cp -a /etc/nginx/sites-available/c.referee.at{,.bak-$(date +%Y%m%d-%H%M%S)}`).
+excess gets 429. The `*_zone` lines, the CSP maps and the `daisychess` log format sit in
+`/etc/nginx/conf.d/daisychess-common.conf` (http context, source
+`deploy/nginx/daisychess-common.conf`); the vhost files only reference them. The repo files are
+the complete live versions (TLS included): apply a change by copying the file over the installed
+one, then `sudo nginx -t && sudo systemctl reload nginx` (back the live file up first, e.g.
+`sudo cp -a /etc/nginx/sites-available/play.daisychess.org{,.bak-$(date +%Y%m%d-%H%M%S)}`).
 
 **Content-Security-Policy.** Built by `apps/web/csp.config.mjs` (policy and
 rationale: `docs/SECURITY.md` §2.8). The nginx copy contains the sha256 of the
@@ -236,23 +323,26 @@ inline theme script in `apps/web/index.html`; if that script changes, the
 browser blocks it until nginx is updated. Check repo and live file with
 
 ```bash
-node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at
+node scripts/check-csp.mjs /etc/nginx/conf.d/daisychess-common.conf \
+  /etc/nginx/sites-available/play.daisychess.org /etc/nginx/sites-available/hub.daisychess.org \
+  /etc/nginx/sites-available/c.referee.at
 ```
 
 which prints the expected `default "…";` line on a mismatch (CI runs it for
 the repo files). Deploy the web build and the nginx change together. To
 debug a suspected CSP problem, temporarily rename the header to
-`Content-Security-Policy-Report-Only` in all three places (violations then only
+`Content-Security-Policy-Report-Only` in every place (violations then only
 show in the browser console) and keep `add_header Content-Security-Policy
 "frame-ancestors 'none'" always;` next to it, since `frame-ancestors` is
 ignored in report-only mode.
 
-**HSTS.** One year, this host only. Browsers cache it: going back to plain
+**HSTS.** One year, per host (play, hub, c.referee.at), no `includeSubDomains`. Browsers cache it: going back to plain
 HTTP needs `max-age=0` served over HTTPS for a while first.
 
 ## Abuse logging and fail2ban
 
-nginx writes `/var/log/nginx/c.referee.at.access.log` (and `.error.log`) in the
+nginx writes `/var/log/nginx/play.daisychess.org.access.log`,
+`hub.daisychess.org.access.log` and (legacy) `c.referee.at.access.log` (and `.error.log`) in the
 `daisychess` format: address, time, method, path **without query string**,
 status, bytes, `rt=` request time, `urt=` upstream time, `Origin`, User-Agent.
 No bodies. The stock `/etc/logrotate.d/nginx` rotates it (daily, 14 days).
@@ -260,7 +350,7 @@ No bodies. The stock `/etc/logrotate.d/nginx` rotates it (daily, 14 days).
 ```bash
 # refused WebSocket upgrades per address (403 = foreign Origin, 429 = nginx limits)
 sudo awk '$5 ~ /^\/ws/ && ($7 == 403 || $7 == 429) {print $7, $1}' \
-  /var/log/nginx/c.referee.at.access.log | sort | uniq -c | sort -rn | head
+  /var/log/nginx/play.daisychess.org.access.log | sort | uniq -c | sort -rn | head
 ```
 
 Engine-level refusals (`rate_limited`, `no_capacity`, `limit_exceeded`) happen
@@ -282,8 +372,8 @@ files are inactive. To enable:
 sudo apt install fail2ban
 sudo cp deploy/fail2ban/filter.d/daisychess-*.conf /etc/fail2ban/filter.d/
 sudo cp deploy/fail2ban/jail.d/daisychess-*.conf /etc/fail2ban/jail.d/
-sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log daisychess-ws     # dry run
-sudo fail2ban-regex /var/log/nginx/c.referee.at.access.log daisychess-link   # dry run
+sudo fail2ban-regex /var/log/nginx/play.daisychess.org.access.log daisychess-ws     # dry run
+sudo fail2ban-regex /var/log/nginx/hub.daisychess.org.access.log daisychess-link    # dry run
 sudo systemctl restart fail2ban && sudo fail2ban-client status daisychess-ws && sudo fail2ban-client status daisychess-link
 ```
 
@@ -294,23 +384,25 @@ Handled automatically by certbot's systemd timer (`certbot.timer`). Check with:
 ```bash
 systemctl list-timers certbot.timer
 sudo certbot certificates
-sudo certbot renew --dry-run --cert-name c.referee.at
+sudo certbot renew --dry-run --cert-name daisychess.org
+sudo certbot renew --dry-run --cert-name c.referee.at     # legacy, until the sunset
 ```
 
 ## Hub runbook (`ROLE=hub`)
 
-Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/DECISIONS.md` ADR-020 §9 and its addenda, `docs/SECURITY.md` §6, all variables in `apps/server/.env.example` (section 4). The hub domain is currently `c.referee.at` and may change: use `PUBLIC_ORIGIN` and nodes' `HUB_URL`, never hard-code it.
+Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/DECISIONS.md` ADR-020 §9 and its addenda, `docs/SECURITY.md` §6, all variables in `apps/server/.env.example` (section 4). Public names (ADR-021): app and portal on `https://play.daisychess.org` (`PUBLIC_ORIGIN`), node link on `wss://hub.daisychess.org/link` (alias `/link` on play; legacy `wss://c.referee.at/link` until the sunset). Use `PUBLIC_ORIGIN` and nodes' `HUB_URL`, never hard-code them.
 
 ### Deploy order
 
 1. **Backup first** (below), then pull the new code.
-2. **nginx**: install the loopback egress proxy (`sudo cp deploy/nginx/lichess-egress.conf.snippet /etc/nginx/conf.d/daisychess-lichess-egress.conf`), re-apply `deploy/nginx/c.referee.at.conf` to the installed site (`/link`, `/portal/`, `/api/portal/`, keep the certbot lines), then `sudo nginx -t && sudo systemctl reload nginx`. Check the proxy: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8581/lichess/api/account` gives `401`. `node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at` must pass.
+2. **nginx**: install the loopback egress proxy (`sudo cp deploy/nginx/lichess-egress.conf.snippet /etc/nginx/conf.d/daisychess-lichess-egress.conf`), install `daisychess-common.conf` and the vhosts (section "Deployment" table above), then `sudo nginx -t && sudo systemctl reload nginx`. Check the proxy: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8581/lichess/api/account` gives `401`. `node scripts/check-csp.mjs <installed files>` must pass.
 3. **Portal SPA**: `deploy/deploy-portal.sh`.
 4. **Server**: add to `apps/server/.env.production`, keeping `ACCESS_TOKEN` for now, then `deploy/deploy-server.sh`:
 
    ```bash
    ROLE=hub
-   PUBLIC_ORIGIN=https://c.referee.at
+   PUBLIC_ORIGIN=https://play.daisychess.org
+   ALLOWED_ORIGINS=https://play.daisychess.org,https://c.referee.at
    HUB_ADMIN_LICHESS=<your lichess username>
    ```
 
@@ -319,7 +411,7 @@ Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/
 
 ### Minting the first tokens and retiring `ACCESS_TOKEN`
 
-1. Open `https://c.referee.at/portal/`, log in with lichess as `HUB_ADMIN_LICHESS` (the first login makes you administrator). The built-in node `local` is listed.
+1. Open `https://play.daisychess.org/portal/`, log in with lichess as `HUB_ADMIN_LICHESS` (the first login makes you administrator). The built-in node `local` is listed.
 2. Create one player token per device (`dc1_<id>_<secret>`, shown once) with `local` as its node and the `full` tier; open the setup link (or scan the QR code) on each device, which stores it in Settings.
 3. Confirm in the portal that each token shows a recent "last used". Only then remove `ACCESS_TOKEN` from `.env.production` and run `sudo systemctl restart daisychess-server`. Until then the old token keeps working (it is logged as `tokenId: legacy`).
 4. Community nodes: create a node in the portal, give the operator the `dcn_` token (shown once; "Rotate" keeps the old secret valid for 24 h). Pool tokens: `POOL_TOKENS_PER_OPERATOR` per operator, `POOL_DAILY_BUDGET_MIN` minutes a day each.
@@ -360,7 +452,7 @@ Set `ROLE=standalone` (or remove the line) in `.env.production` and `sudo system
 | What | Where | Retention |
 |---|---|---|
 | Application log | journald (`journalctl -u daisychess-server`) | at `info` no raw IPs (daily-salted `ipHash`), no tokens or FENs. Retention is the host's journald setting; ADR-020 asks for 7 days (`MaxRetentionSec=7day`), **not configured by the repo: check `journalctl --disk-usage` and `/etc/systemd/journald.conf`** |
-| nginx access log (raw IPs, no query strings, no bodies) | `/var/log/nginx/c.referee.at.access.log` | stock `/etc/logrotate.d/nginx`: daily, 14 days (see "Abuse logging") |
+| nginx access log (raw IPs, no query strings, no bodies) | `/var/log/nginx/{play,hub}.daisychess.org.access.log` (+ legacy `c.referee.at.access.log`) | stock `/etc/logrotate.d/nginx`: daily, 14 days (see "Abuse logging") |
 | `usage_daily` (per token and node and day, no IPs) | `hub.sqlite` | `USAGE_RETENTION_DAYS`, default 90 |
 | Spot-check rows | `hub.sqlite` | 24 hours |
 | Portal sessions | `hub.sqlite` | 30 days or until logout |
@@ -393,7 +485,7 @@ Requirements: Docker Engine 24+ with Compose v2.24+, `linux/amd64` or `linux/arm
 the very least (2+ CPUs and 1 GB recommended).
 
 ```bash
-git clone https://github.com/refaustria/gitchess && cd gitchess
+git clone https://github.com/refaustria/daisychess && cd daisychess
 cp docker/node.env.example docker/.env.node      # git-ignored
 $EDITOR docker/.env.node                          # paste NODE_TOKEN from the portal, set limits
 docker compose -f docker/docker-compose.node.yml --env-file docker/.env.node up -d
@@ -419,7 +511,7 @@ docker compose -f docker/docker-compose.node.yml exec node \
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `HUB_URL` | `wss://c.referee.at/link` | Hub link endpoint. **Default, not final**: the public hub domain is still open (ADR-020); change it when announced. `wss://` only; `ws://` to a non-loopback host needs `DAISYCHESS_INSECURE=1` (test setups). |
+| `HUB_URL` | `wss://hub.daisychess.org/link` | Hub link endpoint: the public hub (ADR-021; the image's entrypoint applies this default when unset). Nodes still on `wss://c.referee.at/link` keep working until its sunset date. `wss://` only; `ws://` to a non-loopback host needs `DAISYCHESS_INSECURE=1` (test setups). |
 | `NODE_TOKEN` | – (required) | `dcn_<id>_<secret>` from the portal, shown once. Or `NODE_TOKEN_FILE=/run/secrets/…` (compose secret) so the token is not in the container env. |
 | `NODE_NAME` | – | Local name in logs and `/health/detail` (players see the portal name). |
 | `NODE_POOL` | `off` | `on` offers the node to the shared pool (the portal switch must allow it too). |

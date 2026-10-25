@@ -96,7 +96,7 @@ test('callback logs in, cleans the URL; explorer uses the token; logout revokes'
     code: 'abc',
     code_verifier: VERIFIER,
     redirect_uri: `${baseURL}/`,
-    client_id: 'daisychess.c.referee.at',
+    client_id: 'play.daisychess.org',
   });
   expect(seen.accountAuth).toBe(`Bearer ${TOKEN}`);
 
@@ -161,7 +161,7 @@ test('Log in navigates to lichess.org/oauth with PKCE parameters and scopes', as
   const url = new URL(page.url());
   const p = url.searchParams;
   expect(p.get('response_type')).toBe('code');
-  expect(p.get('client_id')).toBe('daisychess.c.referee.at');
+  expect(p.get('client_id')).toBe('play.daisychess.org');
   expect(p.get('redirect_uri')).toBe(`${baseURL}/`);
   expect(p.get('code_challenge_method')).toBe('S256');
   expect(p.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);

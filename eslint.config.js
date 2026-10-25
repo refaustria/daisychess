@@ -17,4 +17,8 @@ export default tseslint.config(
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },
+  {
+    files: ['apps/site/src/**/*.ts', 'apps/site/tools/**/*.ts', 'apps/site/e2e/**/*.ts'],
+    languageOptions: { globals: { ...globals.browser } },
+  },
 );

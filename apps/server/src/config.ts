@@ -224,7 +224,7 @@ export const EnvSchema = z.object({
   LINK_MAX_MSGS_PER_S: int(1, 100_000, LINK_DEFAULTS.maxMessagesPerSecond),
   // Operator portal API `/api/portal/*` (ADR-020 §2, §5, M24-9); only read by ROLE=hub.
   /**
-   * Public origin of the hub (`https://c.referee.at`): setup links of new player tokens and the
+   * Public origin of the hub (`https://play.daisychess.org`): setup links of new player tokens and the
    * portal's same-origin check. Unset: the first ALLOWED_ORIGINS entry (setup links) / the
    * request's host (Origin check).
    */

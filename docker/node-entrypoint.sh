@@ -9,6 +9,8 @@
 #    logged as a warning (e.g. a hypervisor that masks AVX2 in cpuinfo but not in CPUID).
 # 3. Maia: an image built with WITH_MAIA=0 (or without the Lc0 binary) defaults to MAIA=off, so
 #    the log says "disabled" instead of "binary missing". An explicit MAIA=... always wins.
+# 4. HUB_URL: defaults to the public hub wss://hub.daisychess.org/link (ADR-021) when unset or
+#    empty; a self-hosted hub sets its own. Not baked into the image ENV (docker inspect stays clean).
 # Then execs the command (default: node dist/index.js) as PID 2 under tini.
 set -eu
 
@@ -81,6 +83,11 @@ if [ -z "${MAIA:-}" ]; then
     export MAIA
     log "maia: image built without Lc0/Maia; MAIA=off"
   fi
+fi
+# ---- 4. Hub default ----------------------------------------------------------------------
+if [ -z "${HUB_URL:-}" ]; then
+  HUB_URL=wss://hub.daisychess.org/link
+  export HUB_URL
 fi
 # Never log credentials or query strings that may be part of a (mis)configured URL.
 hub="$(printf '%s' "${HUB_URL:-<unset>}" | sed -e 's#//[^/@]*@#//***@#' -e 's#[?].*##')"

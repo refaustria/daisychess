@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // WebSocket smoke test: hello -> analyze(start position, depth 12) -> bestmove.
-// Usage: node deploy/ws-smoke.mjs [wss://c.referee.at/ws]   (Node 22+, global WebSocket)
+// Usage: node deploy/ws-smoke.mjs [wss://play.daisychess.org/ws]   (Node 22+, global WebSocket)
 //   DAISYCHESS_TOKEN=<token> node ...   for a server that requires an access token
-const url = process.argv[2] ?? 'wss://c.referee.at/ws';
+const url = process.argv[2] ?? 'wss://play.daisychess.org/ws';
 // Access token of a server with ACCESS_TOKEN set (ADR-010); never printed.
 const token = process.env.DAISYCHESS_TOKEN || undefined;
 const FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Build apps/web and publish it to the nginx web root for https://c.referee.at.
+# Build apps/web and publish it to the nginx web root for https://play.daisychess.org
+# (ADR-021; the legacy c.referee.at serves only the "moved" page, see deploy/deploy-legacy.sh).
 # Usage: deploy/deploy-web.sh   (from anywhere inside the repo)
 set -euo pipefail
 
-WEB_ROOT="${WEB_ROOT:-/var/www/c.referee.at}"
-SITE_URL="${SITE_URL:-https://c.referee.at/}"
+WEB_ROOT="${WEB_ROOT:-/var/www/play.daisychess.org}"
+SITE_URL="${SITE_URL:-https://play.daisychess.org/}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"

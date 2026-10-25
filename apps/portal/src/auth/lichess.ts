@@ -8,7 +8,8 @@ import { challengeS256, createState, createVerifier } from './pkce';
  * (public client, no secret). The portal needs no scope: the hub only asks lichess who the token
  * belongs to (`GET /api/account` works without scopes).
  *
- * Client id: its own (`daisychess-portal.c.referee.at`), not the app's. lichess shows the id on the
+ * Client id: its own (`portal.daisychess.org`; was `daisychess-portal.c.referee.at` before ADR-021),
+ * not the app's (`play.daisychess.org`). lichess shows the id on the
  * consent page, so operators see that they log in to the portal and not to the chess app, and a
  * leaked portal id cannot be mistaken for the app's. lichess needs no client registration.
  *
@@ -20,7 +21,7 @@ import { challengeS256, createState, createVerifier } from './pkce';
 export const LICHESS_ORIGIN = 'https://lichess.org';
 export const LICHESS_AUTHORIZE_URL = `${LICHESS_ORIGIN}/oauth`;
 export const LICHESS_TOKEN_URL = `${LICHESS_ORIGIN}/api/token`;
-export const PORTAL_CLIENT_ID = 'daisychess-portal.c.referee.at';
+export const PORTAL_CLIENT_ID = 'portal.daisychess.org';
 export const PENDING_STORAGE_KEY = 'daisychess.portal.pkce';
 
 interface Pending {
@@ -34,7 +35,7 @@ export interface LichessDeps {
   navigate?: (url: string) => void;
 }
 
-/** This page without query or hash, e.g. `https://c.referee.at/portal/`. */
+/** This page without query or hash, e.g. `https://play.daisychess.org/portal/`. */
 export function redirectUri(): string {
   return `${globalThis.location.origin}${globalThis.location.pathname}`;
 }

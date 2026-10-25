@@ -92,7 +92,7 @@ test('login, create a node and a token, see the setup link, revoke the token', a
   // lichess consent page: approve at once and send the browser back to the redirect_uri.
   await page.route('https://lichess.org/oauth?**', async (route) => {
     const q = new URL(route.request().url()).searchParams;
-    expect(q.get('client_id')).toBe('daisychess-portal.c.referee.at');
+    expect(q.get('client_id')).toBe('portal.daisychess.org');
     expect(q.get('code_challenge_method')).toBe('S256');
     const back = new URL(q.get('redirect_uri')!);
     back.searchParams.set('code', 'e2e-code');
@@ -163,7 +163,7 @@ test('login, create a node and a token, see the setup link, revoke the token', a
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Nodes' })).toBeVisible();
   await page.getByRole('button', { name: 'Admin' }).click();
-  await expect(page.getByRole('cell', { name: 'e2e-node', exact: false }).or(page.getByRole('rowheader', { name: 'e2e-node' }))).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'e2e-node', exact: true }).or(page.getByRole('rowheader', { name: 'e2e-node' }))).toBeVisible();
 
   // Logout returns to the login screen.
   await page.getByRole('button', { name: 'Account' }).click();

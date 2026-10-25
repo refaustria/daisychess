@@ -118,8 +118,9 @@ COPY --chmod=0755 docker/node-entrypoint.sh /app/node-entrypoint.sh
 # ROLE=node never opens a public listener: config.ts forces /health onto loopback for this role,
 # so HOST is 127.0.0.1 here (the health check runs inside the container). The node writes no
 # files (no review store, no hub store), so the root filesystem can be mounted read-only.
-# HUB_URL and NODE_TOKEN have no defaults in the image: they come from the environment
-# (docker/node.env.example) and the token is never baked in.
+# HUB_URL and NODE_TOKEN are not baked into the image ENV: they come from the environment
+# (docker/node.env.example); the token is never baked in, and an unset HUB_URL defaults to the
+# public hub wss://hub.daisychess.org/link in node-entrypoint.sh (ADR-021).
 ENV NODE_ENV=production ROLE=node HOST=127.0.0.1 PORT=8580 \
     ENGINES_CONFIG=/app/server/engines.json REVIEW_STORE=off \
     DAISYCHESS_IMAGE_MAIA=${WITH_MAIA} HOME=/tmp

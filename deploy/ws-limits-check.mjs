@@ -2,10 +2,10 @@
 // Per-IP session cap check (docs/SECURITY.md): two connections from this host open three engine
 // sessions; the first two must stream `info`, the third must get `no_capacity` ("too many
 // sessions from your address"). Everything is released afterwards.
-// Usage: node deploy/ws-limits-check.mjs [wss://c.referee.at/ws]   (Node 22+, global WebSocket)
+// Usage: node deploy/ws-limits-check.mjs [wss://play.daisychess.org/ws]   (Node 22+, global WebSocket)
 //   DAISYCHESS_TOKEN=<token> node ...   for a server that requires an access token
 // Assumes MAX_SESSIONS_PER_IP=2 and no other sessions from this address.
-const url = process.argv[2] ?? 'wss://c.referee.at/ws';
+const url = process.argv[2] ?? 'wss://play.daisychess.org/ws';
 // Access token of a server with ACCESS_TOKEN set (ADR-010); never printed.
 const token = process.env.DAISYCHESS_TOKEN || undefined;
 const FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';

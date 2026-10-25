@@ -13,6 +13,9 @@ export function inlineScriptHashes(html) {
   );
 }
 
+/** Public host of the app (ADR-021). c.referee.at is the legacy origin (redirect page only). */
+export const APP_HOST = 'play.daisychess.org';
+
 const indexHtml = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
 
 /** Production policy; `extraConnect` appends connect-src sources (used for e2e only). */
@@ -31,7 +34,7 @@ export function buildCsp(extraConnect = []) {
     "img-src 'self' data:",
     "font-src 'self'",
     // Engine server WebSocket (same origin), the online game import APIs and the lichess opening explorer.
-    ["connect-src 'self' https://lichess.org https://explorer.lichess.org https://api.chess.com wss://c.referee.at", ...extraConnect].join(' '),
+    [`connect-src 'self' https://lichess.org https://explorer.lichess.org https://api.chess.com wss://${APP_HOST}`, ...extraConnect].join(' '),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -40,6 +43,24 @@ export function buildCsp(extraConnect = []) {
 }
 
 export const PRODUCTION_CSP = buildCsp();
+
+/**
+ * The legacy c.referee.at "moved" page (apps/web/legacy/, ADR-021): one same-origin module
+ * script and one stylesheet, no network access at all (it only reads localStorage and navigates).
+ */
+export const LEGACY_CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self'",
+  "connect-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+/** hub.daisychess.org serves no documents, only /link (WebSocket) and /health (JSON). */
+export const HUB_CSP = "default-src 'none'; frame-ancestors 'none'";
 
 /**
  * Where `vite preview` appends CSP violation reports; e2e/csp-violations.ts fails the run on any.

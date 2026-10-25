@@ -15,8 +15,8 @@ describe('room route', () => {
   });
 
   it('builds the link from origin and path', () => {
-    expect(roomLink(ROOM_ID, { origin: 'https://c.referee.at', pathname: '/' })).toBe(
-      `https://c.referee.at/#/room/${ROOM_ID}`,
+    expect(roomLink(ROOM_ID, { origin: 'https://play.daisychess.org', pathname: '/' })).toBe(
+      `https://play.daisychess.org/#/room/${ROOM_ID}`,
     );
   });
 });
