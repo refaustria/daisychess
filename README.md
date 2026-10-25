@@ -268,6 +268,49 @@ Protocol (additive, `PROTOCOL_VERSION` stays 1):
 
 ---
 
+## 3a. Run a community node
+
+A **node** lends the engines of one machine (Stockfish, optionally Lc0 with the Maia nets) to a DaisyChess **hub** (ADR-020). It only connects *out* to the hub over one WebSocket: no open port, no domain, no TLS certificate, works behind NAT.
+
+- **Private node:** only the people you give a player token (`dc1_…`) in the portal can use it. A token can list several of your nodes and optionally fall back to the pool.
+- **Pool node:** you also donate part of the machine to strangers (`NODE_POOL=on` plus the pool switch in the portal). The hub spot-checks pool results; nodes whose answers disagree are removed from the pool, and a repeat offender is banned from it.
+
+1. Open the operator portal at `/portal/` of the hub (currently <https://c.referee.at/portal/>), log in with lichess, create a node and copy its node token (`dcn_<id>_<secret>`, shown once).
+2. Run the node:
+
+```bash
+git clone https://github.com/refaustria/gitchess && cd gitchess
+cp docker/node.env.example docker/.env.node      # set NODE_TOKEN, limits, NODE_POOL
+docker compose -f docker/docker-compose.node.yml --env-file docker/.env.node up -d
+docker compose -f docker/docker-compose.node.yml logs -f node    # "link: registered with the hub"
+```
+
+3. Create player tokens in the portal; the setup link or QR code puts a token into the web app (Settings).
+
+**Hardware.** Minimum 1 CPU and 512 MB; 2+ CPUs and 1 GB recommended. Each concurrent search uses `MAX_THREADS` cores and about `MAX_HASH_MB + 80 MB` of RAM, so keep `MAX_SESSIONS x MAX_THREADS <= NODE_CPUS`. amd64 uses the Stockfish universal binary, which picks the fastest instruction set at start (CPUs without AVX2 work, just slower); arm64 (Raspberry Pi 4/5, Apple Silicon, Graviton) is built in the image. Lc0 + Maia (human-like play) is optional: `MAIA=off` on very small machines. Details and sizing: [`deploy/README.md`](./deploy/README.md#run-a-community-node).
+
+**Privacy.** Your node sees the positions (FEN) and search settings of the people who use it, but no IP addresses, names or accounts. Do not log or keep them. Read [`docs/PRIVACY.md`](./docs/PRIVACY.md) and [`docs/TERMS.md`](./docs/TERMS.md) first.
+
+## 3b. Hub (self-hosting the community network)
+
+The hub is `apps/server` with `ROLE=hub`: everything the standalone server does, plus the `/link` endpoint for nodes, token routing, the shared pool, spot-checks, a SQLite store for operators, nodes and tokens, and the operator portal API. The portal itself is the static SPA `apps/portal`, served under `/portal/`.
+
+The hub domain is currently **c.referee.at** and may change; every URL is configurable (`PUBLIC_ORIGIN`, the nodes' `HUB_URL`). Moving the hub means re-issuing setup links and updating each node's `HUB_URL`.
+
+Required environment (all variables with defaults: [`apps/server/.env.example`](./apps/server/.env.example), section "ROLE=hub"):
+
+```bash
+ROLE=hub
+PUBLIC_ORIGIN=https://hub.example.org
+ALLOWED_ORIGINS=https://hub.example.org
+HUB_ADMIN_LICHESS=your-lichess-name      # becomes administrator at first portal login
+# HUB_STORE_PATH defaults to apps/server/data/hub.sqlite (not reproducible: back it up)
+```
+
+nginx must proxy `/link` (WebSocket, `limit_req`/`limit_conn`), `/api/portal/` and serve `/portal/` (static, own CSP); lichess login needs the loopback egress proxy on `127.0.0.1:8581` because the service unit has no outbound network (`deploy/nginx/lichess-egress.conf.snippet`). `ROLE=standalone` restores the plain server at any time. Deployment, backups and rollback: [`deploy/README.md`](./deploy/README.md) ("Hub runbook"); security model: [`docs/SECURITY.md`](./docs/SECURITY.md) section 6.
+
+---
+
 ## 4. Milestones
 
 | # | Milestone | Deliverable |

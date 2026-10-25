@@ -297,6 +297,80 @@ sudo certbot certificates
 sudo certbot renew --dry-run --cert-name c.referee.at
 ```
 
+## Hub runbook (`ROLE=hub`)
+
+Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/DECISIONS.md` ADR-020 §9 and its addenda, `docs/SECURITY.md` §6, all variables in `apps/server/.env.example` (section 4). The hub domain is currently `c.referee.at` and may change: use `PUBLIC_ORIGIN` and nodes' `HUB_URL`, never hard-code it.
+
+### Deploy order
+
+1. **Backup first** (below), then pull the new code.
+2. **nginx**: install the loopback egress proxy (`sudo cp deploy/nginx/lichess-egress.conf.snippet /etc/nginx/conf.d/daisychess-lichess-egress.conf`), re-apply `deploy/nginx/c.referee.at.conf` to the installed site (`/link`, `/portal/`, `/api/portal/`, keep the certbot lines), then `sudo nginx -t && sudo systemctl reload nginx`. Check the proxy: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8581/lichess/api/account` gives `401`. `node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at` must pass.
+3. **Portal SPA**: `deploy/deploy-portal.sh`.
+4. **Server**: add to `apps/server/.env.production`, keeping `ACCESS_TOKEN` for now, then `deploy/deploy-server.sh`:
+
+   ```bash
+   ROLE=hub
+   PUBLIC_ORIGIN=https://c.referee.at
+   HUB_ADMIN_LICHESS=<your lichess username>
+   ```
+
+   `hub.sqlite` is created in `apps/server/data/` (already in the unit's `ReadWritePaths`, mode 700). The unit needs no other change: the only outbound call (lichess login) goes through the loopback proxy. Needs Node >= 22.13 (`node:sqlite`).
+5. **Verify**: `curl -s http://127.0.0.1:8580/health/detail` shows `role: hub`; `node deploy/ws-smoke.mjs` (with the legacy token) still works; `node scripts/node-smoke-hub.mjs` is the fake hub used by the node image smoke test; register a real node from the portal to test `/link`.
+
+### Minting the first tokens and retiring `ACCESS_TOKEN`
+
+1. Open `https://c.referee.at/portal/`, log in with lichess as `HUB_ADMIN_LICHESS` (the first login makes you administrator). The built-in node `local` is listed.
+2. Create one player token per device (`dc1_<id>_<secret>`, shown once) with `local` as its node and the `full` tier; open the setup link (or scan the QR code) on each device, which stores it in Settings.
+3. Confirm in the portal that each token shows a recent "last used". Only then remove `ACCESS_TOKEN` from `.env.production` and run `sudo systemctl restart daisychess-server`. Until then the old token keeps working (it is logged as `tokenId: legacy`).
+4. Community nodes: create a node in the portal, give the operator the `dcn_` token (shown once; "Rotate" keeps the old secret valid for 24 h). Pool tokens: `POOL_TOKENS_PER_OPERATOR` per operator, `POOL_DAILY_BUDGET_MIN` minutes a day each.
+
+### Backups
+
+`hub.sqlite` (operators, nodes, tokens, usage) cannot be recreated, unlike `reviews.sqlite`, which is only a cache of reviews. Use SQLite's online backup, not `cp`, while the server runs (WAL mode). Run it as the service user outside the unit (cron or a systemd timer), because the unit's sandbox is not involved:
+
+```bash
+# /home/bojan/gitchess/apps/server/data/backup/ is covered by the unit's ReadWritePaths
+mkdir -p -m 700 /home/bojan/gitchess/apps/server/data/backup
+sqlite3 /home/bojan/gitchess/apps/server/data/hub.sqlite \
+  ".backup /home/bojan/gitchess/apps/server/data/backup/hub-$(date +%F).sqlite"
+ls -1t /home/bojan/gitchess/apps/server/data/backup/hub-*.sqlite | tail -n +8 | xargs -r rm   # keep 7
+```
+
+Nightly cron example: `17 3 * * * <the commands above in a script>`. A second copy outside this host (another machine, encrypted) is advisable: a disk failure takes the backups with it. The backup contains hashed token secrets and lichess usernames, so treat it as personal data (`docs/PRIVACY.md`) and give it the same retention as the live file. This is a documented procedure; no timer is installed on the host yet (owner to confirm when it is set up). If `sqlite3` is missing: `sudo apt install sqlite3`.
+
+### Restore
+
+```bash
+sudo systemctl stop daisychess-server
+cd /home/bojan/gitchess/apps/server/data
+mv hub.sqlite hub.sqlite.broken; rm -f hub.sqlite-wal hub.sqlite-shm
+cp backup/hub-<date>.sqlite hub.sqlite
+sudo systemctl start daisychess-server
+curl -s http://127.0.0.1:8580/health/detail
+```
+
+Changes since the backup are lost: tokens created later stop working (their holders must be issued new ones), nodes created later must be re-created. Schema migrations are forward-only: restoring a file written by a newer hub into an older server is not supported.
+
+### Rollback to the plain server
+
+Set `ROLE=standalone` (or remove the line) in `.env.production` and `sudo systemctl restart daisychess-server`. `/ws`, rooms and the review store work as before, `ACCESS_TOKEN` (if still set) is the only credential, `/link` and `/api/portal/` answer 404/400 and nodes retry with backoff. `hub.sqlite` is left untouched and is picked up again when `ROLE=hub` returns. nginx and the portal files can stay.
+
+### Retention and logs
+
+| What | Where | Retention |
+|---|---|---|
+| Application log | journald (`journalctl -u daisychess-server`) | at `info` no raw IPs (daily-salted `ipHash`), no tokens or FENs. Retention is the host's journald setting; ADR-020 asks for 7 days (`MaxRetentionSec=7day`), **not configured by the repo: check `journalctl --disk-usage` and `/etc/systemd/journald.conf`** |
+| nginx access log (raw IPs, no query strings, no bodies) | `/var/log/nginx/c.referee.at.access.log` | stock `/etc/logrotate.d/nginx`: daily, 14 days (see "Abuse logging") |
+| `usage_daily` (per token and node and day, no IPs) | `hub.sqlite` | `USAGE_RETENTION_DAYS`, default 90 |
+| Spot-check rows | `hub.sqlite` | 24 hours |
+| Portal sessions | `hub.sqlite` | 30 days or until logout |
+
+### Troubleshooting
+
+- Portal login fails with a network error: check the egress proxy (`curl` above) and `PORTAL_LICHESS_PROXY`.
+- Node shows `replaced` or exits: the same token runs twice; rotate it.
+- Everything is `node_offline`: `journalctl -u daisychess-server | grep link`, check `limit_conn`/`limit_req` for `/link` in nginx and `fail2ban-client status daisychess-link`.
+
 ## Run a community node
 
 A **node** lends the engines of one machine (Stockfish, and Lc0 with the Maia nets) to a DaisyChess
