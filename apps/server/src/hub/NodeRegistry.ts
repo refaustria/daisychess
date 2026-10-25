@@ -40,6 +40,8 @@ export interface OnlineNode {
   readonly pool: boolean;
   /** Sessions donated to the pool (portal setting). */
   readonly poolShare: number;
+  /** The node's own pool switch (`node.hello.pool`); default {@link pool}. */
+  readonly nodePool?: boolean;
   readonly state: OnlineNodeState;
   readonly drainReason: NodeDrainReason | null;
   /** Null until the first `node.status`. */
@@ -112,6 +114,7 @@ export class NodeRegistry {
   register(reg: NodeRegistration): OnlineNode {
     const entry: Entry = {
       ...reg,
+      nodePool: reg.nodePool ?? reg.pool,
       engines: reg.engines.map((e) => ({ ...e, defaults: { ...e.defaults } })),
       limits: { ...reg.limits },
       state: 'online',
@@ -153,6 +156,25 @@ export class NodeRegistry {
     entry.state = 'draining';
     entry.drainReason = reason;
     this.emit({ type: 'draining', node: entry });
+  }
+
+  /**
+   * Portal / administrator change of a connected node (M24-9): name, pool setting, pool share and
+   * moderation state take effect for the next routing decision without a reconnect. Effective
+   * pool membership = the node's own switch && the portal setting && `state === 'normal'`.
+   * Returns false when the node is not connected.
+   */
+  applySettings(
+    nodeId: string,
+    settings: { name: string; pool: boolean; poolShare: number; state: string },
+  ): boolean {
+    const entry = this.nodes.get(nodeId);
+    if (!entry) return false;
+    entry.name = settings.name;
+    entry.pool = (entry.nodePool ?? entry.pool) && settings.pool && settings.state === 'normal';
+    entry.poolShare = settings.poolShare;
+    this.emit({ type: 'status', node: entry });
+    return true;
   }
 
   setRtt(nodeId: string, link: HubNodeLink, rttMs: number): void {

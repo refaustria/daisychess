@@ -10,7 +10,7 @@ import {
   parseToken,
   type Limits,
 } from '@daisychess/engine-core';
-import { parseAllowedOrigins, type OriginPolicy } from './ws/origin.js';
+import { normalizeOrigin, parseAllowedOrigins, type OriginPolicy } from './ws/origin.js';
 import { parseTrustedProxies, type TrustedProxies } from './ws/clientIp.js';
 import { DEFAULT_ROOM_CONFIG, type RoomConfig } from './rooms/RoomManager.js';
 
@@ -19,6 +19,9 @@ const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 const int = (min: number, max: number, def: number) =>
   z.coerce.number().int().min(min).max(max).default(def);
+
+/** Default `PORTAL_LICHESS_PROXY`: the nginx loopback egress proxy (ADR-020 §2). */
+export const DEFAULT_LICHESS_PROXY = 'http://127.0.0.1:8581/lichess/';
 
 /** Environment variables (all optional). Unknown variables are ignored. */
 export const EnvSchema = z.object({
@@ -194,7 +197,75 @@ export const EnvSchema = z.object({
   LINK_HELLO_TIMEOUT_MS: int(1_000, 60_000, LINK_DEFAULTS.helloTimeoutMs),
   /** Frames per second accepted from one node link. */
   LINK_MAX_MSGS_PER_S: int(1, 100_000, LINK_DEFAULTS.maxMessagesPerSecond),
+  // Operator portal API `/api/portal/*` (ADR-020 §2, §5, M24-9); only read by ROLE=hub.
+  /**
+   * Public origin of the hub (`https://c.referee.at`): setup links of new player tokens and the
+   * portal's same-origin check. Unset: the first ALLOWED_ORIGINS entry (setup links) / the
+   * request's host (Origin check).
+   */
+  PUBLIC_ORIGIN: z
+    .string()
+    .transform((value, ctx) => {
+      const origin = normalizeOrigin(value.trim());
+      if (!origin) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'must be an http(s) origin, e.g. https://example.org',
+        });
+        return z.NEVER;
+      }
+      return origin;
+    })
+    .optional(),
+  /** Comma-separated lichess usernames that are hub administrators (case-insensitive). */
+  HUB_ADMIN_LICHESS: z.string().optional(),
+  /**
+   * Base URL of the loopback egress proxy to lichess (nginx, `deploy/nginx/lichess-egress.conf.snippet`):
+   * the hub calls `<base>api/account` once per login. The unit itself keeps `IPAddressDeny=any`.
+   */
+  PORTAL_LICHESS_PROXY: z
+    .string()
+    .transform((value, ctx) => {
+      let url: URL;
+      try {
+        url = new URL(value.trim());
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'must be an http(s) URL' });
+        return z.NEVER;
+      }
+      if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) {
+        ctx.addIssue({ code: 'custom', message: 'must be an http(s) URL without credentials' });
+        return z.NEVER;
+      }
+      url.search = '';
+      url.hash = '';
+      if (!url.pathname.endsWith('/')) url.pathname += '/';
+      return url.toString();
+    })
+    .default(DEFAULT_LICHESS_PROXY),
+  /** Timeout of the lichess account call at login. */
+  PORTAL_LICHESS_TIMEOUT_MS: int(500, 60_000, 5_000),
+  /** Nodes (not revoked) per operator. */
+  PORTAL_MAX_NODES: int(1, 10_000, 10),
+  /** Live (not revoked, not expired) player + pool tokens per operator. */
+  PORTAL_MAX_TOKENS: int(1, 100_000, 100),
+  /** Live pool tokens per operator (ADR-020 §2, §4.4). */
+  POOL_TOKENS_PER_OPERATOR: int(0, 100_000, 20),
 });
+
+/** Operator portal (ADR-020 §2, §5, M24-9), env `PUBLIC_ORIGIN`, `HUB_ADMIN_LICHESS`, `PORTAL_*`. */
+export interface PortalSettings {
+  /** Normalised `scheme://host[:port]`, or null. */
+  publicOrigin: string | null;
+  /** Lower-case lichess ids (usernames) of the administrators. */
+  adminLichessIds: readonly string[];
+  /** Base URL of the lichess egress proxy, ending in `/`. */
+  lichessProxy: string;
+  lichessTimeoutMs: number;
+  maxNodes: number;
+  maxTokens: number;
+  poolTokensPerOperator: number;
+}
 
 /** The hub's `/link` endpoint (ADR-020 §3, M24-5), env `NODE_MIN_VERSION`, `LINK_*`. */
 export interface LinkSettings {
@@ -264,6 +335,8 @@ export interface ServerConfig {
   link: LinkSettings;
   /** Hub routing; only used with ROLE=hub. */
   hubRouter: HubRouterSettings;
+  /** Operator portal API; only used with ROLE=hub. */
+  portal: PortalSettings;
 }
 
 export type ServerRole = 'standalone' | 'hub' | 'node';
@@ -424,6 +497,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     hubRouter: {
       localName: e.HUB_LOCAL_NAME,
       localPoolShare: Math.min(e.HUB_LOCAL_POOL_SHARE, e.MAX_SESSIONS),
+    },
+    portal: {
+      publicOrigin: e.PUBLIC_ORIGIN ?? null,
+      adminLichessIds: [
+        ...new Set(
+          (e.HUB_ADMIN_LICHESS ?? '')
+            .split(',')
+            .map((u) => u.trim().toLowerCase())
+            .filter((u) => u.length > 0),
+        ),
+      ],
+      lichessProxy: e.PORTAL_LICHESS_PROXY,
+      lichessTimeoutMs: e.PORTAL_LICHESS_TIMEOUT_MS,
+      maxNodes: e.PORTAL_MAX_NODES,
+      maxTokens: e.PORTAL_MAX_TOKENS,
+      poolTokensPerOperator: e.POOL_TOKENS_PER_OPERATOR,
     },
     link: {
       minNodeVersion: e.NODE_MIN_VERSION,

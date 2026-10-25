@@ -494,3 +494,9 @@ Fixed by `packages/engine-core/src/link.ts`, `tokens.ts` and the additive `welco
 - Fair-play room check moved into `Connection` (covers relayed channels).
 - Hub env: `HUB_LOCAL_NAME` (welcome.node.name of the hub's own engines), `HUB_LOCAL_POOL_SHARE` (0 = keep the hub's engines out of the pool).
 - Open: per-IP bad-token counter (§4.1) and closing connections on token revoke (M24-9).
+
+### ADR-020 — portal notes (M24-9, 2026-10-25)
+- Names as implemented (supersede earlier sketches): cookie `__Host-dc_portal`, `PORTAL_LICHESS_PROXY` (nginx loopback egress proxy on 127.0.0.1:8581, snippet in `deploy/nginx/lichess-egress.conf.snippet`), `POOL_TOKENS_PER_OPERATOR` default 20, plus `PUBLIC_ORIGIN`, `HUB_ADMIN_LICHESS`, `PORTAL_MAX_NODES` (10), `PORTAL_MAX_TOKENS` (100), `PORTAL_LICHESS_TIMEOUT_MS`.
+- Revoking a token closes its open player connections (`error unauthorized "token revoked"`, 1008); disabling an operator closes their node links and connections.
+- Per-IP bad-token counter on `/ws` hello (ROLE=hub): 20 `bad_token` answers in 10 min → `rate_limited`, close 1008; token-less hellos still work.
+- Main nginx needs a `/api/portal/` location with `X-Real-IP` before the portal goes live (M24-7/M24-10).

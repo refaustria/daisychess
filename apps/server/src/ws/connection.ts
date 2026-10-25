@@ -26,6 +26,7 @@ import {
 } from '../sessions/AnalysisRouter.js';
 import { allowRate, type RateLimit } from '../sessions/rateLimit.js';
 import { tokenMatches } from './token.js';
+import type { BadTokenLimiter } from './badTokens.js';
 
 export { tokenMatches };
 export type { RateLimit };
@@ -56,6 +57,11 @@ export interface ConnectionOptions {
   reviewGetRateLimit?: RateLimit;
   /** `review.put` / `review.positions.put` per window. Default 20 per 4 s (5/s, bursts of 20). */
   reviewPutRateLimit?: RateLimit;
+  /**
+   * Per-address counter of `bad_token` answers (ADR-020 §4.1, hub): over its limit a `hello`
+   * with a token is answered `rate_limited` and the socket is closed (1008).
+   */
+  badTokens?: BadTokenLimiter;
 }
 
 /** Who a connection is accounted to (per-IP caps live in the router's channels). */
@@ -86,6 +92,8 @@ export class Connection implements RoomClient {
   private analysis: AnalysisChannel | null = null;
   /** The token proved valid (review writes allowed): routed, or denied for capacity reasons. */
   private tokenValid = false;
+  /** Public id of the token this connection was routed with (hub), or null. */
+  private routedTokenId: string | null = null;
   /** Non-null while an asynchronous route is pending: messages that arrived meanwhile. */
   private pending: ClientMessage[] | null = null;
   private closed = false;
@@ -162,6 +170,11 @@ export class Connection implements RoomClient {
 
   get sessionCount(): number {
     return this.analysis?.sessionCount ?? 0;
+  }
+
+  /** Public id of the verified token of this connection's route (hub only), or null. */
+  get tokenId(): string | null {
+    return this.routedTokenId;
   }
 
   /** Client address (see `resolveClientIp`). */
@@ -245,6 +258,10 @@ export class Connection implements RoomClient {
     if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
     this.handshakeTimer = null;
     this.log.debug({ conn: this.id, client: msg.client }, 'handshake');
+    if (msg.token !== undefined && this.opts.badTokens?.blocked(this.peer.ip)) {
+      this.refuseBadTokens();
+      return;
+    }
     let result: RouteResult | Promise<RouteResult>;
     try {
       result = this.opts.router.route(msg, { ip: this.peer.ip, connId: this.id });
@@ -263,6 +280,14 @@ export class Connection implements RoomClient {
     this.completeHello(result);
   }
 
+  /** Too many bad tokens from this address (ADR-020 §4.1). */
+  private refuseBadTokens(): void {
+    this.pending = null;
+    this.log.warn({ conn: this.id }, 'too many invalid tokens from this address; closing');
+    this.sendError('rate_limited', 'too many invalid tokens; try again later');
+    this.close(1008, 'rate limited');
+  }
+
   private routeFailed(err: unknown): void {
     this.log.error({ conn: this.id, err: (err as Error)?.message }, 'routing failed');
     this.pending = null;
@@ -275,6 +300,11 @@ export class Connection implements RoomClient {
   /** Sends the welcome composed from the route, opens the channel, replays buffered messages. */
   private completeHello(result: RouteResult): void {
     if (this.closed) return;
+    if (!result.ok && result.reason === 'bad_token' && this.opts.badTokens?.fail(this.peer.ip)) {
+      this.refuseBadTokens();
+      return;
+    }
+    this.routedTokenId = result.tokenId ?? null;
     const welcome: WelcomeMessage = {
       type: 'welcome',
       protocolVersion: PROTOCOL_VERSION,

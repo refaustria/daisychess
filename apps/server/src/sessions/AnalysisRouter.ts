@@ -27,8 +27,13 @@ export interface AnalysisRoute {
   open(deliver: Deliver, peer: SessionPeer): AnalysisChannel;
 }
 
+/**
+ * `tokenId` (public id of the verified token, hub only) lets the server find a token's open
+ * connections, e.g. to close them when the token is revoked in the portal (M24-9).
+ */
 export type RouteResult =
-  { ok: true; route: AnalysisRoute } | { ok: false; reason: AnalysisDeniedReason };
+  | { ok: true; route: AnalysisRoute; tokenId?: string }
+  | { ok: false; reason: AnalysisDeniedReason; tokenId?: string };
 
 /**
  * Decides the route of a connection at `hello`: `LocalRouter` (standalone: access token → this

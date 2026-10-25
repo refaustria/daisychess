@@ -16,6 +16,7 @@ import type { AnalysisRouter } from '../sessions/AnalysisRouter.js';
 import { LocalBackend } from '../sessions/LocalBackend.js';
 import type { RateLimit } from '../sessions/rateLimit.js';
 import { LocalRouter } from './LocalRouter.js';
+import { BadTokenLimiter } from './badTokens.js';
 
 export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'review' | 'router'> {
   /** This server's engine pool; analysis runs on it through a {@link LocalBackend}. */
@@ -61,6 +62,11 @@ export interface WsServerOptions extends Omit<ConnectionOptions, 'rooms' | 'revi
   maxSessionsPerIp?: number;
   /** Peers besides loopback whose `X-Real-IP` is trusted. Default: none. */
   trustedProxies?: TrustedProxies;
+  /**
+   * Per-address limit of `bad_token` answers at `hello` (ADR-020 §4.1). Unset: no limit
+   * (standalone keeps today's behaviour); ROLE=hub sets it.
+   */
+  badTokenLimit?: RateLimit;
 }
 
 export type UpgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
@@ -75,6 +81,13 @@ export interface WsServerHandle {
   readonly rooms: RoomManager;
   /** Review store service (ADR-017). */
   readonly review: ReviewService;
+  /**
+   * Closes every open connection routed with the token `tokenId` (portal revoke, M24-9): an
+   * `error unauthorized "token revoked"`, then close 1008. Returns how many were closed.
+   */
+  closeTokenConnections(tokenId: string): number;
+  /** Open connections routed with the token `tokenId`. */
+  tokenConnections(tokenId: string): number;
   /** Closes every connection (1001), waits until their sessions are released, closes the server. */
   close(): Promise<void>;
 }
@@ -120,6 +133,9 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     });
   const connOpts: ConnectionOptions = {
     router,
+    ...(opts.badTokenLimit
+      ? { badTokens: new BadTokenLimiter({ limit: opts.badTokenLimit }) }
+      : {}),
     serverVersion: opts.serverVersion,
     logger: opts.logger,
     rooms,
@@ -211,6 +227,23 @@ export function attachWebSocketServer(app: FastifyInstance, opts: WsServerOption
     ipSessions: ledger,
     rooms,
     review,
+    tokenConnections(tokenId: string): number {
+      let n = 0;
+      for (const conn of connections) if (conn.tokenId === tokenId) n++;
+      return n;
+    },
+    closeTokenConnections(tokenId: string): number {
+      let closed = 0;
+      for (const conn of [...connections]) {
+        if (conn.tokenId !== tokenId) continue;
+        conn.deliver({ type: 'error', code: 'unauthorized', message: 'token revoked' });
+        conn.close(1008, 'token revoked');
+        closed++;
+      }
+      if (closed > 0)
+        opts.logger.info({ tokenId, closed }, 'closed connections of a revoked token');
+      return closed;
+    },
     async close() {
       if (closing) return;
       closing = true;

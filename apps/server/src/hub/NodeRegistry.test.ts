@@ -90,3 +90,38 @@ describe('NodeRegistry', () => {
     expect(good).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('NodeRegistry.applySettings (portal, M24-9)', () => {
+  it('updates name, pool share and effective pool membership of a connected node', () => {
+    const r = new NodeRegistry(silent);
+    const events: string[] = [];
+    r.onChange((e) => events.push(`${e.type}:${e.node.nodeId}`));
+    r.register(reg('a', { nodePool: true }));
+    expect(
+      r.applySettings('a', { name: 'renamed', pool: true, poolShare: 3, state: 'normal' }),
+    ).toBe(true);
+    expect(r.get('a')).toMatchObject({ name: 'renamed', pool: true, poolShare: 3 });
+    // Portal switch off, then suspect: out of the pool.
+    r.applySettings('a', { name: 'renamed', pool: false, poolShare: 3, state: 'normal' });
+    expect(r.poolCandidates()).toEqual([]);
+    r.applySettings('a', { name: 'renamed', pool: true, poolShare: 3, state: 'suspect' });
+    expect(r.get('a')?.pool).toBe(false);
+    r.applySettings('a', { name: 'renamed', pool: true, poolShare: 3, state: 'normal' });
+    expect(r.poolCandidates().map((n) => n.nodeId)).toEqual(['a']);
+    expect(events).toContain('status:a');
+    expect(
+      r.applySettings('missing', { name: 'x', pool: true, poolShare: 1, state: 'normal' }),
+    ).toBe(false);
+  });
+
+  it('never puts a node into the pool whose own switch is off', () => {
+    const r = new NodeRegistry(silent);
+    r.register(reg('b', { pool: false, nodePool: false }));
+    r.applySettings('b', { name: 'b', pool: true, poolShare: 2, state: 'normal' });
+    expect(r.get('b')?.pool).toBe(false);
+    // Without nodePool, the registered `pool` is taken as the node's switch.
+    r.register(reg('c', { pool: false }));
+    r.applySettings('c', { name: 'c', pool: true, poolShare: 2, state: 'normal' });
+    expect(r.get('c')?.pool).toBe(false);
+  });
+});

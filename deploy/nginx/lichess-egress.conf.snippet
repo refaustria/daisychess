@@ -1,0 +1,66 @@
+# Loopback egress proxy: hub -> lichess.org/api/account (ADR-020 §2, M24-9).
+#
+# The engine server unit keeps IPAddressDeny=any / IPAddressAllow=localhost. The only outbound
+# call the hub needs is one `GET https://lichess.org/api/account` per portal login, to learn whose
+# lichess access token the portal SPA posted. The hub sends it to this loopback listener
+# (PORTAL_LICHESS_PROXY, default http://127.0.0.1:8581/lichess/), nginx forwards exactly that one
+# path to lichess over verified TLS. Nothing else is reachable through it.
+#
+# NOT installed automatically (M24-7 runbook). Install in the `http {}` context, e.g.:
+#   sudo cp deploy/nginx/lichess-egress.conf.snippet /etc/nginx/conf.d/daisychess-lichess-egress.conf
+#   sudo nginx -t && sudo systemctl reload nginx
+# Check: curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8581/lichess/api/account
+#   -> 401 (no token) proves the path to lichess works; any other path -> 404.
+
+# At most a few logins per second leave the host, whatever happens on the hub.
+limit_req_zone $server_port zone=daisychess_lichess_egress:1m rate=2r/s;
+
+server {
+    listen 127.0.0.1:8581;
+    server_name _;
+
+    # Requests carry a bearer token in Authorization; nginx does not log headers, and the access
+    # log is off anyway (no client IPs here: the only client is the hub on loopback).
+    access_log off;
+
+    location = /lichess/api/account {
+        limit_except GET { deny all; }
+        limit_req zone=daisychess_lichess_egress burst=10 nodelay;
+        limit_req_status 429;
+
+        proxy_pass https://lichess.org/api/account;
+        proxy_http_version 1.1;
+        proxy_set_header Host lichess.org;
+        proxy_set_header Connection "";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Accept application/json;
+        # Forward nothing else about the hub or the operator.
+        proxy_set_header Cookie "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Forwarded-Proto "";
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+
+        proxy_ssl_server_name on;
+        proxy_ssl_name lichess.org;
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth 3;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+
+        # The hub gives up after PORTAL_LICHESS_TIMEOUT_MS (5 s) anyway.
+        proxy_connect_timeout 3s;
+        proxy_send_timeout 5s;
+        proxy_read_timeout 5s;
+        proxy_redirect off;
+        proxy_hide_header Set-Cookie;
+        proxy_ignore_headers Set-Cookie Expires Cache-Control;
+        proxy_cache off;
+        proxy_max_temp_file_size 0;
+    }
+
+    location / {
+        return 404;
+    }
+}

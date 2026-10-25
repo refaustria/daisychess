@@ -173,6 +173,14 @@ export interface UsageDelta {
   engineMs?: number;
 }
 
+/** A portal login session (cookie); only the hash of the id is stored. */
+export interface PortalSessionRow {
+  idHash: string;
+  operatorId: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
 export interface PurgeResult {
   usage: number;
   portalSessions: number;
@@ -369,6 +377,45 @@ export class HubStore {
     );
   }
 
+  /** Every operator (administrator view), oldest first. */
+  listOperators(): OperatorRecord[] {
+    return this.stmt(`SELECT ${OPERATOR_COLS} FROM operators ORDER BY created_at, id`)
+      .all()
+      .map(toOperator);
+  }
+
+  // ---------------------------------------------------------------------------- portal sessions
+
+  /** Stores a portal session by the `sha256` of its id (the id itself is never stored). */
+  insertPortalSession(row: PortalSessionRow): void {
+    this.stmt(
+      'INSERT INTO portal_sessions (id_hash, operator_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+    ).run(row.idHash, row.operatorId, row.createdAt, row.expiresAt);
+  }
+
+  /** The unexpired session with this id hash. */
+  getPortalSession(idHash: string, now: number): PortalSessionRow | undefined {
+    const r = this.stmt(
+      'SELECT id_hash, operator_id, created_at, expires_at FROM portal_sessions WHERE id_hash = ? AND expires_at > ?',
+    ).get(idHash, now);
+    if (!r) return undefined;
+    return {
+      idHash: String(r.id_hash),
+      operatorId: String(r.operator_id),
+      createdAt: num(r.created_at),
+      expiresAt: num(r.expires_at),
+    };
+  }
+
+  deletePortalSession(idHash: string): boolean {
+    return changed(this.stmt('DELETE FROM portal_sessions WHERE id_hash = ?').run(idHash));
+  }
+
+  /** Ends every portal session of an operator (ban, account changes). Returns the count. */
+  deletePortalSessionsOf(operatorId: string): number {
+    return count(this.stmt('DELETE FROM portal_sessions WHERE operator_id = ?').run(operatorId));
+  }
+
   // -------------------------------------------------------------------------------------- nodes
 
   /** Inserts a node; throws on a duplicate id (the token service retries with a new id). */
@@ -437,6 +484,36 @@ export class HubStore {
     this.stmt(
       'UPDATE nodes SET revoked_at = COALESCE(revoked_at, ?), secret_hash_prev = NULL, prev_expires_at = NULL WHERE id = ?',
     ).run(now, id);
+    return true;
+  }
+
+  /** Nodes of an operator that are not revoked (the portal's `PORTAL_MAX_NODES`). */
+  countActiveNodes(operatorId: string): number {
+    return num(
+      this.stmt('SELECT COUNT(*) AS n FROM nodes WHERE operator_id = ? AND revoked_at IS NULL').get(
+        operatorId,
+      )?.n,
+    );
+  }
+
+  /**
+   * Deletes a node: its id is removed from every token's `node_ids` (a token left without nodes
+   * routes by its pool fallback or is denied `node_offline`), spot-checks go with it (cascade).
+   * Usage aggregates keep the id as a plain string. False when not found in `scope`.
+   */
+  deleteNode(id: string, scope: Scope = {}): boolean {
+    const node = this.getNode(id, scope);
+    if (!node) return false;
+    this.transaction(() => {
+      for (const token of this.listTokens({ operatorId: node.operatorId })) {
+        if (!token.nodeIds.includes(id)) continue;
+        this.stmt('UPDATE tokens SET node_ids = ? WHERE id = ?').run(
+          JSON.stringify(token.nodeIds.filter((n) => n !== id)),
+          token.id,
+        );
+      }
+      this.stmt('DELETE FROM nodes WHERE id = ?').run(id);
+    });
     return true;
   }
 
@@ -535,6 +612,16 @@ export class HubStore {
         `SELECT COUNT(*) AS n FROM tokens WHERE operator_id = ? AND kind = ? AND revoked_at IS NULL
            AND (expires_at IS NULL OR expires_at > ?)`,
       ).get(operatorId, kind, now)?.n,
+    );
+  }
+
+  /** Live (not revoked, not expired) tokens of an operator, every kind (`PORTAL_MAX_TOKENS`). */
+  countAllLiveTokens(operatorId: string, now: number): number {
+    return num(
+      this.stmt(
+        `SELECT COUNT(*) AS n FROM tokens WHERE operator_id = ? AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > ?)`,
+      ).get(operatorId, now)?.n,
     );
   }
 

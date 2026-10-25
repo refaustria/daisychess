@@ -18,6 +18,9 @@ import { LinkServer, type LinkServerOptions } from './hub/LinkServer.js';
 import { HubRouter, type HubRouterOptions, type LocalNode } from './hub/Router.js';
 import type { BudgetSource, UsageSink } from './hub/AccountingChannel.js';
 import type { IpSessionLedger } from './ws/clientIp.js';
+import { DEFAULT_BAD_TOKEN_LIMIT } from './ws/badTokens.js';
+import { registerPortalRoutes, type PortalOptions } from './hub/portal/routes.js';
+import { createLichessFetcher } from './hub/portal/lichess.js';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -46,6 +49,7 @@ export interface BuildAppOptions {
       | 'reviewGetRateLimit'
       | 'reviewPutRateLimit'
       | 'maxBufferedBytes'
+      | 'badTokenLimit'
     >
   >;
   /** Room manager tuning for tests (clock, id generators). */
@@ -74,6 +78,10 @@ export interface BuildAppOptions {
   >;
   /** `ROLE=hub`: router tuning for tests (clock, sticky and failure windows). */
   hubRouter?: Partial<Pick<HubRouterOptions, 'now' | 'stickyMs' | 'failurePenaltyMs'>>;
+  /** `ROLE=hub`: portal API injection for tests (lichess fetcher, clock, rate limits). */
+  portal?: Partial<
+    Pick<PortalOptions, 'fetchAccount' | 'now' | 'random' | 'loginRateLimit' | 'apiRateLimit'>
+  >;
   /** `ROLE=hub`: `/link` tuning for tests (ping cadence, clocks, limits). */
   hub?: Partial<
     Pick<
@@ -160,6 +168,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     ...(opts.heartbeatMs !== undefined ? { heartbeatMs: opts.heartbeatMs } : {}),
     ...(hub
       ? {
+          // ADR-020 §4.1: 20 bad tokens in 10 min per address → rate_limited and close.
+          badTokenLimit: opts.connection?.badTokenLimit ?? DEFAULT_BAD_TOKEN_LIMIT,
           upgradeRoutes: { [hub.link.path]: hub.link.handleUpgrade.bind(hub.link) },
           router: ({ ledger }: { ledger: IpSessionLedger }) => {
             hub.router = createHubRouter(app, opts, config, hub, pool, descriptors, ledger);
@@ -169,7 +179,31 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       : {}),
   });
   app.decorate('daisychess', { pool, ws, config });
-  if (hub) app.decorate('daisychessHub', hub);
+  if (hub) {
+    app.decorate('daisychessHub', hub);
+    // Operator portal API (M24-9); not registered for other roles (→ 404).
+    await registerPortalRoutes(app, {
+      store: hub.store,
+      tokens: hub.tokens,
+      registry: hub.registry,
+      links: hub.link,
+      connections: ws,
+      settings: config.portal,
+      allowedOrigins: config.allowedOrigins,
+      trustedProxies: config.trustedProxies,
+      fetchAccount:
+        opts.portal?.fetchAccount ??
+        createLichessFetcher({
+          baseUrl: config.portal.lichessProxy,
+          timeoutMs: config.portal.lichessTimeoutMs,
+        }),
+      logger: app.log.child({ component: 'portal' }),
+      ...(opts.portal?.now ? { now: opts.portal.now } : {}),
+      ...(opts.portal?.random ? { random: opts.portal.random } : {}),
+      ...(opts.portal?.loginRateLimit ? { loginRateLimit: opts.portal.loginRateLimit } : {}),
+      ...(opts.portal?.apiRateLimit ? { apiRateLimit: opts.portal.apiRateLimit } : {}),
+    });
+  }
 
   // Public liveness probe (nginx proxies exactly `/health`): no capacity details, which would
   // tell anyone whether other people are analysing right now (docs/SECURITY.md).

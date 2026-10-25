@@ -356,7 +356,7 @@ export class HubRouter implements AnalysisRouter {
       open: (deliver, sessionPeer) =>
         this.openChannel(deliver, sessionPeer, { target, token, limits, nodeId, shared, engines }),
     };
-    return { ok: true, route };
+    return { ok: true, route, tokenId: token.id };
   }
 
   private openChannel(
@@ -413,7 +413,7 @@ export class HubRouter implements AnalysisRouter {
       { conn: peer.connId, reason, ...(token ? { tokenId: token.id } : {}) },
       'analysis denied at hello',
     );
-    return { ok: false, reason };
+    return token ? { ok: false, reason, tokenId: token.id } : { ok: false, reason };
   }
 }
 

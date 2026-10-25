@@ -27,9 +27,11 @@ import {
 import { tokenMatches } from '../ws/token.js';
 import { cryptoRandom, randomBase32, type RandomSource } from './store/ids.js';
 import {
+  NODE_STATES,
   utcDay,
   utcDayStart,
   type HubStore,
+  type NodeState,
   type NodeRecord,
   type OperatorRecord,
   type Scope,
@@ -290,6 +292,100 @@ export class HubTokenService {
       prevExpiresAt: now + ROTATION_OVERLAP_MS,
     }) as NodeRecord;
     return { token: formatToken('node', nodeId, secret), record };
+  }
+
+  /**
+   * Portal edit of a node (rename, pool switch, pool share), validated like {@link mintNode}.
+   * Undefined when the node does not exist in `scope`; a revoked node cannot be edited.
+   */
+  updateNode(
+    id: string,
+    patch: { name?: string; pool?: boolean; poolShare?: number },
+    scope: Scope = {},
+  ): NodeRecord | undefined {
+    const node = this.store.getNode(id, scope);
+    if (!node) return undefined;
+    if (node.revokedAt !== null) throw new HubInputError('invalid', 'node is revoked');
+    const next: { name?: string; pool?: boolean; poolShare?: number } = {};
+    if (patch.name !== undefined) next.name = this.checkNodeName(patch.name);
+    if (patch.pool !== undefined) next.pool = patch.pool;
+    if (patch.poolShare !== undefined) next.poolShare = this.checkPoolShare(patch.poolShare);
+    return this.store.updateNode(id, next, scope);
+  }
+
+  /**
+   * Portal edit of a player/pool token (label, nodes, pool fallback, tier, expiry) without
+   * re-issuing it (ADR-020 §2), validated like {@link mintToken}. Undefined when the token does
+   * not exist in `scope`; a revoked token cannot be edited.
+   */
+  updateToken(
+    id: string,
+    patch: {
+      label?: string;
+      nodeIds?: readonly string[];
+      poolFallback?: boolean;
+      tier?: TokenTier;
+      expiresAt?: number | null;
+    },
+    now: number = Date.now(),
+    scope: Scope = {},
+  ): TokenRecord | undefined {
+    const token = this.store.getToken(id, scope);
+    if (!token || token.operatorId === null) return undefined;
+    if (token.revokedAt !== null) throw new HubInputError('invalid', 'token is revoked');
+    const operator = this.liveOperator(token.operatorId);
+    const next: {
+      label?: string;
+      nodeIds?: string[];
+      poolFallback?: boolean;
+      tier?: TokenTier;
+      expiresAt?: number | null;
+    } = {};
+    if (patch.label !== undefined) {
+      const label = normaliseText(patch.label);
+      if (label.length > MAX_LABEL_LENGTH) {
+        throw new HubInputError('invalid', `label must be at most ${MAX_LABEL_LENGTH} characters`);
+      }
+      next.label = label;
+    }
+    if (patch.tier !== undefined) {
+      if (!TOKEN_TIERS.includes(patch.tier)) throw new HubInputError('invalid', 'unknown tier');
+      next.tier = patch.tier;
+    }
+    if (patch.nodeIds !== undefined) {
+      next.nodeIds = this.checkNodeIds(patch.nodeIds, operator.id, operator.admin);
+    }
+    if (patch.poolFallback !== undefined) next.poolFallback = patch.poolFallback;
+    if (token.kind === 'pool') {
+      if ((next.nodeIds?.length ?? 0) > 0) {
+        throw new HubInputError('invalid', 'a pool token lists no nodes');
+      }
+      if (next.poolFallback)
+        throw new HubInputError('invalid', 'a pool token has no pool fallback');
+    } else if (next.nodeIds !== undefined && next.nodeIds.length === 0) {
+      throw new HubInputError('invalid', 'a player token needs at least one node');
+    }
+    if (patch.expiresAt !== undefined) {
+      if (
+        patch.expiresAt !== null &&
+        (!Number.isSafeInteger(patch.expiresAt) || patch.expiresAt <= now)
+      ) {
+        throw new HubInputError('invalid', 'expiresAt must lie in the future');
+      }
+      next.expiresAt = patch.expiresAt;
+    }
+    return this.store.updateToken(id, next, scope);
+  }
+
+  /** Administrator: node state `normal | suspect | disabled` (a disabled node stops verifying). */
+  setNodeState(id: string, state: NodeState): NodeRecord | undefined {
+    if (!NODE_STATES.includes(state)) throw new HubInputError('invalid', 'unknown node state');
+    return this.store.updateNode(id, { state });
+  }
+
+  /** Deletes a node (see `HubStore.deleteNode`); its credential dies with the row. */
+  deleteNode(id: string, scope: Scope = {}): boolean {
+    return this.store.deleteNode(id, scope);
   }
 
   revokeToken(id: string, now: number = Date.now(), scope: Scope = {}): boolean {

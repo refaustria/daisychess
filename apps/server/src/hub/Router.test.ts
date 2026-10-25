@@ -270,14 +270,22 @@ describe('HubRouter: denials', () => {
       kind: 'token',
       record: token('tok00001', { nodeIds: ['nodeaaaa', 'nodebbbb'] }),
     });
-    expect(router().route(hello('t'), peer)).toEqual({ ok: false, reason: 'node_offline' });
+    expect(router().route(hello('t'), peer)).toEqual({
+      ok: false,
+      reason: 'node_offline',
+      tokenId: 'tok00001',
+    });
     // `local` listed but the hub's pool is down.
     local.up = false;
     tokens.set('l', {
       kind: 'legacy',
       record: token(LEGACY_TOKEN_ID, { nodeIds: [LOCAL_NODE_ID] }),
     });
-    expect(router().route(hello('l'), peer)).toEqual({ ok: false, reason: 'node_offline' });
+    expect(router().route(hello('l'), peer)).toEqual({
+      ok: false,
+      reason: 'node_offline',
+      tokenId: 'legacy',
+    });
   });
 
   it('pool: no_capacity without a candidate, budget_exhausted before scheduling', () => {
@@ -285,10 +293,18 @@ describe('HubRouter: denials', () => {
       kind: 'token',
       record: token('pool0001', { kind: 'pool', tier: 'standard' }),
     });
-    expect(router().route(hello('p'), peer)).toEqual({ ok: false, reason: 'no_capacity' });
+    expect(router().route(hello('p'), peer)).toEqual({
+      ok: false,
+      reason: 'no_capacity',
+      tokenId: 'pool0001',
+    });
     registry.nodes.push(node('nodeaaaa', { pool: true, poolShare: 2 }));
     budget.set('pool0001', 0);
-    expect(router().route(hello('p'), peer)).toEqual({ ok: false, reason: 'budget_exhausted' });
+    expect(router().route(hello('p'), peer)).toEqual({
+      ok: false,
+      reason: 'budget_exhausted',
+      tokenId: 'pool0001',
+    });
     budget.set('pool0001', 1);
     expect(router().route(hello('p'), peer).ok).toBe(true);
   });
@@ -298,10 +314,18 @@ describe('HubRouter: denials', () => {
       kind: 'token',
       record: token('tok00001', { nodeIds: ['nodeaaaa'], poolFallback: true }),
     });
-    expect(router().route(hello('t'), peer)).toEqual({ ok: false, reason: 'no_capacity' });
+    expect(router().route(hello('t'), peer)).toEqual({
+      ok: false,
+      reason: 'no_capacity',
+      tokenId: 'tok00001',
+    });
     registry.nodes.push(node('poolpool', { pool: true, poolShare: 1 }));
     budget.set('tok00001', 0);
-    expect(router().route(hello('t'), peer)).toEqual({ ok: false, reason: 'budget_exhausted' });
+    expect(router().route(hello('t'), peer)).toEqual({
+      ok: false,
+      reason: 'budget_exhausted',
+      tokenId: 'tok00001',
+    });
   });
 });
 
@@ -312,7 +336,10 @@ describe('HubRouter: private and local routes', () => {
       record: token(LEGACY_TOKEN_ID, { nodeIds: [LOCAL_NODE_ID] }),
     });
     const r = router();
-    const route = routed(r.route(hello('legacy'), peer));
+    const result = r.route(hello('legacy'), peer);
+    // The verified token's public id lets the server close its connections on revoke (M24-9).
+    expect(result).toMatchObject({ ok: true, tokenId: LEGACY_TOKEN_ID });
+    const route = routed(result);
     expect(route.node).toEqual({ name: 'referee-box', shared: false });
     expect(route.limits).toEqual(DEFAULT_LIMITS);
     expect(route.engines.map((e) => e.id)).toEqual(['sf']);
@@ -441,6 +468,7 @@ describe('HubRouter: pool scheduling', () => {
     expect(r.route(hello(poolToken('pool0002')), peer)).toEqual({
       ok: false,
       reason: 'no_capacity',
+      tokenId: 'pool0002',
     });
     expect(r.stats().routes).toEqual({ local: 0, private: 0, pool: 1 });
   });

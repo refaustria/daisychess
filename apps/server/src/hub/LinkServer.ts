@@ -516,6 +516,7 @@ export class LinkServer {
       limits: hello.limits,
       maxSessions: hello.maxSessions,
       pool,
+      nodePool: hello.pool,
       poolShare: record.poolShare,
       connectedAt: now,
       link: hub,
