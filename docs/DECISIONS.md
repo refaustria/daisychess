@@ -408,3 +408,67 @@ Fixed by `packages/engine-core/src/link.ts`, `tokens.ts` and the additive `welco
 7. **`welcome.analysisDenied` gains `budget_exhausted`** (owner answer 4: daily pool engine-time budget). When the budget runs out *during* a connection the hub answers the next `analyze` with the existing `error no_capacity` and an explanatory message — no new player-protocol error code, so third-party clients built against protocol 1 keep working; the precise reason appears on the next `hello`.
 8. `sideEffects: false` is set on `@daisychess/engine-core`; the web bundle does not contain the link module (verified: no link strings in `dist/assets`, main chunk +234 bytes for the two `welcome` fields). Zod's `jitless` configuration keeps running first (it is a web-side module, evaluated before any engine-core import).
 
+### ADR-020 — relay layering (M24-5): `AnalysisChannel`, `RelaySessions`, accounting on the hub
+**Date:** 2026-10-25 · **Status:** accepted (design follow-up of M24-1; implemented by M24-3/5/6)
+
+**Context.** M24-1 extracted the session/search/lease state machine into `sessions/ClientSessions.ts` and gave it an `AnalysisBackend` seam (`acquire`/`release` of one engine per session, UCI-like `BackendEngine`). ADR-020 §3 however relays *player messages* (`client.msg {cid, msg}`) and lets the **node** run `ClientSessions` per `cid`. A `RemoteNodeBackend` implementing `AnalysisBackend` (as §8 sketched) would make hub and node both run the state machine — twice the ordering/terminal logic, two idle timers, and the hub would have to invent a `BackendEngine` out of relayed frames. The seam the hub needs is one level up: a *message channel*, not an engine lease. Four sub-questions came with it: (a) hub-side per-IP/per-token session accounting without leases, (b) exactly one terminal message per open search on node loss, (c) the node's `ClientSessions` without client IPs, (d) where the daily pool budget is metered.
+
+**Decision.**
+
+1. **Seam = `AnalysisChannel`** (`apps/server/src/sessions/AnalysisChannel.ts`). `Connection` depends on it, not on `ClientSessions`; two implementations: `ClientSessions` (local engines; unchanged, gains `implements AnalysisChannel`) and `RelaySessions` (hub → node over a link). `AnalysisBackend`/`LocalBackend` stay as the lease seam *inside* `ClientSessions` only; **`RemoteNodeBackend` is dropped** (§8 of ADR-020 is superseded here).
+   ```ts
+   interface AnalysisChannel {
+     readonly sessionCount: number;            // open sessions (for /health and tests)
+     handle(msg: AnalyzeMessage | StopMessage | ReleaseMessage): void;
+     retireAll(): void;                        // fair play (ADR-013): drop every session
+     close(): Promise<void>;                   // idempotent; nothing delivered afterwards
+   }
+   ```
+2. **Routing happens at `hello`, so the channel is created at `hello`.** `ConnectionOptions` gets an `AnalysisRouter` instead of `backend/limits/engines/accessToken`; the channel is `null` until routed (`analyze` → `unauthorized` as today) and `welcome` is composed from the route (`limits`, `engines`, `node`, or `analysisDenied`). Standalone ships a `LocalRouter` (ACCESS_TOKEN check as today → `ClientSessions` over `LocalBackend` with the lease-based `IpSessionLedger`); its only visible change is `analysisDenied: 'no_token' | 'bad_token'` on the restricted welcome (additive).
+   ```ts
+   interface AnalysisRouter { route(hello: HelloMessage, peer: { ip: string; connId: number }): Promise<RouteResult>; }
+   type RouteResult = { ok: true; route: AnalysisRoute } | { ok: false; reason: AnalysisDeniedReason };
+   interface AnalysisRoute {
+     readonly limits: Limits; readonly engines: readonly EngineDescriptor[]; readonly node?: WelcomeNode;
+     open(deliver: Deliver, peer: SessionPeer): AnalysisChannel;   // called once, after welcome was composed
+   }
+   ```
+3. **`RelaySessions`** (`apps/server/src/hub/RelaySessions.ts`) is a *dumb, validated relay with bookkeeping*: `handle(msg)` sends `client.msg {cid, msg}` over the link (never dropped: these frames are small); `onNodeMessage(msg)` (called by the hub's link for this `cid`) delivers `info`/`bestmove`/`error` verbatim to the player — `Connection.send` applies today's `ServerMessageSchema` check and `info` backpressure. It does not stop, time or order anything: the node's `ClientSessions` is the state machine. Its one guarantee is (b): a `SessionTracker` records every relayed `analyze` as an open search `(sessionId, searchId)` and closes it on its terminal (`bestmove`, or `error` with `searchId`); a session-level `error` (no `searchId`) closes the session; `release` and `close()` close the session but leave its open searches tracked until their terminal arrives (the node still sends `bestmove stopped`). **`onNodeLost()`** then emits exactly one `error engine_crashed {sessionId, searchId}` per still-open search and one `error engine_crashed {sessionId}` per open session without a search, marks the channel dead, and `Connection` closes 1012 (ADR-020 §3). `close()` sends `client.close {cid}` and resolves on `client.closed`, on link loss or after 2 s. `retireAll()` relays a `release` per open session.
+   ```ts
+   class RelaySessions implements AnalysisChannel {
+     constructor(deliver: Deliver, link: LinkPort, cid: string, opts: { logger: PoolLogger });
+     onNodeMessage(msg: NodeRelayMessage): void;   // from the hub's node link, already schema-validated (link.ts)
+     onClientClosed(): void;                        // node acknowledged client.close
+     onNodeLost(): void;                            // link dropped or node.error/link.close
+   }
+   interface LinkPort { readonly nodeId: string; send(msg: HubToNodeMessage): boolean /* false: link gone */; }
+   class SessionTracker {                           // pure, shared by RelaySessions and AccountingChannel
+     in(msg: AnalyzeMessage | StopMessage | ReleaseMessage): TrackerEvent[];
+     out(msg: InfoMessage | BestMoveMessage | ErrorMessage): TrackerEvent[];
+     get openSessions(): readonly string[]; openSearches(sessionId: string): readonly number[];
+   }
+   type TrackerEvent = { kind: 'session_opened' | 'session_closed'; sessionId: string }
+     | { kind: 'search_started' | 'search_ended'; sessionId: string; searchId: number; startedAt: number; endedAt?: number };
+   ```
+4. **(a) + (d): accounting is a decorator, the same for `local` and remote nodes.** In `ROLE=hub` every channel is wrapped in an `AccountingChannel` (`apps/server/src/hub/AccountingChannel.ts`) that derives session state from the message stream with the same `SessionTracker`: a session *opens* at its first `analyze` — the decorator synchronously reserves one slot per keyed ledger (`ip`: `IpSessionLedger`, `MAX_SESSIONS_PER_IP` across all nodes; `token`: `TokenSessionLedger`, `tier.sessions`) and checks `openSessions < limits.maxSessionsPerConnection`; a failed reservation answers `error no_capacity` (IP) / `limit_exceeded` (token or connection cap) locally and relays nothing. A session *closes* (slots freed) on `release`, on a session-level `error`, on `retireAll`/`close`, and after `sessionIdleMs` without an open search (the hub's idle timer mirrors the node's lease idle release so an idle tab does not pin a slot; the node drops its lease on its own schedule). Consequently the hub's built-in `local` node runs `ClientSessions` with an **unlimited ledger** exactly like a remote node (one accounting implementation on the hub; standalone keeps the lease-based ledger unchanged). **Budget and usage (d) are metered here too:** on `search_ended` the decorator records `min(endedAt − startedAt, maxMovetimeMs + 2 s)` seconds against `(tokenId, nodeId, day)` through a `UsageSink` (HubStore `usage_daily`, batched); for pool routes (`shared: true`) each `analyze` first asks `BudgetSource.remainingSeconds(tokenId)` and answers `error no_capacity "daily pool budget exhausted"` locally when it is ≤ 0 (ADR-020 clarification 7). An infinite search can overrun the budget by at most one `maxMovetimeMs`, which is accepted. Node loss ends every open search at that moment (metered up to it).
+   ```ts
+   class AccountingChannel implements AnalysisChannel {
+     constructor(inner: AnalysisChannel, deliver: Deliver, opts: {
+       limits: Limits; sessionIdleMs: number; logger: PoolLogger;
+       slots: { ip: SessionLedger; token?: SessionLedger }; keys: { ip: string; tokenId: string; nodeId: string };
+       shared: boolean; budget?: BudgetSource; usage: UsageSink;
+     });
+   }
+   interface BudgetSource { remainingSeconds(tokenId: string, now: number): number | null; }  // null = unlimited
+   interface UsageSink { record(u: { tokenId: string; nodeId: string; searches: number; engineSeconds: number; at: number }): void; }
+   ```
+   `AccountingChannel` wraps `deliver` so it sees every terminal message before the player does; `inner` is created with that wrapped `deliver`. Messages the decorator rejects locally never reach `inner`.
+5. **(c) Node side.** `NodeLink` (M24-3) keeps one `ClientSessions` per `cid` with `peer = { ip: cid, id: cid }` and a shared `UnlimitedLedger` (`tryReserve` always true): nodes never see addresses, the node-wide cap is the pool's `MAX_SESSIONS` (`no_capacity` from `acquire`), and the per-connection cap is `limits.maxSessionsPerConnection`. The node **clamps** `client.open.limits` with its own: `limits = minLimits(open.limits, own)` (engine-core helper, element-wise minimum; an absent `maxNodes` on one side takes the other's) — defence in depth against a compromised hub (ADR-020 §5). Its `deliver` wraps each message in `client.msg {cid, msg}` and applies the ADR-020 link backpressure rules (drop `info` above 1 MiB buffered or 60/s per search; never terminals). `client.close` → `sessions.close().then(() => send client.closed)`; link loss → close every `ClientSessions`; `node.drain` → stop accepting `client.open`, wait for all channels to close or `drainMs`, then close the link.
+6. **Hub node link** (`hub/HubNodeLink.ts`, owned by `LinkServer`): one per connected node; owns `Map<cid, RelaySessions>`, allocates `cid`s (per-link counter, base36), sends `client.open`, dispatches `client.msg` → `relay.onNodeMessage`, `client.closed` → `relay.onClientClosed`, counts unknown-`cid` frames (ADR-020 §3), and on loss calls `onNodeLost()` on every relay. `NodeRegistry` reads `node.status` for the scheduler; the hub does not count a node's sessions itself (a one-RTT race is tolerated: the node answers `no_capacity` if it filled up meanwhile).
+
+**Consequences.**
+- One state machine per session (on the node, or in-process for `local`); the hub holds only message-derived bookkeeping, so hub and node cannot disagree about ordering or terminals. `RelaySessions` is testable with a fake `LinkPort`; `SessionTracker` and `AccountingChannel` are pure/unit-testable without sockets or engines.
+- Two per-IP accounting rules exist: lease-based in standalone (`ClientSessions` + `IpSessionLedger`, unchanged) and message-based on the hub (`AccountingChannel`); the hub's is slightly stricter until the idle timer fires. Unifying standalone onto the decorator is possible later and is not required.
+- `Connection` is touched once more (M24-6): channel creation moves from the constructor to `hello`, `ConnectionOptions.router` replaces four options. Standalone behaviour is unchanged except the additive `analysisDenied` on restricted welcomes; `ws.test.ts` deep-equals of restricted welcomes gain that field.
+- `apps/server/src/sessions/AnalysisChannel.ts`, `SessionTracker.ts`, `UnlimitedLedger.ts` (M24-3); `hub/RelaySessions.ts`, `hub/HubNodeLink.ts` (M24-5); `hub/AccountingChannel.ts`, `hub/Router.ts`, `ws/LocalRouter.ts` (M24-6); engine-core `minLimits` (M24-3, unit-tested).
+
