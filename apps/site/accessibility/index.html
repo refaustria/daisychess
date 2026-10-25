@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <!--#head-->
+    <script type="module" src="/src/scripts/page.ts"></script>
+  </head>
+  <body data-page="accessibility">
+    <!--#header-->
+    <main id="main" tabindex="-1">
+      <header class="page-hero">
+        <div class="container">
+          <p class="kicker">Accessibility</p>
+          <h1>Accessibility statement</h1>
+          <p class="lead">We want DaisyChess to work for everyone. Here is where we stand, and what does not work yet.</p>
+        </div>
+      </header>
+
+      <div class="container doc-layout">
+        <div></div>
+        <article class="prose">
+          <h2 id="goal">Our goal</h2>
+          <p>We aim for the Web Content Accessibility Guidelines (WCAG) 2.1, level AA, for this website and the DaisyChess app.</p>
+
+          <h2 id="works">What works</h2>
+          <ul>
+            <li>This website uses semantic HTML, a skip link, visible focus styles and colours that meet AA contrast in light and dark mode. Every page is checked automatically with axe.</li>
+            <li>The 3D pawn is decorative and hidden from screen readers. With <em>reduce motion</em> turned on, there is no smooth scrolling or animation — just a still image.</li>
+            <li>In the app, tabs follow the WAI-ARIA tabs pattern and can be used with the keyboard; the move list, the FEN field and the import work with the keyboard; game navigation works with ← → Home End.</li>
+            <li>The app follows your light or dark preference and respects reduced motion. Clocks and status messages are announced politely to screen readers.</li>
+          </ul>
+
+          <h2 id="limits">Known limitations</h2>
+          <ul>
+            <li><strong>The board itself is mouse and touch only.</strong> Moves cannot yet be entered with the keyboard or a screen reader on the board; positions can be entered as FEN and games as PGN.</li>
+            <li>The evaluation graph and the board arrows have no full text equivalent yet; the review lists key moments and the better move as text.</li>
+          </ul>
+
+          <h2 id="feedback">Feedback</h2>
+          <p>Found a barrier? Please tell us at <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a> or open an issue on <a href="{{REPO_URL}}/issues">GitHub</a>. We try to answer within two weeks.</p>
+          <p class="meta-line">This statement was prepared on 2026-10-25 by self-assessment.</p>
+        </article>
+      </div>
+    </main>
+    <!--#footer-->
+  </body>
+</html>

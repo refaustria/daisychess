@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <!--#head-->
+    <script type="module" src="/src/scripts/features.ts"></script>
+  </head>
+  <body data-page="nodes">
+    <!--#header-->
+    <main id="main" tabindex="-1">
+      <header class="page-hero">
+        <div class="container">
+          <p class="eyebrow">Community nodes</p>
+          <h1>Lend your engine to the community.</h1>
+          <p class="lead">A node lends the chess engines of one machine — Stockfish, and optionally Leela Chess Zero with the human-like Maia networks — to DaisyChess players. It connects out to the hub over one secure WebSocket: no open port, no domain, no TLS certificate, and it works behind NAT.</p>
+        </div>
+      </header>
+
+      <section class="section-tight" aria-labelledby="kinds-title">
+        <div class="container">
+          <h2 id="kinds-title" class="visually-hidden">Private and pool nodes</h2>
+          <div class="grid grid-2">
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></div>
+              <h3>Private node</h3>
+              <p>Only the people you give a player token can use it — your own devices, your club, your friends. A token can list several of your nodes and, if you like, fall back to the shared pool.</p>
+            </article>
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="6" r="2"/><circle cx="19.5" cy="6" r="2"/><circle cx="4.5" cy="18" r="2"/><circle cx="19.5" cy="18" r="2"/><path d="m6.2 7.2 3.4 2.9M17.8 7.2l-3.4 2.9M6.2 16.8l3.4-2.9M17.8 16.8l-3.4-2.9"/></svg></div>
+              <h3>Pool node</h3>
+              <p>You also donate part of your machine to players without a node of their own. You decide how much: sessions, threads and the share of the node the pool may use. Switch it off at any time.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="run-title">
+        <div class="container doc-layout">
+          <div>
+            <p class="kicker">Get started</p>
+            <h2 id="run-title">Run a node in three steps.</h2>
+            <p class="meta-line">You need Docker with Compose on Linux, macOS or Windows (amd64 or arm64).</p>
+          </div>
+          <ol class="steps">
+            <li data-reveal>
+              <h3>Create the node in the portal</h3>
+              <p>Open the <a href="{{PORTAL_URL}}">operator portal</a>, log in with your lichess account, create a node and copy its node token (<code>dcn_…</code>). It is shown once — keep it secret.</p>
+            </li>
+            <li data-reveal>
+              <h3>Start it</h3>
+              <p>Copy the example configuration, put in your token and start the container:</p>
+<pre aria-label="Shell commands to start a node"><code>git clone {{REPO_URL}} &amp;&amp; cd daisychess
+cp docker/node.env.example docker/.env.node
+
+<span class="c"># edit docker/.env.node:</span>
+<span class="c">#   HUB_URL={{HUB_LINK_URL}}</span>
+<span class="c">#   NODE_TOKEN=dcn_…        from the portal</span>
+<span class="c">#   NODE_POOL=off           on = also share with the pool</span>
+
+docker compose -f docker/docker-compose.node.yml --env-file docker/.env.node up -d
+docker compose -f docker/docker-compose.node.yml logs -f node
+<span class="c"># → "link: registered with the hub"</span></code></pre>
+            </li>
+            <li data-reveal>
+              <h3>Hand out player tokens</h3>
+              <p>Create player tokens (<code>dc1_…</code>) in the portal. A setup link or QR code puts a token straight into the DaisyChess app on any device — it lands in Settings, nothing to type.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section section-alt" aria-labelledby="hw-title">
+        <div class="container">
+          <div class="section-head">
+            <p class="kicker">Hardware</p>
+            <h2 id="hw-title">Small machines welcome.</h2>
+            <p class="lead">A Raspberry Pi, an old laptop or a corner of a home server is plenty to help a few players.</p>
+          </div>
+          <div class="grid grid-3">
+            <article class="card" data-reveal><h3>Minimum</h3><p>1 CPU and 512 MB of memory. 2 or more CPUs and 1 GB are recommended.</p></article>
+            <article class="card" data-reveal><h3>Sizing</h3><p>Each concurrent search uses <code>MAX_THREADS</code> cores and about <code>MAX_HASH_MB</code> + 80 MB of memory. Keep sessions × threads within your CPUs.</p></article>
+            <article class="card" data-reveal><h3>Architectures</h3><p>amd64 (any x86-64 CPU; AVX2 is used when present) and arm64 — Raspberry Pi 4/5, Apple Silicon, Graviton. Maia is optional: <code>MAIA=off</code> on very small machines.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="fair-title">
+        <div class="container">
+          <div class="band band-grid">
+            <div data-reveal>
+              <p class="kicker">Fair pool</p>
+              <h2 id="fair-title">Honest results, shared fairly.</h2>
+              <ul class="checklist">
+                <li>Pool access needs a pool token, with limits on concurrent sessions and search size, and a daily engine-time budget (30 minutes by default).</li>
+                <li>The hub re-runs a small random sample of pool searches on its own engines and compares the answers.</li>
+                <li>A node whose answers keep disagreeing is suspended from the pool for 24 hours; after repeated episodes it is banned from the pool. Its private tokens keep working.</li>
+                <li>When the pool is full, it says so — nobody is entitled to a slot, and nobody can hog one.</li>
+              </ul>
+            </div>
+            <div data-reveal>
+              <p class="kicker">Built to be safe to run</p>
+              <ul class="node-diagram">
+                <li><span class="dot" aria-hidden="true"></span><span><strong>Outbound only</strong> — no published port, nothing listens on your host.</span></li>
+                <li><span class="dot" aria-hidden="true"></span><span><strong>Locked-down container</strong> — read-only, non-root, no capabilities.</span></li>
+                <li><span class="dot" aria-hidden="true"></span><span><strong>Graceful</strong> — on stop, running searches finish first.</span></li>
+                <li><span class="dot" aria-hidden="true"></span><span><strong>Yours to switch off</strong> — stop the container or revoke the node.</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-tight" aria-labelledby="privacy-title">
+        <div class="container doc-layout">
+          <div>
+            <p class="kicker">Privacy</p>
+            <h2 id="privacy-title">What operators can see.</h2>
+          </div>
+          <div class="prose">
+            <p>Your node receives the <strong>chess positions and search settings</strong> of the people who use it — that is how analysis works. It does <strong>not</strong> receive their IP addresses, names, accounts or PGN headers. For pool searches the node cannot tell who the player is.</p>
+            <p>As an operator you agree not to log, keep or misuse those positions. Players always see which node and operator a search runs on, and get a notice before their first search on a pool node:</p>
+            <div class="note"><p>“Searches in the shared pool run on volunteers' computers. The operator of that computer can see the positions you analyse, but not who you are.”</p></div>
+            <p>Read the <a href="/privacy/#nodes">privacy policy</a> and the <a href="/terms/#operators">terms for operators</a> before you start.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section cta-final" aria-labelledby="cta-title">
+        <div class="container">
+          <!--#daisy-->
+          <h2 id="cta-title">Ready to lend a hand?</h2>
+          <p class="lead">Create your first node in the portal — it takes a minute.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary btn-lg" href="{{PORTAL_URL}}">Open the portal <span class="arrow" aria-hidden="true">→</span></a>
+            <a class="btn btn-lg" href="{{REPO_URL}}">Read the docs</a>
+          </div>
+        </div>
+      </section>
+    </main>
+    <!--#footer-->
+  </body>
+</html>

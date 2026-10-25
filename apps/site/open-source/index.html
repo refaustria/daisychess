@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <!--#head-->
+    <script type="module" src="/src/scripts/page.ts"></script>
+  </head>
+  <body data-page="open-source">
+    <!--#header-->
+    <main id="main" tabindex="-1">
+      <header class="page-hero">
+        <div class="container">
+          <p class="eyebrow">GPL-3.0-or-later</p>
+          <h1>Free software, built in the open.</h1>
+          <p class="lead">DaisyChess is free as in freedom: you may use, study, change and share it. The whole app — web, engine server, hub and nodes — lives in one public repository.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary btn-lg" href="{{REPO_URL}}">Source code <span class="arrow" aria-hidden="true">→</span></a>
+            <a class="btn btn-lg" href="{{REPO_URL}}/blob/main/CONTRIBUTING.md">How to contribute</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="container doc-layout">
+        <nav class="toc" aria-label="On this page">
+          <h2>On this page</h2>
+          <ol>
+            <li><a href="#licence">Licence</a></li>
+            <li><a href="#contribute">Contribute</a></li>
+            <li><a href="#self-host">Run your own</a></li>
+            <li><a href="#third-party">Third-party notices</a></li>
+            <li><a href="#site">This website</a></li>
+          </ol>
+        </nav>
+        <article class="prose">
+          <h2 id="licence">Licence</h2>
+          <p>DaisyChess is licensed under the <strong>GNU General Public License, version 3 or (at your option) any later version</strong> (GPL-3.0-or-later). In short:</p>
+          <ul>
+            <li>You may run it for any purpose, study how it works and change it.</li>
+            <li>You may share copies, changed or not.</li>
+            <li>If you distribute it, you pass on the same freedoms: the source code under the same licence.</li>
+          </ul>
+          <p>The full text is in <a href="{{REPO_URL}}/blob/main/LICENSE"><code>LICENSE</code></a>. Stockfish and the lichess board library chessground are GPL-3.0 too, which is one reason DaisyChess is.</p>
+
+          <h2 id="contribute">Contribute</h2>
+          <p>Bug reports, ideas, translations, fixes and new features are welcome.</p>
+          <ul>
+            <li>Read <a href="{{REPO_URL}}/blob/main/CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a> for the development setup (Node 20+, pnpm) and conventions.</li>
+            <li>Open an <a href="{{REPO_URL}}/issues">issue</a> for bugs and feature requests.</li>
+            <li>Please follow the <a href="{{REPO_URL}}/blob/main/CODE_OF_CONDUCT.md">code of conduct</a>.</li>
+            <li>Found a security problem? Please report it privately — see <a href="/support/#security">Support</a>.</li>
+          </ul>
+
+          <h2 id="self-host">Run your own</h2>
+          <p>The web app works on its own with the browser engine. For server analysis, rooms and the review store, run the engine server next to it — one Docker command:</p>
+<pre aria-label="Shell commands to self-host DaisyChess"><code>git clone {{REPO_URL}} &amp;&amp; cd daisychess
+docker compose -f docker/docker-compose.yml up --build -d
+<span class="c"># web app + engine server on http://localhost:8080</span></code></pre>
+          <p>A single host with nginx and systemd, and the community hub, are described in the repository's deployment guide. Want to help the hosted service instead? <a href="/nodes/">Run a community node</a>.</p>
+
+          <h2 id="third-party">Third-party notices</h2>
+          <p>DaisyChess stands on the shoulders of these projects. The complete list with versions is <a href="{{REPO_URL}}/blob/main/THIRD_PARTY_NOTICES.md"><code>THIRD_PARTY_NOTICES.md</code></a>.</p>
+          <h3>In the web app</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Component</th><th scope="col">Licence</th></tr></thead>
+              <tbody>
+                <tr><td><a href="https://github.com/official-stockfish/Stockfish">Stockfish</a> 19 (WebAssembly build) — the Stockfish developers</td><td>GPL-3.0</td></tr>
+                <tr><td><a href="https://github.com/lichess-org/chessground">chessground</a> — the lichess board</td><td>GPL-3.0-or-later</td></tr>
+                <tr><td>Cburnett chess pieces — Colin M.L. Burnett</td><td>GPL-2.0-or-later</td></tr>
+                <tr><td><a href="https://github.com/jhlywa/chess.js">chess.js</a></td><td>BSD-2-Clause</td></tr>
+                <tr><td>React, React DOM, Zustand, Zod</td><td>MIT</td></tr>
+                <tr><td><a href="https://github.com/lichess-org/chess-openings">lichess chess-openings</a> — opening names</td><td>CC0-1.0</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>On the engine server and nodes</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Component</th><th scope="col">Licence</th></tr></thead>
+              <tbody>
+                <tr><td>Stockfish 19 (native)</td><td>GPL-3.0</td></tr>
+                <tr><td><a href="https://github.com/LeelaChessZero/lc0">Leela Chess Zero (Lc0)</a></td><td>GPL-3.0-or-later</td></tr>
+                <tr><td><a href="https://github.com/CSSLab/maia-chess">Maia networks</a> 1100–1900 — CSSLab, University of Toronto</td><td>GPL-3.0</td></tr>
+                <tr><td>Fastify, ws, Zod</td><td>MIT</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="site">This website</h2>
+          <p>daisychess.org is a static site in the same repository (<code>apps/site</code>). It loads nothing from other servers: no fonts, scripts or images from third parties, no analytics, no cookies.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Component</th><th scope="col">Licence</th></tr></thead>
+              <tbody>
+                <tr><td><a href="https://threejs.org">three.js</a> — the 3D pawn</td><td>MIT</td></tr>
+                <tr><td><a href="https://gsap.com">GSAP</a> with ScrollTrigger — animation</td><td>GSAP Standard “no charge” licence (<a href="https://gsap.com/standard-license">terms</a>)</td></tr>
+                <tr><td><a href="https://github.com/darkroomengineering/lenis">Lenis</a> — smooth scrolling</td><td>MIT</td></tr>
+                <tr><td><a href="https://rsms.me/inter/">Inter</a> typeface — Rasmus Andersson (self-hosted)</td><td>SIL Open Font License 1.1</td></tr>
+                <tr><td>DaisyChess logo and icons</td><td>Original work, GPL-3.0-or-later</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </main>
+    <!--#footer-->
+  </body>
+</html>

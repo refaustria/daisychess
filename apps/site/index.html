@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <!--#head-->
+    <script type="module" src="/src/scripts/home.ts"></script>
+  </head>
+  <body data-page="home">
+    <!--#header-->
+    <main id="main" tabindex="-1">
+      <section class="hero" data-hero aria-labelledby="hero-title">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">Free · Open source · No ads, no tracking</p>
+            <h1 id="hero-title">Every move, <span class="accent">understood.</span></h1>
+            <p class="lead">
+              DaisyChess is a chess app for playing, reviewing and learning. Stockfish runs right in your browser,
+              Maia plays like a human at your level, and every game ends with a clear, friendly review.
+            </p>
+            <div class="cta-row">
+              <a class="btn btn-primary btn-lg" href="{{APP_URL}}">Play now <span class="arrow" aria-hidden="true">→</span></a>
+              <a class="btn btn-lg" href="/features/">See all features</a>
+            </div>
+            <ul class="store-row" aria-label="Mobile apps">
+              <li class="store-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>
+                <span><small>Coming soon</small>iPhone &amp; iPad app</span>
+              </li>
+              <li class="store-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M6 6h12M6 17.5h12"/></svg>
+                <span><small>Coming soon</small>Android app</span>
+              </li>
+            </ul>
+          </div>
+          <div class="hero-visual" data-hero-visual>
+            <picture>
+              <source srcset="/img/pawn-hero.webp" type="image/webp" />
+              <img class="hero-fallback" src="/img/pawn-hero.png" width="800" height="1000" alt="An ivory chess pawn crowned with a white daisy" fetchpriority="high" />
+            </picture>
+          </div>
+        </div>
+        <p class="scroll-hint" aria-hidden="true">Scroll</p>
+      </section>
+
+      <section class="section-tight" aria-label="Our promise">
+        <div class="container">
+          <ul class="promises">
+            <li data-reveal><strong>Free, for everyone.</strong><span>No subscription, no premium tier, no paywalled analysis. Every feature, for every player.</span></li>
+            <li data-reveal><strong>No ads, no tracking.</strong><span>No analytics, no trackers, no fingerprinting. No account needed to play or analyse.</span></li>
+            <li data-reveal><strong>Open source.</strong><span>GPL-3.0-or-later. Read every line, change it, or run your own server.</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="highlights-title">
+        <div class="container">
+          <div class="section-head">
+            <p class="kicker">What you can do</p>
+            <h2 id="highlights-title">Everything you need between two games.</h2>
+            <p class="lead">From a quick look at the eval bar to a full review with a guided tour — without leaving the board.</p>
+          </div>
+          <div class="grid grid-3">
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+              <h3>Analyse with Stockfish</h3>
+              <p>Stockfish 19 runs in your browser — or faster on a server. Eval bar, best-move arrows and up to five lines at once.</p>
+            </article>
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/><circle cx="17" cy="7" r="1.2" fill="currentColor"/></svg></div>
+              <h3>Automatic review</h3>
+              <p>Accuracy, key moments and a guided tour through your best moves and mistakes — plus what players at your level usually play.</p>
+            </article>
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M9 8h7M9 12h5"/></svg></div>
+              <h3>Openings trainer</h3>
+              <p>Search about 3,900 named openings, drill them with spaced repetition, then play the position out against Maia or Stockfish.</p>
+            </article>
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="16.5" cy="9.5" r="2.5"/><path d="M2.5 20a5.5 5.5 0 0 1 11 0M13.5 20a4 4 0 0 1 8 0"/></svg></div>
+              <h3>Play your way</h3>
+              <p>Stockfish with clocks and premoves, human-like Maia from 1100 to 1900, a friend via a link, or your live lichess games.</p>
+            </article>
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></div>
+              <h3>Import in a click</h3>
+              <p>Fetch your recent lichess and chess.com games — clock times included — or paste any PGN, and review straight away.</p>
+            </article>
+            <article class="card" data-reveal>
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5 16 16"/></svg></div>
+              <h3>Explore openings</h3>
+              <p>The opening name as you play, plus lichess masters and database statistics for every position you reach.</p>
+            </article>
+          </div>
+          <p><a class="btn card-link" href="/features/">All features <span class="arrow" aria-hidden="true">→</span></a></p>
+        </div>
+      </section>
+
+      <section class="section section-alt" aria-labelledby="review-title">
+        <div class="container band-grid">
+          <div data-reveal>
+            <p class="kicker">Game review</p>
+            <h2 id="review-title">Learn from the game you just played.</h2>
+            <p class="lead">Finish a game and the review is already running. DaisyChess points out where the game turned, shows the better move with its line, and walks you through it.</p>
+            <ul class="checklist">
+              <li>Accuracy for both players and an evaluation graph</li>
+              <li>Time spent per move and mistakes made in time trouble</li>
+              <li>Where you left the opening book, and what the book move was</li>
+              <li>Reviews are saved, so a game opens instantly next time</li>
+            </ul>
+          </div>
+          <figure class="review-mock" data-reveal>
+            <div class="review-mock-inner" role="img" aria-label="Example review: White 91 percent accuracy, Black 74 percent. Move 23, Qxb7, marked as a blunder; the better move was Rd1.">
+              <div class="rm-head">
+                <span class="rm-player"><span class="rm-dot rm-white"></span>White <strong>91%</strong></span>
+                <span class="rm-player"><span class="rm-dot rm-black"></span>Black <strong>74%</strong></span>
+              </div>
+              <svg class="rm-graph" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true">
+                <path class="rm-area" d="M0 45 L20 43 L40 46 L60 41 L80 44 L100 38 L120 40 L140 35 L160 39 L180 33 L200 36 L220 30 L240 62 L260 58 L280 66 L300 70 L320 74 L320 90 L0 90 Z"/>
+                <path class="rm-line" d="M0 45 L20 43 L40 46 L60 41 L80 44 L100 38 L120 40 L140 35 L160 39 L180 33 L200 36 L220 30 L240 62 L260 58 L280 66 L300 70 L320 74"/>
+                <circle class="rm-marker" cx="240" cy="62" r="4"/>
+              </svg>
+              <ol class="rm-moves">
+                <li><span class="rm-no">22.</span> Nd5 <span class="rm-tag rm-best">Best</span></li>
+                <li class="rm-active"><span class="rm-no">23.</span> Qxb7 <span class="rm-tag rm-blunder">Blunder</span></li>
+                <li class="rm-better">Better was <strong>23. Rd1</strong> — the queen is trapped after Rb8.</li>
+                <li class="rm-maia">Typical at 1500: <strong>Qxb7</strong> (42% of players)</li>
+              </ol>
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="nodes-title">
+        <div class="container">
+          <div class="band band-grid">
+            <div data-reveal>
+              <p class="kicker">Community nodes</p>
+              <h2 id="nodes-title">Lend your engine. Help a player.</h2>
+              <p>
+                Got a spare computer, a home server or a Raspberry Pi? Run a DaisyChess node and lend its engines to
+                friends — or to everyone through the shared pool. It only connects out: no open port, no domain, no
+                certificate.
+              </p>
+              <div class="cta-row">
+                <a class="btn btn-primary" href="/nodes/">Run a node <span class="arrow" aria-hidden="true">→</span></a>
+                <a class="btn" href="{{PORTAL_URL}}">Operator portal</a>
+              </div>
+            </div>
+            <ul class="node-diagram" data-reveal>
+              <li><span class="dot" aria-hidden="true"></span><span><strong>Private node</strong> — only people you give a token can use it.</span></li>
+              <li><span class="dot" aria-hidden="true"></span><span><strong>Pool node</strong> — share part of your machine with strangers.</span></li>
+              <li><span class="dot" aria-hidden="true"></span><span><strong>Fair by design</strong> — the hub spot-checks pool results.</span></li>
+              <li><span class="dot" aria-hidden="true"></span><span><strong>One command</strong> — Docker on amd64 or arm64.</span></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-tight" aria-labelledby="oss-title">
+        <div class="container band-grid">
+          <div data-reveal>
+            <p class="kicker">Open source</p>
+            <h2 id="oss-title">Built in the open.</h2>
+            <p class="lead">DaisyChess is free software under the GPL-3.0-or-later, built on Stockfish, Leela Chess Zero, Maia and the lichess board. Read the code, run your own server, send a fix.</p>
+            <div class="cta-row">
+              <a class="btn" href="{{REPO_URL}}">Source code</a>
+              <a class="btn" href="/open-source/">Licence &amp; credits</a>
+            </div>
+          </div>
+          <pre data-reveal aria-label="Run DaisyChess with Docker"><code><span class="c"># your own DaisyChess, web app + engine server</span>
+git clone {{REPO_URL}}
+cd daisychess
+docker compose -f docker/docker-compose.yml up -d
+<span class="c"># → http://localhost:8080</span></code></pre>
+        </div>
+      </section>
+
+      <section class="section cta-final" aria-labelledby="cta-title">
+        <div class="container" data-reveal>
+          <!--#daisy-->
+          <h2 id="cta-title">Ready for your next game?</h2>
+          <p class="lead">Open DaisyChess in your browser — on a laptop, a phone or an iPad. Nothing to install, nothing to sign up for.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary btn-lg" href="{{APP_URL}}">Play now <span class="arrow" aria-hidden="true">→</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
+    <!--#footer-->
+  </body>
+</html>

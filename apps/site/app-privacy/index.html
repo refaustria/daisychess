@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <!--#head-->
+    <script type="module" src="/src/scripts/page.ts"></script>
+  </head>
+  <body data-page="app-privacy">
+    <!--#header-->
+    <main id="main" tabindex="-1">
+      <header class="page-hero">
+        <div class="container">
+          <p class="kicker">Your data</p>
+          <h1>App privacy summary</h1>
+          <p class="lead">The privacy details of the DaisyChess apps for iOS and Android, in the form the App Store and Google Play ask for. The full story is in the <a href="/privacy/">privacy policy</a>.</p>
+        </div>
+      </header>
+
+      <div class="container doc-layout">
+        <nav class="toc" aria-label="On this page">
+          <h2>On this page</h2>
+          <ol>
+            <li><a href="#summary">At a glance</a></li>
+            <li><a href="#flows">Every data flow</a></li>
+            <li><a href="#apple">App Store</a></li>
+            <li><a href="#google">Google Play</a></li>
+          </ol>
+        </nav>
+        <article class="prose">
+          <div class="draft-banner" role="note">
+            <p><strong>Draft for the store forms.</strong> The apps are not published yet. Items marked <span class="ph">[OWNER: check]</span> need a decision before submitting.</p>
+          </div>
+
+          <h2 id="summary">At a glance</h2>
+          <ul class="checklist">
+            <li>No tracking, no advertising, no analytics and no third-party SDKs that collect data.</li>
+            <li>No account, no name, no e-mail, no location, no contacts, no device identifiers.</li>
+            <li>Settings, tokens, trainer progress and the review cache stay on the device.</li>
+            <li>All traffic is encrypted (HTTPS and secure WebSockets).</li>
+            <li>Deletion: <a href="/delete-data/">daisychess.org/delete-data/</a></li>
+          </ul>
+
+          <h2 id="flows">Every data flow</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">What leaves the device</th><th scope="col">When</th><th scope="col">Kept?</th><th scope="col">Linked to a person?</th></tr></thead>
+              <tbody>
+                <tr><td>Chess positions and search settings for analysis</td><td>Server or community-node analysis</td><td>No — processed in real time; node operators must not keep them</td><td>No</td></tr>
+                <tr><td>Finished game reviews and position evaluations (moves and evaluations only)</td><td>Review with a server access token</td><td>Yes, in the shared review store until evicted</td><td>No — keyed by a hash of the game</td></tr>
+                <tr><td>Daily usage counters of a player token (searches, engine time)</td><td>Analysis with a node or pool token</td><td>90 days</td><td>Pseudonymous — the token, not a person</td></tr>
+                <tr><td>Nickname and moves of a friend game</td><td>Play a friend via a link</td><td>Server memory only, minutes to hours</td><td>No</td></tr>
+                <tr><td>IP address in the web server access log</td><td>Every connection</td><td><span class="ph">[14 days — OWNER: confirm]</span>, for security only</td><td>No; never used for location or profiling</td></tr>
+                <tr><td>lichess / chess.com username, lichess login</td><td>Import or lichess features, sent directly to lichess or chess.com</td><td>Not by DaisyChess</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="apple">App Store (App Privacy)</h2>
+          <dl class="facts">
+            <dt>Tracking</dt><dd>No, the app does not track users.</dd>
+            <dt>Data Linked to You</dt><dd>None.</dd>
+            <dt>Data Not Linked to You</dt>
+            <dd>
+              <strong>User Content → Other User Content</strong> (game reviews in the shared review store) — purpose: App Functionality.<br />
+              <strong>Usage Data → Other Usage Data</strong> (daily search counters per token, only with a node or pool token) — purpose: App Functionality. <span class="ph">[OWNER: check]</span>
+            </dd>
+            <dt>Not collected</dt><dd>Contact info, health, financial info, location, sensitive info, contacts, browsing and search history, identifiers, purchases, diagnostics.</dd>
+            <dt>Notes</dt><dd>Positions sent for live analysis are processed in real time and not retained, so they are not “collected” in Apple's sense. The app uses only HTTPS, so it qualifies for the standard encryption exemption (no proprietary cryptography).</dd>
+          </dl>
+
+          <h2 id="google">Google Play (Data safety)</h2>
+          <dl class="facts">
+            <dt>Collects or shares data</dt><dd>Yes.</dd>
+            <dt>Collected</dt>
+            <dd>
+              <strong>App activity → Other user-generated content</strong>: game reviews (optional, not linked to a user, App functionality).<br />
+              <strong>App activity → App interactions</strong>: daily search counters per token (optional, App functionality). <span class="ph">[OWNER: check]</span><br />
+              Chess positions for analysis: <strong>processed ephemerally</strong>.
+            </dd>
+            <dt>Shared</dt><dd><strong>App activity → Other user-generated content</strong>: chess positions go to the operator of a community node when you analyse there (App functionality). This is a user-chosen transfer with a notice in the app; declaring it is the transparent choice. <span class="ph">[OWNER: check]</span></dd>
+            <dt>Encrypted in transit</dt><dd>Yes.</dd>
+            <dt>Deletion</dt><dd>Users can request deletion — <a href="/delete-data/">daisychess.org/delete-data/</a>. The app has no user accounts.</dd>
+            <dt>Target audience</dt><dd>Not directed at children.</dd>
+          </dl>
+        </article>
+      </div>
+    </main>
+    <!--#footer-->
+  </body>
+</html>

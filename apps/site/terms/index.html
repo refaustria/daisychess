@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <!--#head-->
+    <script type="module" src="/src/scripts/page.ts"></script>
+  </head>
+  <body data-page="terms">
+    <!--#header-->
+    <main id="main" tabindex="-1">
+      <header class="page-hero">
+        <div class="container">
+          <p class="kicker">Legal</p>
+          <h1>Terms of use</h1>
+          <p class="lead">The rules for using the hosted DaisyChess service — for players and for community node operators.</p>
+        </div>
+      </header>
+
+      <div class="container doc-layout">
+        <nav class="toc" aria-label="On this page">
+          <h2>On this page</h2>
+          <ol>
+            <li><a href="#service">The service and the software</a></li>
+            <li><a href="#warranty">No warranty</a></li>
+            <li><a href="#use">Acceptable use</a></li>
+            <li><a href="#operators">Node operators</a></li>
+            <li><a href="#pool">Shared pool rules</a></li>
+            <li><a href="#accounts">Accounts and deletion</a></li>
+            <li><a href="#changes">Changes</a></li>
+            <li><a href="#law">Governing law</a></li>
+            <li><a href="#provider">Provider</a></li>
+          </ol>
+        </nav>
+        <article class="prose">
+          <div class="draft-banner" role="note">
+            <p><strong>Draft — not legal advice.</strong> Values in <span class="ph">[brackets]</span> are placeholders that must be filled in before publication.</p>
+          </div>
+
+          <p>These terms apply to the DaisyChess service operated by Bojan Savicevic, 1220 Vienna, Austria (“we”), including the web app and hub at play.daisychess.org, the operator portal, the shared pool and the mobile apps. Contact: <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>. How personal data is handled: <a href="/privacy/">privacy policy</a>.</p>
+
+          <h2 id="service">1. The service and the software</h2>
+          <ol>
+            <li>DaisyChess is a free, non-commercial chess analysis service. There is no payment, no advertising, and no compensation for operators.</li>
+            <li>The software is licensed under the <strong>GNU General Public License v3 or later</strong> (see <a href="/open-source/">Open source</a>; Stockfish and other components have their own licences). These terms govern the hosted service, not your rights under the GPL to use, study, modify and share the code.</li>
+          </ol>
+
+          <h2 id="warranty">2. No warranty</h2>
+          <ol>
+            <li>The service, the hub and all community nodes are provided <strong>“as is”</strong>, without any warranty of availability, accuracy, fitness or uninterrupted operation. Engine evaluations can be wrong; do not rely on them for anything important.</li>
+            <li>There is no uptime obligation in either direction: we may change, limit or stop the service at any time; operators may stop their nodes at any time.</li>
+            <li>To the extent permitted by law we are not liable for damages arising from use of the service, except for intent and gross negligence and for injury to life, body or health, and without limiting liability that cannot be excluded under mandatory Austrian law.</li>
+          </ol>
+
+          <h2 id="use">3. Acceptable use (everyone)</h2>
+          <ul>
+            <li>No attacks, probing, scraping at abusive rates, circumventing limits (sessions, rate limits, the daily budget) or attempts to disturb the hub, nodes or other users.</li>
+            <li>No engine help in games where it is forbidden (for example rated games on other platforms). Rooms for playing a friend and live lichess games lock the engines where possible, but you are responsible.</li>
+            <li>Do not share tokens publicly. A token's holder is responsible for its use; leaked tokens should be revoked in the portal.</li>
+            <li>Do not put personal data (real names) into token or node labels.</li>
+          </ul>
+
+          <h2 id="operators">4. Node operators</h2>
+          <ol>
+            <li>You log in with lichess; you must be allowed to enter into these terms and be responsible for the machines and network you connect.</li>
+            <li><strong>Positions are confidential.</strong> Your node receives chess positions and search settings from players. You must <strong>not log, store, publish, analyse for other purposes, or try to identify the people</strong> behind them, and you must not modify the software to do so. Link events and error logs are fine; positions are not.</li>
+            <li>Run the unmodified engines you advertise; do not report fabricated results, depths or engine names, and do not use the node for anything else through the link.</li>
+            <li>Keep the node reasonably up to date (the hub may refuse versions below a minimum).</li>
+            <li>You pay for your own power, hardware and bandwidth. Contributions to the pool are voluntary and unpaid and may be withdrawn at any time (switch the pool off or revoke the node).</li>
+            <li>Keep node tokens secret. If a token leaks, rotate it in the portal.</li>
+            <li>You are the controller of any data you collect in breach of 4.2 and must answer to the players for it.</li>
+          </ol>
+
+          <h2 id="pool">5. Shared pool rules</h2>
+          <ol>
+            <li>Pool access requires a pool token issued by an operator or the administrator. Pool tokens expire by default and have limits: concurrent sessions, search size and a <strong>daily engine-time budget</strong> (30 minutes by default).</li>
+            <li><strong>Spot-checks:</strong> the hub re-runs a small, random sample of pool searches on its own engines and compares the result with the node's answer, to catch broken or dishonest nodes. It uses only the position already sent to the node.</li>
+            <li>A node whose answers repeatedly disagree is <strong>suspended</strong> from the pool for 24 hours; after repeated episodes it is <strong>banned from the pool</strong>. Private tokens of its operator keep working. Only the administrator lifts a pool ban.</li>
+            <li>The administrator may <strong>disable nodes, tokens or operators</strong> at any time, in particular for abuse, security reasons, wrong results, privacy breaches or inactivity, and may close their connections immediately. We aim to give a reason on request, but need not give prior notice.</li>
+            <li>Pool capacity is shared fairly and can be full (“no capacity”); there is no entitlement to a slot.</li>
+          </ol>
+
+          <h2 id="accounts">6. Accounts and deletion</h2>
+          <p>Players have no accounts. Operators can delete their account in the portal at any time; this removes the operator, nodes and tokens. We may remove accounts that violate these terms.</p>
+
+          <h2 id="changes">7. Changes</h2>
+          <p>We may change these terms and the service. Material changes are announced in the portal; continuing to use the service afterwards means you accept them. Operators who do not agree can delete their account.</p>
+
+          <h2 id="law">8. Governing law and venue</h2>
+          <p>Austrian law applies, excluding its conflict-of-law rules and the UN Convention on Contracts for the International Sale of Goods. For consumers, mandatory consumer protection provisions of their country of residence remain unaffected. Venue, to the extent legally permissible: <span class="ph">[COMPETENT COURT, AUSTRIA]</span>.</p>
+
+          <h2 id="provider">9. Provider</h2>
+          <p>See the <a href="/imprint/">imprint</a> for the provider information required by Austrian law.</p>
+          <p class="meta-line">Last updated: <span class="ph">[DATE OF PUBLICATION]</span> (draft of 2026-10-25).</p>
+        </article>
+      </div>
+    </main>
+    <!--#footer-->
+  </body>
+</html>

@@ -213,7 +213,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 ## M27 — daisychess.org (decided 2026-10-25: domain daisychess.org; community site on the apex, web app on play.daisychess.org)
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M27-1 | Community site `apps/site` on daisychess.org (+ www → apex): description, all features, community nodes, open source, app-store pages (privacy policy, terms, support, imprint, data deletion, accessibility), gsap + three + Lenis with a 3D pawn, strict CSP, reduced-motion fallback; nginx vhost + deploy script | senior | in progress |
+| M27-1 | Community site `apps/site` on daisychess.org (+ www → apex): description, all features, community nodes, open source, app-store pages (privacy policy, terms, support, imprint, data deletion, accessibility), gsap + three + Lenis with a 3D pawn, strict CSP, reduced-motion fallback; nginx vhost + deploy script | senior | done (`apps/site`) |
 | M27-2 | Move the web app + portal to play.daisychess.org: origins, CSP, lichess OAuth client ids, setup links, hub URL `wss://hub.daisychess.org/link` (alias on play), nginx vhost, c.referee.at → 301 with one-time localStorage migration | senior | done |
 | M27-3 | Production cut-over (nginx, certs, env, ROLE=hub = M24-7) | orchestrator | todo |
 

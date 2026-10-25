@@ -1,0 +1,23 @@
+@import '../src/styles/fonts.css';
+html, body { margin: 0; }
+#og {
+  position: relative;
+  width: 1200px;
+  height: 630px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  background: radial-gradient(circle at 78% 40%, rgba(245, 197, 24, 0.38), transparent 46%), #fbf8f1;
+  font-family: 'Inter Variable', system-ui, sans-serif;
+  color: #1d1b17;
+}
+.copy { padding-left: 88px; width: 720px; }
+.brand { display: flex; align-items: center; gap: 18px; font-weight: 760; font-size: 40px; letter-spacing: -0.03em; margin-bottom: 40px; }
+h1 { margin: 0 0 26px; font-size: 84px; line-height: 1; letter-spacing: -0.045em; font-weight: 780; }
+.accent { position: relative; white-space: nowrap; }
+.accent::after { content: ''; position: absolute; z-index: -1; left: -4px; right: -4px; bottom: 6px; height: 24px; border-radius: 6px; background: #f5c518; }
+.accent { z-index: 0; }
+h1 { position: relative; z-index: 0; isolation: isolate; }
+p { margin: 0; font-size: 30px; line-height: 1.35; color: #59544a; }
+.url { margin-top: 30px; font-size: 24px; font-weight: 650; color: #7a5600; }
+.pawn { position: absolute; right: 40px; top: 10px; height: 650px; width: auto; }

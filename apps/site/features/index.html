@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <!--#head-->
+    <script type="module" src="/src/scripts/features.ts"></script>
+  </head>
+  <body data-page="features">
+    <!--#header-->
+    <main id="main" tabindex="-1">
+      <header class="page-hero">
+        <div class="container">
+          <p class="eyebrow">All features, all free</p>
+          <h1>Everything DaisyChess can do.</h1>
+          <p class="lead">One board for playing, analysing, reviewing and training. Here is the full list — grouped the way you will use it.</p>
+        </div>
+      </header>
+
+      <div class="container">
+        <section class="feature-group" id="analyse" aria-labelledby="g1">
+          <div class="feature-group-head">
+            <span class="num">01</span>
+            <h2 id="g1">Play &amp; analyse</h2>
+            <p>A clean board with a strong engine next to it — in your browser or on a server.</p>
+          </div>
+          <ul class="feature-list">
+            <li data-reveal><h3>A board that gets out of the way</h3><p>Drag and drop or click to move, legal-move highlights, undo, flip, and a move list in standard notation. Step through any game with ← → Home End.</p></li>
+            <li data-reveal><h3>Stockfish in your browser</h3><p>Stockfish 19 compiled to WebAssembly runs on your own device — no server, no upload. Multi-threaded where the browser allows it.</p></li>
+            <li data-reveal><h3>Or on a server</h3><p>Native, multi-threaded Stockfish on a server or a community node streams its lines to you. Switch between browser and server at any time.</p></li>
+            <li data-reveal><h3>Several engines side by side</h3><p>Run more than one engine at once and compare them in tabs, each with its own depth, number of lines and threads.</p></li>
+            <li data-reveal><h3>Eval bar and best lines</h3><p>A live evaluation bar (always from White's view, mate scores included), up to five engine lines, best-move arrows and a click-to-preview for every line.</p></li>
+            <li data-reveal><h3>Bring any position</h3><p>Paste a FEN or a PGN, or drop a PGN file. Files with several games show a picker. Copy the FEN of any position.</p></li>
+            <li data-reveal><h3>Maximum strength, if you want it</h3><p>An optional full-strength browser build with the large network — a one-time download of about 100 MB that you confirm first.</p></li>
+            <li data-reveal><h3>Kind to your device</h3><p>On phones and iPads the browser engine respects a memory budget, and if it runs out of memory it restarts smaller instead of crashing.</p></li>
+          </ul>
+        </section>
+
+        <section class="feature-group" id="review" aria-labelledby="g2">
+          <div class="feature-group-head">
+            <span class="num">02</span>
+            <h2 id="g2">Review</h2>
+            <p>Every game ends with an explanation, not just a number.</p>
+          </div>
+          <ul class="feature-list">
+            <li data-reveal><h3>Automatic review</h3><p>Load or finish a game and a fast review starts on its own. Each move is classified from best to blunder, with accuracy for both sides, an evaluation graph and the key moments.</p></li>
+            <li data-reveal><h3>The better move, explained</h3><p>For every move you see what you played, what was better, the line behind it and how much the evaluation swung — with arrows on the board.</p></li>
+            <li data-reveal><h3>Guided tour</h3><p>Press play and DaisyChess walks through the game, pausing on great moves, mistakes and blunders with a short comment. Pause, skip, or just take over.</p></li>
+            <li data-reveal><h3>Opening focus</h3><p>See exactly where you left the opening book, what the book move was, and what leaving it cost.</p></li>
+            <li data-reveal><h3>Clock and time trouble</h3><p>Games with clock times show the time spent on every move, a clock graph, a per-player summary, and a badge on mistakes made in time trouble.</p></li>
+            <li data-reveal><h3>What players at your level play</h3><p>For each mistake, Maia shows the move players of your rating most often choose there — so you know whether it was a typical slip or a rare one.</p></li>
+            <li data-reveal><h3>Reviews remember</h3><p>Finished reviews are kept on your device, so a game you reviewed before opens instantly. With a server, reviews are shared across your devices, and a deeper review reuses what a quick one already found.</p></li>
+            <li data-reveal><h3>Annotated export</h3><p>Export the reviewed game as PGN with comments and clock times, ready for any other chess tool.</p></li>
+          </ul>
+        </section>
+
+        <section class="feature-group" id="openings" aria-labelledby="g3">
+          <div class="feature-group-head">
+            <span class="num">03</span>
+            <h2 id="g3">Openings trainer</h2>
+            <p>Learn the lines you actually play, and keep them.</p>
+          </div>
+          <ul class="feature-list">
+            <li data-reveal><h3>Browse 3,900 openings</h3><p>Search named openings and variations by name or ECO code — "Italian", "B90" — and walk through each line move by move with its branches.</p></li>
+            <li data-reveal><h3>Drill with feedback</h3><p>Play your side while DaisyChess answers with book moves. Leave the book and the engine checks your move: fine, or here is what was better.</p></li>
+            <li data-reveal><h3>Spaced repetition</h3><p>Lines you know come back after days, lines you missed come back now. "Train due" picks the next one. Your progress stays in your browser.</p></li>
+            <li data-reveal><h3>Play it out</h3><p>At the end of a line, keep going against Maia or Stockfish from that exact position — and review the whole game afterwards.</p></li>
+          </ul>
+        </section>
+
+        <section class="feature-group" id="play" aria-labelledby="g4">
+          <div class="feature-group-head">
+            <span class="num">04</span>
+            <h2 id="g4">Play</h2>
+            <p>Against an engine, a human-like bot, a friend, or the whole of lichess.</p>
+          </div>
+          <ul class="feature-list">
+            <li data-reveal><h3>Stockfish with real clocks</h3><p>Pick your colour, a strength and a time control — bullet to classical, with increment — and play with premoves, takebacks and a rematch button.</p></li>
+            <li data-reveal><h3>Human-like Maia</h3><p>Nine Maia levels from 1100 to 1900 play the moves real players of that rating play — mistakes included. Runs on the server.</p></li>
+            <li data-reveal><h3>A friend, via a link</h3><p>Choose a nickname and a time control, send the link, play. No account. Reconnects after a reload; draw offers, resign, and spectators are built in.</p></li>
+            <li data-reveal><h3>Live on lichess</h3><p>Log in with lichess and play your live games from DaisyChess through the lichess Board API: seeks, challenges and the lichess AI, with clocks.</p></li>
+            <li data-reveal><h3>Fair play built in</h3><p>Engines, review and explorer lock while a live or friend game runs. The review starts automatically when it ends.</p></li>
+          </ul>
+        </section>
+
+        <section class="feature-group" id="import" aria-labelledby="g5">
+          <div class="feature-group-head">
+            <span class="num">05</span>
+            <h2 id="g5">Import &amp; explore</h2>
+            <p>Your games, and the games of everyone else.</p>
+          </div>
+          <ul class="feature-list">
+            <li data-reveal><h3>lichess and chess.com import</h3><p>Type a username and fetch the recent games from the public lichess and chess.com APIs — with clock times — then review any of them.</p></li>
+            <li data-reveal><h3>Opening names, live</h3><p>The opening name and ECO code follow you as you play or step through a game, transpositions included.</p></li>
+            <li data-reveal><h3>Opening explorer</h3><p>lichess masters and lichess database statistics for the current position: popular moves, wins, draws and losses, and top or recent games to load. lichess asks you to log in with your lichess account for it.</p></li>
+          </ul>
+        </section>
+
+        <section class="feature-group" id="yours" aria-labelledby="g6">
+          <div class="feature-group-head">
+            <span class="num">06</span>
+            <h2 id="g6">Make it yours</h2>
+            <p>Looks right on every screen, works the way you like.</p>
+          </div>
+          <ul class="feature-list">
+            <li data-reveal><h3>Themes</h3><p>Board colours (presets or your own), Cburnett or letter pieces, coordinates, highlight style, sounds, and light or dark mode.</p></li>
+            <li data-reveal><h3>Phone, tablet, desktop</h3><p>A board-first layout with large clocks that adapts from phones to wide screens, tuned for iPad Safari. Native iOS and Android apps are on the way.</p></li>
+            <li data-reveal><h3>Accessible</h3><p>Keyboard-operable tabs and move list, reduced motion respected, and automated accessibility tests. <a href="/accessibility/">Details and limits</a>.</p></li>
+            <li data-reveal><h3>Community engines</h3><p>Use a friend's node or the shared pool for strong analysis on a weak device — the app always shows whose machine runs your search. <a href="/nodes/">How nodes work</a>.</p></li>
+          </ul>
+        </section>
+      </div>
+
+      <section class="section cta-final" aria-labelledby="cta-title">
+        <div class="container">
+          <!--#daisy-->
+          <h2 id="cta-title">Try it on your next game.</h2>
+          <p class="lead">Free, no ads, no account. Runs in any modern browser.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary btn-lg" href="{{APP_URL}}">Play now <span class="arrow" aria-hidden="true">→</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
+    <!--#footer-->
+  </body>
+</html>
