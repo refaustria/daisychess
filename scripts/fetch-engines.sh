@@ -22,8 +22,9 @@
 #
 # Asset naming differs between releases:
 #   sf_18 and older: per-CPU tarballs  stockfish-ubuntu-<arch>.tar / stockfish-macos-<arch>.tar
-#   sf_19 and newer: "universal" tarballs (stockfish-linux-x86-64-universal.tar.gz) that
-#                    pick the best instruction set at runtime (sse41-popcnt on CPUs w/o AVX2, see ADR-003).
+#   sf_19 and newer: "universal" tarballs (stockfish-linux-x86-64-universal.tar.gz,
+#                    stockfish-linux-arm64-universal.tar.gz) that pick the best instruction set
+#                    at runtime (sse41-popcnt on CPUs w/o AVX2, see ADR-003).
 # The script prefers a per-CPU asset when the release lists one and falls back to the universal one.
 set -euo pipefail
 
@@ -94,6 +95,7 @@ detect_arch() {
       elif has avx2; then echo x86-64-avx2
       elif has sse4_1 && has popcnt; then echo x86-64-sse41-popcnt
       else echo x86-64; fi ;;
+    Linux/aarch64) echo arm64-universal ;;
     Darwin/arm64) echo m1-apple-silicon ;;
     Darwin/x86_64)
       if sysctl -n machdep.cpu.leaf7_features 2>/dev/null | grep -qw AVX2; then echo x86-64-avx2
@@ -131,11 +133,13 @@ fi
 echo "Release: $TAG"
 
 # ---- asset selection ----------------------------------------------------------------
-case "$os" in
-  Linux)  candidates=("stockfish-ubuntu-$ARCH.tar" "stockfish-linux-x86-64-universal.tar.gz") ;;
-  Darwin) candidates=("stockfish-macos-$ARCH.tar" "stockfish-macos-universal.tar.gz") ;;
+case "$os/$machine" in
+  Linux/x86_64)  candidates=("stockfish-ubuntu-$ARCH.tar" "stockfish-linux-x86-64-universal.tar.gz") ;;
+  # sf_19+ publish an arm64 universal build (armv8 + armv8-dotprod, runtime selection).
+  Linux/aarch64) candidates=("stockfish-linux-arm64-universal.tar.gz") ;;
+  Darwin/*)      candidates=("stockfish-macos-$ARCH.tar" "stockfish-macos-universal.tar.gz") ;;
+  *) die "unsupported platform" ;;
 esac
-[[ "$os/$machine" == "Linux/x86_64" ]] || [[ "$os" == Darwin ]] || die "unsupported platform"
 
 asset="" url="" digest=""
 for c in "${candidates[@]}"; do

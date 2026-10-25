@@ -479,3 +479,9 @@ Fixed by `packages/engine-core/src/link.ts`, `tokens.ts` and the additive `welco
 - Daily pool budget applies to pool tokens **and** to player tokens while they are routed to the pool via `poolFallback` (enforced by the router, M24-6).
 - engine-core gains `minLimits(a, b)`; `SessionTracker` additionally exposes `openSearchList()`/`openSearchCount` for node-loss terminals.
 - An unrequested `client.closed` from a node means "node refused this client"; the hub emits terminals for anything still open on link loss or drain deadline.
+
+### ADR-020 — packaging notes (M24-8, 2026-10-25)
+- amd64 ships the official sf_19 `x86-64-universal` asset (runtime CPU dispatch); arm64 builds sf_19 from source as `arm64-universal` (armv8 + dotprod) or uses the official `linux-arm64-universal` asset with `--build-arg STOCKFISH_ARM64=release` (correction: sf_19 does publish an arm64 Linux asset).
+- Source builds of Stockfish require `hexdump` (bsdextrautils) or the NNUE net is silently not embedded; `scripts/build-stockfish.sh` enforces this.
+- Files: `docker/node.Dockerfile`, `docker/docker-compose.node.yml`, `.github/workflows/release-node.yml` (tags `node-v*`, native amd64/arm64 runners, provenance + SBOM). arm64 is first verified by the release workflow.
+- The root `.dockerignore` now excludes `.env.*` (except examples), `apps/server/data` and `*.sqlite*` from every build context.

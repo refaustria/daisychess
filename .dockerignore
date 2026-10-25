@@ -7,3 +7,12 @@ apps/web/test-results
 playwright-report
 *.log
 .env
+# Secrets and runtime data must never reach a build context (M24-8 finding, 2026-10-25).
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+apps/server/data
+**/*.sqlite
+**/*.sqlite-*

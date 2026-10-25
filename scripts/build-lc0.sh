@@ -3,6 +3,7 @@
 #
 # CPU-only build for a host WITHOUT AVX2 (ADR-003): Eigen BLAS backend (header-only, no runtime
 # BLAS library), portable SSE4.2 + POPCNT code generation, no F16C/PEXT/AVX, no GPU backends.
+# On aarch64 (arm64 node image) the plain armv8-a baseline with NEON is used instead.
 # Used for the Maia "human-like" nets (scripts/fetch-maia.sh) at 1 node per move.
 #
 # Usage: scripts/build-lc0.sh [--force] [--no-verify]
@@ -44,7 +45,7 @@ for arg in "$@"; do
   case "$arg" in
     --force|-f) FORCE=1 ;;
     --no-verify) VERIFY=0 ;;
-    -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -58,14 +59,21 @@ unverified() {
 }
 
 # Code generation: portable baseline of ADR-003 unless the operator asks for the native arch.
+# aarch64 (linux/arm64 node image, M24-8): the armv8-a baseline already includes NEON (Advanced
+# SIMD, which Eigen uses) and a popcount instruction, so no extra flags; SSE/F16C/PEXT are x86-only.
+MACHINE="$(uname -m)"
 if [[ "${LC0_NATIVE_ARCH:-0}" == 1 ]]; then
   NATIVE_ARCH=true; ARCH_FLAGS=""
+elif [[ "$MACHINE" == aarch64 || "$MACHINE" == arm64 ]]; then
+  NATIVE_ARCH=false; ARCH_FLAGS=""
 else
   NATIVE_ARCH=false; ARCH_FLAGS="-msse4.2 -mpopcnt"
 fi
 F16C=false
 [[ "${LC0_F16C:-0}" == 1 ]] && F16C=true
 FLAGS_ID="eigen native_arch=$NATIVE_ARCH f16c=$F16C arch_flags=${ARCH_FLAGS:-none}"
+# Keep the x86 identifier unchanged (existing installs stay idempotent); tag other machines.
+[[ "$MACHINE" == x86_64 ]] || FLAGS_ID="$FLAGS_ID machine=$MACHINE"
 
 if [[ -x "$DEST_BIN" && $FORCE -eq 0 && -f "$DEST_DIR/VERSION" ]]; then
   if [[ "$(sed -n 1p "$DEST_DIR/VERSION")" == "$LC0_VERSION" && "$(sed -n 4p "$DEST_DIR/VERSION")" == "$FLAGS_ID" ]]; then

@@ -272,3 +272,102 @@ systemctl list-timers certbot.timer
 sudo certbot certificates
 sudo certbot renew --dry-run --cert-name c.referee.at
 ```
+
+## Run a community node
+
+A **node** lends the engines of one machine (Stockfish, and Lc0 with the Maia nets) to a DaisyChess
+**hub** (ADR-020). It only connects *out* to the hub over one WebSocket (`HUB_URL`); it opens no
+port, needs no TLS certificate and no domain, and works behind NAT. Players reach it through the
+hub with the tokens you issue in the operator portal (private node) or through the shared pool.
+
+> **Privacy notice — read before you run a node.** Your node receives the chess positions players
+> analyse on it (FEN strings plus search settings) and computes the answers. It does not receive
+> player IP addresses, names or account data (the hub keeps those; for pool connections the node
+> learns nothing about the player at all, for your own tokens it sees the token's id and label).
+> Positions can still be personal — a game in progress, an opening preparation — so do not log
+> or keep what passes through the node (the image logs link events, never positions), and only
+> join the shared pool if you are comfortable computing for strangers.
+
+### Quickstart (Docker Compose)
+
+Requirements: Docker Engine 24+ with Compose v2.24+, `linux/amd64` or `linux/arm64`
+(Raspberry Pi 4/5, Apple Silicon via Docker Desktop, AWS Graviton, Ampere), 1 CPU and 512 MB at
+the very least (2+ CPUs and 1 GB recommended).
+
+```bash
+git clone https://github.com/refaustria/gitchess && cd gitchess
+cp docker/node.env.example docker/.env.node      # git-ignored
+$EDITOR docker/.env.node                          # paste NODE_TOKEN from the portal, set limits
+docker compose -f docker/docker-compose.node.yml --env-file docker/.env.node up -d
+docker compose -f docker/docker-compose.node.yml logs -f node    # "link: registered with the hub"
+```
+
+Without a published image (before the first `node-v*` release) build it locally instead: add
+`--build` to `up` (~2 min on amd64 with 16 cores; Lc0 compiles from source), or
+`--build` with `WITH_MAIA=0` in `.env.node` for an image without Lc0/Maia. Update: `docker compose
+… pull && docker compose … up -d` (or `--build` again); the node drains running searches on stop
+(`stop_grace_period: 40s`).
+
+Status: `docker compose -f docker/docker-compose.node.yml ps` shows `healthy` once the engine
+server is up (the link state is separate — a node waiting for an unreachable hub is still
+healthy and retries forever). Details, including the link and engine state:
+
+```bash
+docker compose -f docker/docker-compose.node.yml exec node \
+  node -e "fetch('http://127.0.0.1:8580/health/detail').then(r=>r.text()).then(console.log)"
+```
+
+### Configuration (`docker/.env.node`)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HUB_URL` | `wss://c.referee.at/link` | Hub link endpoint. **Default, not final**: the public hub domain is still open (ADR-020); change it when announced. `wss://` only; `ws://` to a non-loopback host needs `DAISYCHESS_INSECURE=1` (test setups). |
+| `NODE_TOKEN` | – (required) | `dcn_<id>_<secret>` from the portal, shown once. Or `NODE_TOKEN_FILE=/run/secrets/…` (compose secret) so the token is not in the container env. |
+| `NODE_NAME` | – | Local name in logs and `/health/detail` (players see the portal name). |
+| `NODE_POOL` | `off` | `on` offers the node to the shared pool (the portal switch must allow it too). |
+| `MAX_SESSIONS` / `NODE_MAX_SESSIONS` | `2` | Engine processes running at once; the hub never routes more. |
+| `MAX_THREADS`, `MAX_HASH_MB`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_MOVETIME_MS` | see example | Per-search caps announced to the hub and enforced again by the node. |
+| `MAIA`, `MAIA_MAX_PROCESSES` | `on`, `2` | Human-like engines; `off` on tiny machines. Automatically `off` in a `WITH_MAIA=0` image. |
+| `NODE_CPUS`, `NODE_MEMORY` | `2`, `1g` | Compose resource limits (`cpus`, `mem_limit`). |
+| `NODE_IMAGE` | `ghcr.io/refaustria/daisychess-node:latest` | Image to run; pin a version or digest on unattended hosts. |
+
+Sizing: Stockfish uses up to `MAX_THREADS` cores per search and `MAX_SESSIONS` searches run at
+once, so keep `MAX_SESSIONS × MAX_THREADS ≤ NODE_CPUS`; memory needs about
+`MAX_SESSIONS × (MAX_HASH_MB + 80 MB) + 200 MB`, plus ~20 MB per Maia process. Lending a
+machine you also use: leave a core free and lower `NODE_CPUS`; the container cannot exceed it.
+
+### CPU notes
+
+- **amd64:** the image ships the official Stockfish 19 *universal* binary (sha256-verified
+  release asset), which picks the fastest instruction set at start — x86-64, SSE4.1/POPCNT,
+  AVX2, BMI2, AVX-VNNI, AVX-512, VNNI-512, AVX-512 ICL. CPUs **without AVX2** (older or
+  virtualised ones, like this project's own host, ADR-003) work, just slower. The container
+  logs the detected and the selected variant at start (`daisychess-node: cpu: …`); a VM that
+  hides AVX2 from the guest gets the SSE4.1 build, so pass the host CPU through
+  (`-cpu host`) if you can. Lc0 is built for a portable SSE4.2 baseline (Maia needs one
+  network evaluation per move; speed does not matter).
+- **arm64:** Stockfish is compiled in the image from the pinned, checksum-verified sf_19 source
+  as `ARCH=arm64-universal` — armv8 (NEON; Raspberry Pi 4, Graviton 1) plus armv8-dotprod
+  (Pi 5, Apple M-series, Graviton 2+, Ampere Altra), selected at runtime. Lc0 uses NEON.
+  (`--build-arg STOCKFISH_ARM64=release` uses the official arm64 universal asset instead.)
+- A suggested start for a Raspberry Pi 4 (4 cores, 4 GB): `MAX_SESSIONS=2 MAX_THREADS=2 MAX_HASH_MB=128` (not measured yet).
+
+### Hardening (what the compose file does)
+
+Non-root user (uid 10001), read-only root filesystem with a 64 MB `/tmp` tmpfs, `cap_drop: ALL`,
+`no-new-privileges`, a pid limit, bounded logs, no published ports (the health endpoint listens
+on the container's loopback only and is checked from inside), no secrets in the image — the
+token arrives at runtime. A fatal link answer (`bad_token`, `revoked`, `node_outdated`,
+`replaced` = the same token running twice) makes the node exit non-zero on purpose; Docker's
+increasing restart delay keeps it from hammering the hub — fix the token and `up -d` again.
+
+### Smoke test and releases
+
+`scripts/node-image-smoke.sh` builds the image (amd64 by default, `--platform linux/arm64` with
+QEMU or on an arm64 host), checks the image metadata, runs it offline (`--network none`: healthy,
+engines found, reconnect backoff against an unreachable hub, read-only root, clean SIGTERM),
+and then links it to a fake hub (`scripts/node-smoke-hub.mjs`) for one Stockfish search and one
+Maia move, plus a 1-CPU `MAIA=off` run. Releases: push a `node-v<x.y.z>` tag;
+`.github/workflows/release-node.yml` builds both architectures on native runners, runs the smoke
+test on each and pushes `ghcr.io/<owner>/daisychess-node:<x.y.z>`, `:<x.y>` and `:latest`
+with provenance and an SBOM.

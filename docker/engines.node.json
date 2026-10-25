@@ -1,0 +1,241 @@
+{
+  "_comment": "Engine registry of the community node image (docker/node.Dockerfile, M24-8). Absolute paths inside the container. Stockfish: the sf_19 universal build (amd64: verified release asset; arm64: built from the pinned source), which selects its instruction set at runtime. maia-*: Lc0 (scripts/build-lc0.sh) with the Maia nets (scripts/fetch-maia.sh); disabled automatically when the image was built with WITH_MAIA=0 or MAIA=off. The node-wide cap is MAX_SESSIONS / NODE_MAX_SESSIONS; maxInstances only bounds a single engine.",
+  "engines": [
+    {
+      "id": "stockfish",
+      "name": "Stockfish 19",
+      "binary": "/app/engines/stockfish/stockfish",
+      "enabled": true,
+      "options": {
+        "Threads": 2,
+        "Hash": 128
+      },
+      "maxInstances": 8
+    },
+    {
+      "id": "maia-1100",
+      "name": "Maia 1100",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1100.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1100,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1200",
+      "name": "Maia 1200",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1200.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1200,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1300",
+      "name": "Maia 1300",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1300.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1300,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1400",
+      "name": "Maia 1400",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1400.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1400,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1500",
+      "name": "Maia 1500",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1500.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1500,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1600",
+      "name": "Maia 1600",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1600.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1600,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1700",
+      "name": "Maia 1700",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1700.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1700,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1800",
+      "name": "Maia 1800",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1800.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1800,
+      "maxNodes": 1
+    },
+    {
+      "id": "maia-1900",
+      "name": "Maia 1900",
+      "binary": "/app/engines/lc0/lc0",
+      "weights": "/app/engines/maia/maia-1900.pb.gz",
+      "args": [
+        "--backend=eigen",
+        "--threads=1",
+        "--minibatch-size=1",
+        "--max-prefetch=0",
+        "--nncache=1000"
+      ],
+      "initOptions": {
+        "VerboseMoveStats": true
+      },
+      "enabled": true,
+      "options": {
+        "Threads": 1
+      },
+      "maxInstances": 3,
+      "group": "maia",
+      "style": "human",
+      "rating": 1900,
+      "maxNodes": 1
+    }
+  ]
+}

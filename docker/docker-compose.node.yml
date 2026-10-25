@@ -1,0 +1,56 @@
+# DaisyChess community engine node (ROLE=node, ADR-020, M24-8): the engines of this machine,
+# lent to a DaisyChess hub over one outbound WebSocket. No port is published; nothing listens
+# on the host. Quickstart (deploy/README.md, "Run a community node"):
+#   cp docker/node.env.example docker/.env.node   # set NODE_TOKEN (portal), adjust limits
+#   docker compose -f docker/docker-compose.node.yml --env-file docker/.env.node up -d
+#   docker compose -f docker/docker-compose.node.yml logs -f node
+# `--env-file` feeds the ${…} values below (cpus, memory, image); `env_file` passes the same file
+# to the container. Build locally instead of pulling: add `--build` (needs the repo checkout).
+name: daisychess-node
+
+services:
+  node:
+    image: ${NODE_IMAGE:-ghcr.io/refaustria/daisychess-node:latest}
+    build:
+      context: ..
+      dockerfile: docker/node.Dockerfile
+      args:
+        WITH_MAIA: ${WITH_MAIA:-1}
+    env_file:
+      - path: .env.node
+        required: true
+    # No `init: true`: the image's entrypoint already runs tini as PID 1.
+    # Fatal link ends (bad/revoked token, outdated node, a second node with the same token) exit
+    # non-zero on purpose (ADR-020 §3); Docker's growing restart delay keeps that from hammering
+    # the hub. `docker compose stop` stays stopped.
+    restart: unless-stopped
+    stop_grace_period: 40s   # SIGTERM drains running searches first (node.drain, ≤ 30 s)
+    # Hardening (docs/SECURITY.md): unprivileged user from the image, no capabilities, no privilege
+    # escalation, immutable root filesystem. The node writes nothing; /tmp is a small tmpfs.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Resources: Stockfish uses up to MAX_THREADS cores per search and MAX_SESSIONS searches run
+    # at once, so MAX_SESSIONS x MAX_THREADS should not exceed NODE_CPUS; memory needs roughly
+    # MAX_SESSIONS x (MAX_HASH_MB + 80 MB) plus ~150 MB for Node.js and ~20 MB per Maia process.
+    cpus: ${NODE_CPUS:-2}
+    mem_limit: ${NODE_MEMORY:-1g}
+    pids_limit: 512
+    # Bounded logs (the node logs one line per link event, not per search).
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    # No `ports:` on purpose: the node only connects out (HUB_URL). The health endpoint listens on
+    # the container's loopback and is checked from inside (image HEALTHCHECK).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8580)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

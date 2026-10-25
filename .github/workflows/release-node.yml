@@ -1,0 +1,149 @@
+name: Release node image
+# Community node image (docker/node.Dockerfile, ADR-020 §7, M24-8) → ghcr.io/<owner>/daisychess-node.
+# Trigger: push a tag `node-v<major>.<minor>.<patch>` (e.g. node-v0.1.0; `-rc.1` style
+# pre-releases are published without moving `latest`).
+#
+# Each architecture builds on a native runner (ubuntu-24.04 / ubuntu-24.04-arm, no QEMU), runs
+# scripts/node-image-smoke.sh against the freshly built image (link to a fake hub, one search,
+# MAIA=off on 1 CPU), and only then pushes by digest with SLSA provenance and an SBOM. The
+# `manifest` job joins both digests into one multi-arch tag.
+on:
+  push:
+    tags: ['node-v*']
+
+# Least privilege (docs/SECURITY.md); the push jobs widen it to packages: write.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-node-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/daisychess-node
+
+# Third-party actions are pinned by full commit SHA (tags are mutable); the release tag is in the
+# trailing comment. Bump SHA and comment together (`git ls-remote https://github.com/<repo> <tag>`).
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write       # push by digest (provenance + SBOM are stored with the image)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Platform slug
+        run: echo "ARCH=${PLATFORM#linux/}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.title=daisychess-node
+            org.opencontainers.image.licenses=GPL-3.0-or-later
+
+      # 1. Build and load locally (no attestations: the docker image store cannot hold them),
+      #    then smoke-test exactly this image natively.
+      - name: Build (local, for the smoke test)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/node.Dockerfile
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: daisychess-node:smoke-${{ env.ARCH }}
+          secrets: |
+            github_token=${{ github.token }}
+          cache-from: type=gha,scope=node-${{ env.ARCH }}
+          cache-to: type=gha,scope=node-${{ env.ARCH }},mode=max
+      - name: Smoke test
+        run: bash scripts/node-image-smoke.sh --no-build --platform "${{ matrix.platform }}"
+
+      # 2. Same build from cache, pushed by digest with provenance + SBOM.
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: push
+        name: Push by digest
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/node.Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          secrets: |
+            github_token=${{ github.token }}
+          cache-from: type=gha,scope=node-${{ env.ARCH }}
+      - name: Record digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ env.ARCH }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=match,pattern=node-v(\d+\.\d+\.\d+.*),group=1
+            type=match,pattern=node-v(\d+\.\d+)\.\d+$,group=1
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Create multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<<"$METADATA")
+          sources=$(for d in *; do printf '%s@sha256:%s ' "$IMAGE" "$d"; done)
+          # shellcheck disable=SC2086 # word lists on purpose
+          docker buildx imagetools create $tags $sources
+        env:
+          METADATA: ${{ steps.meta.outputs.json }}
+      - name: Inspect
+        run: docker buildx imagetools inspect "$IMAGE:$VERSION"
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}

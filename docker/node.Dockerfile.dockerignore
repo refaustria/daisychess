@@ -1,0 +1,31 @@
+# Build context of docker/node.Dockerfile (BuildKit reads <Dockerfile>.dockerignore instead of the
+# root .dockerignore). Allow-list: only what the image needs reaches the builder, so local
+# secrets and state (apps/server/.env.production, apps/server/data/, engines/) never do.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!LICENSE
+!THIRD_PARTY_NOTICES.md
+!apps/server/package.json
+!apps/server/tsconfig.json
+!apps/server/tsconfig.build.json
+!apps/server/src
+!apps/web/package.json
+!packages/ui-theme/package.json
+!packages/engine-core/package.json
+!packages/engine-core/tsconfig.json
+!packages/engine-core/tsconfig.build.json
+!packages/engine-core/src
+!scripts/fetch-engines.sh
+!scripts/build-stockfish.sh
+!scripts/build-lc0.sh
+!scripts/fetch-maia.sh
+!docker/engines.node.json
+!docker/node-entrypoint.sh
+# Re-exclude inside the allowed trees.
+**/node_modules
+**/dist
+**/*.test.ts
+**/.env*
