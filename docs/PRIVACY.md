@@ -2,11 +2,11 @@
 
 > **Draft — not legal advice; review before publishing.** Placeholders in square brackets must be filled in by the owner.
 
-This notice explains in plain language what data DaisyChess handles, for players of the web app and for people who run or use community engine nodes. It applies to the hub run at **c.referee.at** (the domain may change). If you self-host DaisyChess, you are the controller of your own installation.
+This notice explains in plain language what data DaisyChess handles, for players of the web app and for people who run or use community engine nodes. It applies to the hub run at **play.daisychess.org** (web app and operator portal; community nodes connect to hub.daisychess.org). The former address c.referee.at only redirects there. If you self-host DaisyChess, you are the controller of your own installation.
 
 ## 1. Who is responsible
 
-Data controller: **[OWNER NAME]**, **[POSTAL ADDRESS, AUSTRIA]**, contact: **[CONTACT E-MAIL]**.
+Data controller: **Bojan Savicevic aka appac**, **1220 Vienna, Austria**, contact: **hello@daisychess.org**.
 
 ## 2. The short version
 
@@ -63,6 +63,7 @@ When you analyse on a **community node**, the hub relays your search to the mach
 
 - The portal sets **one cookie**, `__Host-dc_portal`: a login session identifier, HttpOnly, Secure, SameSite=Strict, valid up to 30 days. It is strictly necessary for the login, so no consent banner is required. The web app and the player side set no cookies.
 - The web app uses your browser's **localStorage / IndexedDB** for settings (theme, board, engine choices, access token for the server, review cache). It never leaves your device unless you use a feature that says so (for example a setup link you copy yourself). Clear it in your browser's site settings.
+- **Move from c.referee.at:** when you open the old address once, a small page there copies these browser settings (including your server access token and lichess login) to play.daisychess.org inside the address's `#` part, which browsers never send to any server; the app saves them in your browser and removes them from the address bar. Nothing is stored on our side. Reviews cached in the browser are not copied. The copy on c.referee.at stays in your browser until you clear that site's data.
 
 ## 8. Sharing and processors
 
@@ -70,7 +71,7 @@ Data is not sold or shared for advertising. The hub is hosted on a server operat
 
 ## 9. Your rights
 
-Under the GDPR you may request **access**, **rectification**, **erasure**, **restriction**, **portability** and you may **object** to processing based on legitimate interest. Operators can delete their account, nodes and tokens themselves in the portal, which removes the lichess id and username from the live database (backups are overwritten within 7 days). For other requests write to **[CONTACT E-MAIL]**. Because logs and counters are pseudonymous, we may ask for the token id or the approximate time to find your data. You may also complain to the Austrian data protection authority (Datenschutzbehörde, <https://www.dsb.gv.at>).
+Under the GDPR you may request **access**, **rectification**, **erasure**, **restriction**, **portability** and you may **object** to processing based on legitimate interest. Operators can delete their account, nodes and tokens themselves in the portal, which removes the lichess id and username from the live database (backups are overwritten within 7 days). For other requests write to **hello@daisychess.org**. Because logs and counters are pseudonymous, we may ask for the token id or the approximate time to find your data. You may also complain to the Austrian data protection authority (Datenschutzbehörde, <https://www.dsb.gv.at>).
 
 ## 10. Children
 

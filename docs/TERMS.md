@@ -2,7 +2,7 @@
 
 > **Draft — not legal advice; review before publishing.** Placeholders in square brackets must be filled in by the owner.
 
-These terms apply to the DaisyChess hub operated by **[OWNER NAME], [POSTAL ADDRESS, AUSTRIA]** ("we"), reachable at c.referee.at (the domain may change), including the web app, the operator portal and the shared pool. Contact: **[CONTACT E-MAIL]**. How personal data is handled: [`PRIVACY.md`](./PRIVACY.md).
+These terms apply to the DaisyChess hub operated by **Bojan Savicevic, 1220 Vienna, Austria** ("we"), reachable at play.daisychess.org (formerly c.referee.at, which redirects; node links at hub.daisychess.org), including the web app, the operator portal and the shared pool. Contact: **hello@daisychess.org**. How personal data is handled: [`PRIVACY.md`](./PRIVACY.md).
 
 ## 1. The service and the software
 
