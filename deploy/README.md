@@ -31,7 +31,7 @@ sudo cp deploy/nginx/c.referee.at.conf /etc/nginx/sites-available/c.referee.at
 sudo ln -s /etc/nginx/sites-available/c.referee.at /etc/nginx/sites-enabled/c.referee.at
 sudo nginx -t && sudo systemctl reload nginx
 
-sudo certbot --nginx -d c.referee.at --non-interactive --agree-tos --redirect -m bojan@referee.at
+sudo certbot --nginx -d c.referee.at --non-interactive --agree-tos --redirect -m <your-email>
 sudo nginx -t && sudo systemctl reload nginx
 ```
 

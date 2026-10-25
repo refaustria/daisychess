@@ -34,7 +34,7 @@ Engine binaries and nets are downloaded or built on the operator's machine and a
 |---|---|
 | DaisyChess logo, favicons, icons (`apps/web/public/brand/`, `apps/web/public/favicon.svg`) | Original work of this project, GPL-3.0-or-later |
 | "Letters" piece set (`packages/ui-theme/src/pieces/letters.css`) | Original work of this project (MIT per `pieceSets.ts`; distributed here under GPL-3.0-or-later) |
-| Board themes (`packages/ui-theme/src/boardThemes.ts`) | Colour values only. Brown, blue, green and purple use the well-known lichess board colours (plain hex values, not copyrightable artwork); wood and grey are plain hex values with no recorded source (no artwork; flagged for the owner to confirm) |
+| Board themes (`packages/ui-theme/src/boardThemes.ts`) | Colour values only. Brown, blue, green and purple use the well-known lichess board colours (plain hex values, not copyrightable artwork); wood and grey are plain hex values modelled on chess.com board colours (colour values only, no artwork; owner confirmed 2026-10-25) |
 | Sounds (`apps/web/src/sound/sounds.ts`) | Synthesised at runtime with the Web Audio API; no audio files |
 | Fonts | None bundled; system font stacks only |
 

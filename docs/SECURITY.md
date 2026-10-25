@@ -163,3 +163,56 @@ curl -sI https://c.referee.at/ | grep -iE 'content-security|strict-transport|cro
 node scripts/check-csp.mjs /etc/nginx/sites-available/c.referee.at   # repo + live nginx carry PRODUCTION_CSP
 pnpm e2e                                     # all specs under the enforced CSP; fails on any violation report
 ```
+
+## 6. Community nodes and hub (ADR-020) — threat model, design stage
+
+**Date:** 2026-10-25 · **Status:** design (M24-0); to be re-verified against the implementation in M24-7 (hub live) and M24-9/10 (portal). Everything above stays valid for the standalone server and for the hub's own listener; this section adds the actors and assets that ADR-020 introduces.
+
+### 6.1 New actors and assets
+
+| Asset | Threat | Who |
+|---|---|---|
+| The hub's routing: which node serves which token | Impersonating a node (stolen/guessed node token), impersonating a player (stolen/guessed player token), re-pointing someone else's token | Internet; a malicious operator; someone with a leaked token |
+| Node operators' machines (strangers' hardware running `apps/server` `ROLE=node`) | A hostile hub or a hub compromise pushing more than the operator allowed; a node owner being DoSed through the hub | The hub (or whoever controls it); other players |
+| Players' positions | Disclosure to the node operator (inherent to the model); correlation with an identity | The node operator |
+| Result integrity | A node returning wrong or fabricated evaluations (modified engine, bug, slow CPU reporting fake depth) | A malicious or broken operator |
+| The hub as relay (CPU, bandwidth, event loop) | Amplification through many nodes/clients, link floods, bogus registrations | Internet; a malicious operator |
+| Operator identities and the token registry (`hub.sqlite`) | Theft of hashed secrets, enumeration of token ids, portal session hijack (CSRF/XSS), privilege escalation to administrator | Internet; an operator |
+| Logs and usage counters | PII accumulation (IPs, lichess names), de-anonymising players through usage rows | Log readers |
+
+### 6.2 Controls (as designed)
+
+| Threat | Control (ADR-020 section) |
+|---|---|
+| Node impersonation | Node token `dcn_<id>_<160-bit secret>`, `sha256` at rest, constant-time compare (`tokenMatches`); rotation with a 24 h overlap; revocation closes the link at once; a second link with the same id replaces the first (`replaced`), so a stolen token is noticed as a flapping node (§2, §3) |
+| Player-token guessing | `dc1_<id>_<160-bit secret>`, lookup by public id, constant-time compare of the hashed secret; 20 bad tokens per IP per 10 min → `rate_limited` + close; nginx handshake limits as today (§4) |
+| Hostile hub → node | The node validates every relayed frame with the same engine-core schemas, the same UCI option allow-list and its *own* limits; it spawns only binaries from its own `engines.json`; no inbound port; `wss://` enforced; Docker read-only/non-root/`cap_drop ALL` (§5) |
+| Node → hub abuse | Node can only address its own `cid`s; `LINK_MAX_MSGS_PER_S`, 20 KiB frame cap, unknown-`cid` counter, `info` cap 60/s per search, drop under 1 MiB backpressure; connection-level `error`s from nodes are not relayed (§3, §5) |
+| Wrong results | Schema validation of everything a node sends; spot-checks of pool searches on the hub's built-in node (`SPOTCHECK_RATE`), `suspect` state removes a node from the pool; node name and operator always visible to the player; administrator ban (§5). Signing is deliberately not used: it proves origin, not correctness |
+| Position disclosure | Inherent: documented in `docs/PRIVACY.md`, one-time in-app notice before the first pool search, node/operator shown in the engine status; nodes never receive IPs, tokens, PGN headers or names (§5) |
+| Hub DoS via `/link` | nginx `limit_req` 2/s burst 5 and `limit_conn 5` per IP on `/link`; `node.hello` required within 10 s; 1008 on a bad token, counted per IP (fail2ban filter extended); node-side exponential backoff with a hard stop on `bad_token`/`revoked`/`node_outdated` (§3, §5) |
+| Amplification via players | Unchanged: per-IP session cap (now hub-wide across nodes), per-token session cap (tier), rate limits, `no_capacity`; relay adds no new multiplier (§4) |
+| Portal CSRF / session theft | `__Host-` cookie, `HttpOnly`, `Secure`, `SameSite=Strict`; `X-Requested-With` header required on mutations; same-origin REST only; static SPA under the site's CSP; sessions 30 days, revocable; no HTML rendered by the hub (§5) |
+| Privilege escalation | Administrator = the lichess username in `HUB_ADMIN_LICHESS` (first login) only; operators query rows filtered by `operator_id` in every statement; secrets are never readable after creation, not even by the administrator (§2, §6) |
+| lichess token handling | PKCE in the portal SPA; the hub receives the lichess token once, verifies `GET /api/account` through the loopback nginx egress proxy (`127.0.0.1:8581`, the unit keeps `IPAddressDeny=any`), discards it; the SPA revokes it (§2) |
+| Logs / PII | `tokenId` and `nodeId` only (never secrets), client IP as a daily-salted hash at `info` (raw at `debug`; closes M10-2), FENs at `debug`; journald `MaxRetentionSec=7day`; `usage_daily` holds aggregates per token/node without IPs, kept 90 days; operators' lichess id/username deleted with the account (§5, §6) |
+| Hub store loss | Not reproducible (unlike `reviews.sqlite`): nightly `.backup`, 7 copies, in the runbook (§6) |
+
+### 6.3 Residual risks accepted at design time
+
+- A pool node operator sees the positions of strangers; a determined operator could try to match them against public games. Mitigation is disclosure and the choice to use only private nodes.
+- Spot-checks catch systematic lying, not a node that is wrong 1 % of the time or only in certain positions; private-node users trust their operator by definition.
+- The hub is a single point of failure for every node (no hub → no server analysis anywhere); the browser engine remains the fallback (ADR-014/015).
+- Node tokens live in operators' environments (Docker env files, shell history); the portal shows `last_seen_at` and the node's `version`/`arch`, which is the only way to notice a copied token.
+
+### 6.4 To verify once implemented (extends §5)
+
+```bash
+pnpm --filter @daisychess/engine-core test     # link.ts schemas, token format
+pnpm --filter @daisychess/server test          # hub/*.test.ts, node/*.test.ts: bad token → 1008, replaced link, drain, relay ordering, per-token ledger
+node deploy/link-smoke.mjs                    # fake node registers, a player hello is routed to it and gets info/bestmove through the relay
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' https://c.referee.at/link   # 101, then 1008 without a valid node.hello
+curl -s -X POST https://c.referee.at/api/portal/tokens                                                          # 401 without the cookie + header
+sudo journalctl -u daisychess-server -n 200 --no-pager | grep -c '"ip":"[0-9a-f]\{16\}'                         # hashed IPs only at info
+```
