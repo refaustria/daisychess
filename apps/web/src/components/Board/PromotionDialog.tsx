@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Orientation } from '../../store/gameStore';
+import { useBackHandler } from '../../platform/backButton';
 import styles from './PromotionDialog.module.css';
 
 export type PromotionPiece = 'q' | 'n' | 'r' | 'b';
@@ -59,6 +60,9 @@ export function PromotionDialog({
   const col = orientation === 'white' ? file : 7 - file;
   const row = orientation === 'white' ? 8 - rank : rank - 1;
   const down = row === 0;
+
+  // Android back button cancels the chooser (M26-4).
+  useBackHandler(true, onCancel);
 
   useEffect(() => {
     first.current?.focus();

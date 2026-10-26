@@ -15,6 +15,7 @@ import {
   type PremoveMode,
   type ReviewEnginePreference,
 } from '../../store/settingsStore';
+import { isNativeApp } from '../../platform';
 import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
 import { MaiaHintsField } from './MaiaHintsField';
 import { AboutField } from './AboutField';
@@ -262,6 +263,17 @@ export function SettingsPanel() {
         />
         Sound
       </label>
+
+      {isNativeApp() && (
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            checked={s.haptics}
+            onChange={(e) => s.set({ haptics: e.target.checked })}
+          />
+          Haptic feedback
+        </label>
+      )}
 
       <label className={styles.check}>
         <input

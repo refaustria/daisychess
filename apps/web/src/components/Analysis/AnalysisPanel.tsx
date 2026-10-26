@@ -1,5 +1,6 @@
 import { formatScore, type Score } from '@daisychess/engine-core';
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useId,
@@ -38,6 +39,7 @@ import {
 import { nodeParts } from '../EngineToggle/EngineToggle';
 import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import { usePreviewStore } from '../../store/previewStore';
+import { useBackHandler } from '../../platform/backButton';
 import styles from './AnalysisPanel.module.css';
 
 export const DEPTH_OPTIONS = [10, 14, 18, 22, 26, 30, 0];
@@ -166,6 +168,13 @@ function EnginePicker() {
     setConfirm(null);
     setEngineEnabled(d.key, on);
   };
+
+  // Android back button: dismiss the download question first, then the picker (M26-4).
+  const back = useCallback(() => {
+    if (confirm) setConfirm(null);
+    else setOpen(false);
+  }, [confirm]);
+  useBackHandler(open, back);
 
   // Server engines are discovered when the picker opens (cached by the store).
   useEffect(() => {

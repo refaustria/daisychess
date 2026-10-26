@@ -113,3 +113,29 @@ bash apps/mobile/scripts/android-smoke.sh apps/mobile/android/app/build/outputs/
   `@capacitor/app` `appUrlOpen` + launch URL). Test on a device/emulator:
   `adb shell am start -a android.intent.action.VIEW -d 'daisychess://setup?token=dc1_x&hub=wss%3A%2F%2Fhub.example%2Fws'`,
   `xcrun simctl openurl booted 'daisychess://setup?token=dc1_x'`.
+
+## Native polish and lifecycle (M26-4)
+
+All of it lives in `apps/web/src/platform/` and is a no-op on the web: each plugin is loaded by a
+lazy `import()` behind the literal `import.meta.env.MODE === 'mobile'` check in `native.ts`, so the
+web bundle contains no plugin code. Plugins (exact pins in `apps/web` and `apps/mobile`):
+`@capacitor/haptics`, `@capacitor/status-bar`, `@capacitor/preferences`,
+`@capacitor-community/keep-awake` (MIT, maintained; Capacitor has no official keep-awake plugin).
+
+- **Safe area**: the mobile build sets `viewport-fit=cover`; `App.module.css` pads with
+  `max(env(safe-area-inset-*), var(--safe-area-inset-*))` (the variables come from Capacitor 8
+  SystemBars on Android WebView < 140). The header background extends under the status bar.
+- **Status bar**: style follows the effective theme (`data-theme` or the system scheme).
+- **Haptics** (setting "Haptic feedback", default on, shown in the app only): light for a move,
+  medium for a capture, heavy for check/mate, a notification at the end of an engine, live or
+  friend game.
+- **Keep awake** while an engine game, a live game, a friend game or an openings drill runs.
+- **Back button** (Android): closes the topmost dialog (promotion chooser, engine picker and its
+  download question register through `useBackHandler`), else goes back through the visited tabs,
+  else exits the app on the first tab.
+- **Lifecycle**: 2.5 s after `appStateChange` → inactive the engines are released (synthetic
+  `pagehide`: the live analysis and the engine game dispose their engine, the shared pool is
+  trimmed); on resume a persisted `pageshow` recreates them (the ADR-015 / M19-1 path).
+- **Storage**: settings (with the server token), the theme and the lichess login are mirrored to
+  Preferences; localStorage remains the synchronous read-through cache. A key purged from
+  localStorage is restored from Preferences before the first render.

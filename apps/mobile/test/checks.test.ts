@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkDist } from '../scripts/check-dist.mjs';
+import { checkDist, checkLicenceChunk } from '../scripts/check-dist.mjs';
 import { checkSmokeResult, findSmokeResult } from '../scripts/check-smoke-log.mjs';
 
 const CSP = "default-src 'self'; script-src 'self'";
@@ -127,5 +127,16 @@ describe('checkSmokeResult', () => {
         { expectWelcome: true },
       ),
     ).toEqual(['no welcome from ws://127.0.0.1:18580/ws (websocket error (origin refused?))']);
+  });
+});
+
+describe('checkLicenceChunk', () => {
+  const gpl = 'x GNU GENERAL PUBLIC LICENSE y';
+  it('accepts the GPL text in a lazy chunk only', () => {
+    expect(checkLicenceChunk({ entry: 'app', chunks: { 'a.js': 'app', 'b.js': gpl } })).toEqual([]);
+  });
+  it('rejects it in the entry or when missing', () => {
+    expect(checkLicenceChunk({ entry: gpl, chunks: { 'a.js': gpl } })).toHaveLength(1);
+    expect(checkLicenceChunk({ entry: 'app', chunks: { 'a.js': 'app' } })).toHaveLength(1);
   });
 });

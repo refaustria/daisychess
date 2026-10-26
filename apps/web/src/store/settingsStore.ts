@@ -32,6 +32,8 @@ export interface Settings {
   coordinates: boolean;
   highlightStyle: HighlightStyle;
   sound: boolean;
+  /** Haptic feedback for moves and game end (native apps only; M26-4). */
+  haptics: boolean;
   /** Start a fast review automatically after a game is loaded (PGN, file, online import). */
   autoReview: boolean;
   /** Guided tour through the moves after a review completes (M20-2). */
@@ -54,7 +56,9 @@ export interface Settings {
 }
 
 /** Maia levels offered for {@link Settings.maiaRating} (ADR-019). */
-export const MAIA_RATINGS: readonly number[] = [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900];
+export const MAIA_RATINGS: readonly number[] = [
+  1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900,
+];
 
 /** Same bound as the protocol's `hello.token`. */
 export const MAX_SERVER_TOKEN_LENGTH = 256;
@@ -72,6 +76,7 @@ export const DEFAULT_SETTINGS: Settings = {
   coordinates: true,
   highlightStyle: 'classic',
   sound: true,
+  haptics: true,
   autoReview: true,
   reviewTour: true,
   premoves: 'single',
@@ -119,6 +124,7 @@ export function parseSettings(raw: string | null): Settings {
     out.highlightStyle = o.highlightStyle as HighlightStyle;
   }
   if (typeof o.sound === 'boolean') out.sound = o.sound;
+  if (typeof o.haptics === 'boolean') out.haptics = o.haptics;
   if (typeof o.autoReview === 'boolean') out.autoReview = o.autoReview;
   if (typeof o.reviewTour === 'boolean') out.reviewTour = o.reviewTour;
   if (typeof o.premoves === 'string' && (PREMOVE_MODES as readonly string[]).includes(o.premoves)) {
@@ -174,6 +180,7 @@ function pick(s: Settings): Settings {
     coordinates: s.coordinates,
     highlightStyle: s.highlightStyle,
     sound: s.sound,
+    haptics: s.haptics,
     autoReview: s.autoReview,
     reviewTour: s.reviewTour,
     premoves: s.premoves,

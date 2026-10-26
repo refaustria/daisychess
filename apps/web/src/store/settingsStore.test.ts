@@ -124,3 +124,12 @@ describe('settingsStore', () => {
     expect(stored().customBoard).toBeUndefined();
   });
 });
+
+describe('haptics setting', () => {
+  it('defaults to on, persists and parses defensively', () => {
+    expect(useSettingsStore.getState().haptics).toBe(true);
+    useSettingsStore.getState().set({ haptics: false });
+    expect(stored().haptics).toBe(false);
+    expect(parseSettings(JSON.stringify({ haptics: 'no' })).haptics).toBe(true);
+  });
+});

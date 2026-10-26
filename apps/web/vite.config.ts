@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
-import { appendFileSync, mkdirSync, rmSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { appendFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
@@ -25,7 +26,10 @@ function cspReportCollector(): Plugin {
         req.on('end', () => {
           const body = Buffer.concat(chunks).toString('utf8').slice(0, 16_384);
           mkdirSync(dirname(CSP_REPORT_FILE), { recursive: true });
-          appendFileSync(CSP_REPORT_FILE, `${JSON.stringify({ at: new Date().toISOString(), body })}\n`);
+          appendFileSync(
+            CSP_REPORT_FILE,
+            `${JSON.stringify({ at: new Date().toISOString(), body })}\n`,
+          );
           console.error(`[csp-violation] ${body}`);
           res.statusCode = 204;
           res.end();
@@ -54,6 +58,29 @@ const previewHeaders = {
  * `defaultServerUrl()` in the app only) and the CSP travels in a `<meta http-equiv>`, since no
  * server sends the header there.
  */
+/** Build identity for About (appInfo.ts): version of the app package, git commit, target. */
+export function buildInfoDefines(mobile: boolean): Record<string, string> {
+  const pkgUrl = new URL(mobile ? '../mobile/package.json' : './package.json', import.meta.url);
+  const version = (JSON.parse(readFileSync(fileURLToPath(pkgUrl), 'utf8')) as { version: string })
+    .version;
+  let commit = process.env.GITHUB_SHA ?? '';
+  if (!commit) {
+    try {
+      commit = execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .trim();
+    } catch {
+      commit = '';
+    }
+  }
+  return {
+    __APP_VERSION__: JSON.stringify(version),
+    __APP_COMMIT__: JSON.stringify(commit),
+    __APP_BUILD__: JSON.stringify(process.env.GITHUB_RUN_NUMBER ?? ''),
+    __APP_MOBILE__: JSON.stringify(mobile),
+  };
+}
+
 export const MOBILE_MODE = 'mobile';
 export const MOBILE_OUT_DIR = 'dist-mobile';
 export const MOBILE_DEFAULT_SERVER_URL = 'wss://play.daisychess.org/ws';
@@ -68,13 +95,21 @@ export function cspMetaTag(): Plugin {
     apply: 'build',
     transformIndexHtml: {
       order: 'post',
-      handler: () => [
-        {
-          tag: 'meta',
-          attrs: { 'http-equiv': 'Content-Security-Policy', content: mobileMetaCsp() },
-          injectTo: 'head-prepend',
-        },
-      ],
+      handler: (html: string) => ({
+        // `viewport-fit=cover` (edge-to-edge under the notch; the layout pads with the safe-area
+        // insets, M26-4) is the mobile build only: the web page keeps the plain viewport.
+        html: html.replace(
+          'content="width=device-width, initial-scale=1.0"',
+          'content="width=device-width, initial-scale=1.0, viewport-fit=cover"',
+        ),
+        tags: [
+          {
+            tag: 'meta',
+            attrs: { 'http-equiv': 'Content-Security-Policy', content: mobileMetaCsp() },
+            injectTo: 'head-prepend' as const,
+          },
+        ],
+      }),
     },
   };
 }
@@ -95,8 +130,14 @@ function dropWellKnown(): Plugin {
 
 function mobileConfig(): UserConfig {
   return {
-    plugins: [react(), stockfishEngines({ builds: ['lite-single'] }), cspMetaTag(), dropWellKnown()],
+    plugins: [
+      react(),
+      stockfishEngines({ builds: ['lite-single'] }),
+      cspMetaTag(),
+      dropWellKnown(),
+    ],
     define: {
+      ...buildInfoDefines(true),
       // An explicit VITE_DEFAULT_SERVER_URL in the environment wins (CI points it at a runner hub).
       'import.meta.env.VITE_DEFAULT_SERVER_URL': JSON.stringify(
         process.env.VITE_DEFAULT_SERVER_URL || MOBILE_DEFAULT_SERVER_URL,
@@ -108,6 +149,7 @@ function mobileConfig(): UserConfig {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), stockfishEngines(), cspReportCollector()],
+  define: buildInfoDefines(false),
   ...(mode === MOBILE_MODE ? mobileConfig() : {}),
   resolve: {
     alias: {

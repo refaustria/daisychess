@@ -109,3 +109,23 @@ describe('SettingsPanel: setup link', () => {
     expect(useUiStore.getState().focusServerToken).toBe(false);
   });
 });
+
+describe('SettingsPanel haptics (M26-4)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('hides the haptics row on the web', () => {
+    render(<SettingsPanel />);
+    expect(screen.queryByLabelText('Haptic feedback')).toBeNull();
+  });
+
+  it('shows and toggles it in the app', () => {
+    vi.stubEnv('MODE', 'mobile');
+    vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'android' });
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByLabelText('Haptic feedback'));
+    expect(useSettingsStore.getState().haptics).toBe(false);
+  });
+});

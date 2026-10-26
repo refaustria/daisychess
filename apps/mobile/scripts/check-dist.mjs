@@ -78,6 +78,22 @@ export function checkDist({ files, indexHtml, expectedCsp, totalBytes }) {
   return errors;
 }
 
+/**
+ * About → Licences (M26-6): the GPL text must be bundled but live in a lazy chunk, not in the entry.
+ * @param {{ entry: string, chunks: Record<string, string> }} input entry JS source and all JS by file
+ * @returns {string[]} errors
+ */
+export function checkLicenceChunk({ entry, chunks }) {
+  const MARK = 'GNU GENERAL PUBLIC LICENSE';
+  /** @type {string[]} */
+  const errors = [];
+  if (entry.includes(MARK)) errors.push('GPL text is in the main entry chunk (must be lazy)');
+  if (!Object.values(chunks).some((c) => c.includes(MARK))) {
+    errors.push('GPL text is missing from the bundle (About → Licences would not work offline)');
+  }
+  return errors;
+}
+
 async function main() {
   const dir = process.argv[2] ?? DEFAULT_DIST;
   const files = listFiles(dir);
@@ -88,6 +104,13 @@ async function main() {
   // Same policy as the build: the production meta policy, plus the loopback smoke server in a
   // CI smoke build (VITE_MOBILE_SMOKE=1 + VITE_MOBILE_SMOKE_SERVER_URL, M26-2).
   const errors = checkDist({ files, indexHtml, expectedCsp: csp.mobileMetaCsp(), totalBytes });
+  const jsFiles = files.filter((f) => f.endsWith('.js'));
+  const entrySrc = /<script[^>]*\ssrc="([^"]*)"/.exec(indexHtml)?.[1] ?? '';
+  const entryPath = entrySrc.replace(/^\.?\//, '');
+  /** @type {Record<string, string>} */
+  const chunks = {};
+  for (const f of jsFiles) chunks[f] = readFileSync(join(dir, f), 'utf8');
+  errors.push(...checkLicenceChunk({ entry: chunks[entryPath] ?? '', chunks }));
   // Absolute asset URLs inside the stylesheets (url(...)).
   for (const f of files.filter((x) => x.endsWith('.css'))) {
     const css = readFileSync(join(dir, f), 'utf8');

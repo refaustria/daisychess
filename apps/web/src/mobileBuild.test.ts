@@ -80,15 +80,23 @@ describe('cspMetaTag', () => {
   it('prepends the meta policy to <head> in builds only', () => {
     const plugin = cspMetaTag();
     expect(plugin.apply).toBe('build');
-    const hook = plugin.transformIndexHtml as { order: string; handler: () => unknown };
+    const hook = plugin.transformIndexHtml as {
+      order: string;
+      handler: (html: string) => { html: string; tags: unknown[] };
+    };
     expect(hook.order).toBe('post');
-    expect(hook.handler()).toEqual([
+    const out = hook.handler(
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+    );
+    expect(out.tags).toEqual([
       {
         tag: 'meta',
         attrs: { 'http-equiv': 'Content-Security-Policy', content: mobileMetaCsp({}) },
         injectTo: 'head-prepend',
       },
     ]);
+    // Edge-to-edge under the notch (M26-4): the mobile build only.
+    expect(out.html).toContain('initial-scale=1.0, viewport-fit=cover');
   });
 
   it('mobile constants', () => {

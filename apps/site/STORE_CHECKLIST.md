@@ -6,10 +6,10 @@ the built site for `class="ph"` to find them all.
 
 ## Before submitting
 
-- [ ] Fill the remaining placeholders (owner name, Vienna address and hello@daisychess.org are in
-      already, from docs/PRIVACY.md): `[COMPETENT COURT, AUSTRIA]`, imprint street/phone/legal form/
-      register/UID/trade, hosting provider, log retention (`[7 days]` journal, `[14 days]` nginx —
-      confirm on the host), publication date.
+- [ ] Imprint data is complete (INCEPTUM e.U., FN 400396v, ATU68207022, Brunellengasse 1/3, 1220
+      Vienna, hello@daisychess.org). Still to check: any remaining `[IN BRACKETS]` placeholders
+      (`class="ph"` in the built site), e.g. `[COMPETENT COURT, AUSTRIA]`, hosting provider, log
+      retention (`[7 days]` journal, `[14 days]` nginx — confirm on the host), publication date.
 - [ ] Remove the `draft-banner` blocks on /privacy/, /terms/, /imprint/, /app-privacy/ once reviewed.
 - [ ] Have the privacy policy and terms reviewed (they are drafts, not legal advice).
 - [ ] Decide the three `[OWNER: check]` items on /app-privacy/ (usage counters, sharing with node operators).
@@ -18,14 +18,14 @@ the built site for `class="ph"` to find them all.
 
 ## URLs
 
-| Field | Apple | Google | URL |
-|---|---|---|---|
-| Privacy policy | required | required | https://daisychess.org/privacy/ |
-| Support URL | required | (contact website) | https://daisychess.org/support/ |
-| Marketing URL | optional | website | https://daisychess.org/ |
-| Account / data deletion URL | (only with accounts) | required ("Delete account URL" / data deletion) | https://daisychess.org/delete-data/ |
-| Terms (EULA) | optional (Apple standard EULA otherwise) | optional | https://daisychess.org/terms/ |
-| App privacy answers | App Privacy section | Data safety form | https://daisychess.org/app-privacy/ |
+| Field                       | Apple                                    | Google                                          | URL                                 |
+| --------------------------- | ---------------------------------------- | ----------------------------------------------- | ----------------------------------- |
+| Privacy policy              | required                                 | required                                        | https://daisychess.org/privacy/     |
+| Support URL                 | required                                 | (contact website)                               | https://daisychess.org/support/     |
+| Marketing URL               | optional                                 | website                                         | https://daisychess.org/             |
+| Account / data deletion URL | (only with accounts)                     | required ("Delete account URL" / data deletion) | https://daisychess.org/delete-data/ |
+| Terms (EULA)                | optional (Apple standard EULA otherwise) | optional                                        | https://daisychess.org/terms/       |
+| App privacy answers         | App Privacy section                      | Data safety form                                | https://daisychess.org/app-privacy/ |
 
 ## Contact details
 
@@ -59,11 +59,82 @@ the built site for `class="ph"` to find them all.
 ## Other declarations
 
 - Ads: **No ads** (Google "Contains ads": no). In-app purchases: none. Price: free.
-- Google "App access": all functionality available without special access (token only for server analysis).
+- Google "App access": see the paste-ready text below.
 - Google Data safety: see /app-privacy/ (encrypted in transit: yes; deletion request: yes).
 - Apple App Privacy: "Data Not Linked to You" per /app-privacy/; Tracking: no; no ATT prompt.
-- Licences: the app bundles GPL-3.0 code (chessground, maybe Stockfish). App Store distribution of
-  GPL code is contested (FSF position) — decision, mitigation and the custom EULA wording: docs/DECISIONS.md ADR-022 §3.
+- Licences: the app bundles GPL-3.0 code (chessground, Stockfish WASM). Decision, mitigation and
+  the EULA rationale: docs/DECISIONS.md ADR-022 §3. The app's Settings → About → Licences shows
+  version, commit, the link to the `mobile-v<version>` tag and the full GPL text offline. The
+  Google Play description must also say "free software, GPL-3.0-or-later, source:
+  https://github.com/refaustria/daisychess".
+
+## App Store Connect: custom EULA (paste verbatim)
+
+App Information → License Agreement → "Edit" → "Custom License Agreement":
+
+```
+DaisyChess is free software. It is licensed under the GNU General Public License, version 3 or
+(at your option) any later version (GPL-3.0-or-later). You may use, study, modify and
+redistribute it under the terms of that licence. The complete corresponding source code of every
+release is public at https://github.com/refaustria/daisychess (the release for app version X.Y.Z
+is the tag "mobile-vX.Y.Z"). The full licence text and the notices of the third-party components
+(for example Stockfish and chessground, both GPL) are included in the app under Settings, About,
+Licences, and work offline.
+
+Nothing in Apple's Media Services Terms and Conditions, the Apple Developer Program License
+Agreement or the App Store usage rules, and nothing in this notice, restricts the rights that the
+GNU General Public License grants you. If a term of the App Store conflicts with the GPL, the GPL
+prevails for your use of this software, to the extent permitted by law.
+
+DaisyChess is provided without warranty, to the extent permitted by law, as set out in sections
+15 and 16 of the GPL. Provider: INCEPTUM e.U., Brunellengasse 1/3, 1220 Vienna, Austria
+(owner: Bojan Savicevic), hello@daisychess.org. Privacy policy: https://daisychess.org/privacy/.
+```
+
+## App Review notes (App Store Connect → App Review Information → Notes; paste verbatim)
+
+```
+DaisyChess is a free chess analysis app: board, move list, game review with accuracy and an
+evaluation graph, an openings trainer and play against the engine. No account is needed and
+there is no login screen; a demo account is therefore not provided.
+
+The app works fully offline with the bundled Stockfish engine (WebAssembly, single-threaded).
+Optional stronger analysis runs on our server (Settings, "Server analysis"). That feature needs
+an access token. A review token that works for this review:
+
+    <REVIEW_TOKEN>
+
+Enter it in Settings, "Server analysis" (or open the link
+https://play.daisychess.org/#setup-token=<REVIEW_TOKEN> on the device). Without the token
+everything else, including engine analysis, review and the trainer, still works offline.
+
+"Connect lichess" (Settings) is an optional import of the user's own public games from
+lichess.org via OAuth in the system browser. It is not an account of this app (the app has no
+accounts, no registration and no own login), so Sign in with Apple (guideline 4.8) does not
+apply. The app collects no personal data for tracking, has no ads, no analytics SDKs, no
+in-app purchases and no subscriptions, and does not use the App Tracking Transparency framework.
+
+The app is free software under GPL-3.0-or-later; the source of this build is public at
+https://github.com/refaustria/daisychess (tag mobile-v<VERSION>). Encryption: standard HTTPS/WSS
+only (ITSAppUsesNonExemptEncryption = false). Contact: hello@daisychess.org.
+```
+
+## Google Play: App access (Policy → App content → App access; paste verbatim)
+
+Choose "All or some functionality in my app is restricted" only if you want the reviewers to test
+server analysis; otherwise choose "All functionality is available without special access". The
+recommended instruction text (one instruction set, name "Server analysis token"):
+
+```
+No login or account is needed; all main functionality (board, offline engine analysis, game
+review, openings trainer) works without any access. Optional server analysis needs an access token:
+open Settings, "Server analysis", and paste this token: <REVIEW_TOKEN>
+(or open https://play.daisychess.org/#setup-token=<REVIEW_TOKEN> on the device).
+"Connect lichess" is optional and is not an account of this app. No ads, no purchases.
+```
+
+`<REVIEW_TOKEN>` is created by the owner in the portal (a dedicated, revocable token for
+reviewers; revoke it after the review).
 
 ## Store listing assets
 

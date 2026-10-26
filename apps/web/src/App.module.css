@@ -8,6 +8,16 @@
   --bar-gap: 4px;
   --pad-y: var(--gap);
   --vh-full: 100vh;
+  /*
+   * Safe-area insets (notch, home indicator, Android edge-to-edge; M26-4). env() is 0 in a normal
+   * browser tab; the --safe-area-inset-* variables come from Capacitor's SystemBars (Android
+   * WebView < 140, where env() is unreliable) and are unset elsewhere.
+   */
+  --safe-t: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --safe-r: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+  --safe-b: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --safe-l: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  padding: 0 var(--safe-r) var(--safe-b) var(--safe-l);
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
@@ -22,12 +32,13 @@
 }
 
 .header {
-  height: var(--header-h);
+  /* The header background extends under the status bar / notch. */
+  height: calc(var(--header-h) + var(--safe-t));
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--gap);
+  padding: var(--safe-t) var(--gap) 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -188,10 +199,13 @@
     --side-w: 340px;
     --board-size: min(
       calc(
-        var(--vh-full) - var(--header-h) - 2 * var(--pad-y) - 2 * var(--player-bar-h) - 2 *
-          var(--bar-gap)
+        var(--vh-full) - var(--header-h) - var(--safe-t) - var(--safe-b) - 2 * var(--pad-y) - 2 *
+          var(--player-bar-h) - 2 * var(--bar-gap)
       ),
-      calc(100vw - 3 * var(--gap) - var(--side-w) - var(--eval-w) - var(--eval-gap))
+      calc(
+        100vw - var(--safe-l) - var(--safe-r) - 3 * var(--gap) - var(--side-w) - var(--eval-w) -
+          var(--eval-gap)
+      )
     );
   }
 
@@ -209,7 +223,9 @@
   }
 
   .side {
-    height: calc(var(--vh-full) - var(--header-h) - 2 * var(--pad-y));
+    height: calc(
+      var(--vh-full) - var(--header-h) - var(--safe-t) - var(--safe-b) - 2 * var(--pad-y)
+    );
     min-height: 0;
   }
 

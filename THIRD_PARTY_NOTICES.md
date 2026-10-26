@@ -31,11 +31,17 @@ DaisyChess itself is licensed under **GPL-3.0-or-later** (see `LICENSE`), except
 
 The apps bundle the web app's mobile build (`apps/web/dist-mobile`: everything in the web-app table above, but only the single-threaded `lite-single` Stockfish build) inside a Capacitor shell (ADR-022). Additionally shipped in the app binaries:
 
-| Component                                                                                                        | Version                                    | Licence    | Source                                         |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------- | ---------------------------------------------- |
-| Capacitor runtime (`@capacitor/core`, `@capacitor/android`, `@capacitor/ios` / `capacitor-swift-pm`; Drifty Co.) | 8.5.3                                      | MIT        | https://github.com/ionic-team/capacitor        |
-| Apache Cordova Android framework (compatibility layer pulled in by `@capacitor/android`)                         | 14.0.1                                     | Apache-2.0 | https://github.com/apache/cordova-android      |
-| AndroidX libraries (appcompat, core, activity, fragment, coordinatorlayout, webkit, core-splashscreen)           | see `apps/mobile/android/variables.gradle` | Apache-2.0 | https://developer.android.com/jetpack/androidx |
+| Component                                                                                                        | Version                                    | Licence    | Source                                            |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------- | ------------------------------------------------- |
+| Capacitor runtime (`@capacitor/core`, `@capacitor/android`, `@capacitor/ios` / `capacitor-swift-pm`; Drifty Co.) | 8.5.3                                      | MIT        | https://github.com/ionic-team/capacitor           |
+| Capacitor App plugin (`@capacitor/app`)                                                                          | 8.1.2                                      | MIT        | https://github.com/ionic-team/capacitor-plugins   |
+| Capacitor Browser plugin (`@capacitor/browser`)                                                                  | 8.0.5                                      | MIT        | https://github.com/ionic-team/capacitor-plugins   |
+| Capacitor Haptics plugin (`@capacitor/haptics`)                                                                  | 8.0.2                                      | MIT        | https://github.com/ionic-team/capacitor-plugins   |
+| Capacitor Preferences plugin (`@capacitor/preferences`)                                                          | 8.0.1                                      | MIT        | https://github.com/ionic-team/capacitor-plugins   |
+| Capacitor Status Bar plugin (`@capacitor/status-bar`)                                                            | 8.0.4                                      | MIT        | https://github.com/ionic-team/capacitor-plugins   |
+| Keep Awake plugin (`@capacitor-community/keep-awake`)                                                            | 8.0.1                                      | MIT        | https://github.com/capacitor-community/keep-awake |
+| Apache Cordova Android framework (compatibility layer pulled in by `@capacitor/android`)                         | 14.0.1                                     | Apache-2.0 | https://github.com/apache/cordova-android         |
+| AndroidX libraries (appcompat, core, activity, fragment, coordinatorlayout, webkit, core-splashscreen)           | see `apps/mobile/android/variables.gradle` | Apache-2.0 | https://developer.android.com/jetpack/androidx    |
 
 The Capacitor CLI (`@capacitor/cli`, MIT) is build tooling and not shipped.
 

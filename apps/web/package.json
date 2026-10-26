@@ -13,8 +13,12 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@capacitor-community/keep-awake": "8.0.1",
     "@capacitor/app": "8.1.2",
     "@capacitor/browser": "8.0.5",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/preferences": "8.0.1",
+    "@capacitor/status-bar": "8.0.4",
     "@daisychess/engine-core": "workspace:*",
     "@daisychess/ui-theme": "workspace:*",
     "chess.js": "^1.4.0",
