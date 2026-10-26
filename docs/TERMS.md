@@ -52,6 +52,6 @@ Austrian law applies, excluding its conflict-of-law rules and the UN Sales Conve
 
 ## 9. Provider information
 
-**Bojan Savicevic / Inceptum, 1220 Wien, Österreich, bojan@inceptum.at**
+**Bojan Savicevic (private person), 1220 Vienna, Austria, hello@daisychess.org**
 
 *Last updated: 2026-10-26.*
