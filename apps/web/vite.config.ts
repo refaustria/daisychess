@@ -1,10 +1,10 @@
 /// <reference types="vitest/config" />
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
-import { buildCsp, CSP_REPORT_FILE, metaCsp } from './csp.config.mjs';
+import { buildCsp, CSP_REPORT_FILE, mobileMetaCsp } from './csp.config.mjs';
 import { stockfishEngines } from './vite-plugin-stockfish';
 
 const isolation = {
@@ -58,7 +58,10 @@ export const MOBILE_MODE = 'mobile';
 export const MOBILE_OUT_DIR = 'dist-mobile';
 export const MOBILE_DEFAULT_SERVER_URL = 'wss://play.daisychess.org/ws';
 
-/** Injects the production CSP (minus the header-only directives) as the first element of <head>. */
+/**
+ * Injects the production CSP (minus the header-only directives) as the first element of <head>;
+ * a CI smoke build may add its loopback server (`mobileMetaCsp`, M26-2).
+ */
 export function cspMetaTag(): Plugin {
   return {
     name: 'daisychess:csp-meta',
@@ -68,7 +71,7 @@ export function cspMetaTag(): Plugin {
       handler: () => [
         {
           tag: 'meta',
-          attrs: { 'http-equiv': 'Content-Security-Policy', content: metaCsp() },
+          attrs: { 'http-equiv': 'Content-Security-Policy', content: mobileMetaCsp() },
           injectTo: 'head-prepend',
         },
       ],
@@ -76,9 +79,23 @@ export function cspMetaTag(): Plugin {
   };
 }
 
+/** The app-link association files (public/.well-known) are for the web host, not for the bundle. */
+function dropWellKnown(): Plugin {
+  return {
+    name: 'daisychess:drop-well-known',
+    apply: 'build',
+    closeBundle() {
+      rmSync(fileURLToPath(new URL(`${MOBILE_OUT_DIR}/.well-known`, import.meta.url)), {
+        recursive: true,
+        force: true,
+      });
+    },
+  };
+}
+
 function mobileConfig(): UserConfig {
   return {
-    plugins: [react(), stockfishEngines({ builds: ['lite-single'] }), cspMetaTag()],
+    plugins: [react(), stockfishEngines({ builds: ['lite-single'] }), cspMetaTag(), dropWellKnown()],
     define: {
       // An explicit VITE_DEFAULT_SERVER_URL in the environment wins (CI points it at a runner hub).
       'import.meta.env.VITE_DEFAULT_SERVER_URL': JSON.stringify(

@@ -36,6 +36,7 @@ import { allowWasmRetry, clearWasmNotice, subscribeWasmHealth, wasmHealth } from
 import { currentFen, useGameStore } from './gameStore';
 import { deniedMessage, isAuthError, UNAUTHORIZED_MESSAGE } from '../server/tokenMessages';
 import { useSettingsStore } from './settingsStore';
+import { parseRemoteUrl } from '../engine/serverUrl';
 
 export type { AnalysisStatus, EngineCapabilities, EngineKey, TerminalKind };
 
@@ -176,9 +177,8 @@ export function sanitizeSettings(
     multipv: clampInt(p.multipv, 1, MAX_MULTIPV, base.multipv),
   };
   const remoteUrl = 'remoteUrl' in p ? p.remoteUrl : base.remoteUrl;
-  if (typeof remoteUrl === 'string' && /^wss?:\/\/\S{1,200}$/.test(remoteUrl)) {
-    out.remoteUrl = remoteUrl;
-  }
+  const validUrl = parseRemoteUrl(remoteUrl);
+  if (validUrl !== undefined) out.remoteUrl = validUrl;
   const threads = 'threads' in p ? p.threads : base.threads;
   if (threads !== undefined) out.threads = clampInt(threads, 1, 1024, 1);
   return out;

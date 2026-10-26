@@ -10,6 +10,8 @@ interface Props {
   secretLabel: string;
   secret: string;
   setupLink?: string | null;
+  /** `daisychess://` variant for the mobile apps of self-hosted hubs. */
+  appLink?: string | null;
   children?: ReactNode;
   onClose: () => void;
 }
@@ -18,7 +20,7 @@ interface Props {
  * Shows a credential exactly once. The secret lives only in the props of this dialog (the caller
  * holds it in component state and drops it in `onClose`); it is never written to storage.
  */
-export function SecretDialog({ title, secretLabel, secret, setupLink, children, onClose }: Props) {
+export function SecretDialog({ title, secretLabel, secret, setupLink, appLink, children, onClose }: Props) {
   return (
     <Dialog title={title} onClose={onClose} wide>
       <div className={ui.stack}>
@@ -34,6 +36,15 @@ export function SecretDialog({ title, secretLabel, secret, setupLink, children, 
             <div className={ui.qr}>
               <QrCode text={setupLink} label="QR code of the setup link" />
             </div>
+          </>
+        )}
+        {setupLink && appLink && (
+          <>
+            <CopyField label="App link (iOS and Android app)" value={appLink} />
+            <p className={ui.muted}>
+              Opens the DaisyChess app and sets this hub and token. Any app can register this kind of link, so share it only with
+              people you trust.
+            </p>
           </>
         )}
         {children}

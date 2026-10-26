@@ -3,6 +3,8 @@
 # simulator build, launches the app with its stdout on a pty (Capacitor prints the JS console
 # there) and waits for the DAISYCHESS_SMOKE line, then asserts it with check-smoke-log.mjs.
 # Usage: ios-smoke.sh <App.app> <out dir> [timeout seconds]
+# SMOKE_SERVER_PORT=<port>: the build points VITE_MOBILE_SMOKE_SERVER_URL at an engine server on
+# 127.0.0.1:<port> (the simulator shares the host's loopback); the app must receive `welcome`.
 set -euo pipefail
 APP=$1
 OUT=$2
@@ -46,4 +48,6 @@ wait "$LAUNCH_PID" 2>/dev/null || true
 xcrun simctl spawn "$UDID" log show --last 10m --style compact \
   --predicate 'process == "App" OR subsystem == "com.apple.WebKit"' > "$OUT/oslog.txt" 2>&1 || true
 ((found)) || echo "no smoke result within ${TIMEOUT}s" >&2
-node "$HERE/check-smoke-log.mjs" "$OUT/app-stdout.txt" ios
+CHECK_FLAGS=()
+[[ -n "${SMOKE_SERVER_PORT:-}" ]] && CHECK_FLAGS+=(--expect-welcome)
+node "$HERE/check-smoke-log.mjs" "$OUT/app-stdout.txt" ios ${CHECK_FLAGS[@]+"${CHECK_FLAGS[@]}"}

@@ -4,11 +4,12 @@
  * the web build nor a store build contains it.
  *
  * It reports what the WebView gives the app and whether the single-threaded WASM engine answers,
- * as one console line. Capacitor forwards console output to logcat (tag `Capacitor/Console`) on
+ * as one console line. With `VITE_MOBILE_SMOKE_SERVER_URL` it also opens a WebSocket to that
+ * engine server and records whether `welcome` arrives (M26-2: the hub accepts the app's origin). Capacitor forwards console output to logcat (tag `Capacitor/Console`) on
  * Android and to the app's stdout on iOS, where the CI job reads it
  * (`apps/mobile/scripts/check-smoke-log.mjs`).
  */
-import type { BestMove } from '@daisychess/engine-core';
+import { PROTOCOL_VERSION, type BestMove } from '@daisychess/engine-core';
 import { nativePlatform } from './index';
 
 /** Prefix of the result line; the CI checker looks for exactly this. */
@@ -25,6 +26,25 @@ export interface SmokeResult {
   bestmove: string | null;
   ms: number;
   error?: string;
+  /** Present when a smoke server URL was configured. */
+  server?: SmokeServerResult;
+}
+
+export interface SmokeServerResult {
+  url: string;
+  welcome: boolean;
+  serverVersion?: string;
+  error?: string;
+}
+
+/** The part of the browser WebSocket the server check uses (injectable for unit tests). */
+export interface SmokeSocket {
+  onopen: (() => void) | null;
+  onmessage: ((ev: { data: unknown }) => void) | null;
+  onerror: (() => void) | null;
+  onclose: ((ev: { code: number }) => void) | null;
+  send(data: string): void;
+  close(): void;
 }
 
 /** The part of the WASM client the check drives (injectable for unit tests). */
@@ -44,6 +64,68 @@ export interface SmokeOptions {
   log?: (line: string) => void;
   depth?: number;
   timeoutMs?: number;
+  /** Engine server to say hello to; default `VITE_MOBILE_SMOKE_SERVER_URL` (none: skipped). */
+  serverUrl?: string;
+  openSocket?: (url: string) => SmokeSocket;
+  serverTimeoutMs?: number;
+}
+
+/** Opens `url`, sends `hello`, resolves on `welcome`; never throws. */
+export function checkServer(
+  url: string,
+  openSocket: (url: string) => SmokeSocket = (u) => new WebSocket(u) as unknown as SmokeSocket,
+  timeoutMs = 20_000,
+): Promise<SmokeServerResult> {
+  return new Promise((resolve) => {
+    let ws: SmokeSocket | undefined;
+    let done = false;
+    const finish = (r: Omit<SmokeServerResult, 'url'>) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        ws?.close();
+      } catch {
+        /* already closed */
+      }
+      resolve({ url, ...r });
+    };
+    const timer = setTimeout(
+      () => finish({ welcome: false, error: `no welcome within ${timeoutMs} ms` }),
+      timeoutMs,
+    );
+    try {
+      ws = openSocket(url);
+    } catch (err) {
+      finish({ welcome: false, error: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    ws.onopen = () =>
+      ws?.send(
+        JSON.stringify({
+          type: 'hello',
+          protocolVersion: PROTOCOL_VERSION,
+          client: { name: 'daisychess-smoke' },
+        }),
+      );
+    ws.onmessage = (ev) => {
+      let m: { type?: unknown; serverVersion?: unknown } | null = null;
+      try {
+        m = JSON.parse(String(ev.data)) as { type?: unknown; serverVersion?: unknown };
+      } catch {
+        return;
+      }
+      if (m?.type === 'welcome') {
+        finish({
+          welcome: true,
+          ...(typeof m.serverVersion === 'string' ? { serverVersion: m.serverVersion } : {}),
+        });
+      }
+    };
+    // A refused upgrade (403: origin not allowed) surfaces as error + close 1006.
+    ws.onerror = () => finish({ welcome: false, error: 'websocket error (origin refused?)' });
+    ws.onclose = (ev) => finish({ welcome: false, error: `closed (${ev.code}) before welcome` });
+  });
 }
 
 async function defaultEngine(): Promise<SmokeEngine> {
@@ -88,6 +170,10 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
   } finally {
     result.ms = Math.round(performance.now() - t0);
     await engine?.dispose().catch(() => undefined);
+  }
+  const serverUrl = options.serverUrl ?? import.meta.env.VITE_MOBILE_SMOKE_SERVER_URL;
+  if (serverUrl) {
+    result.server = await checkServer(serverUrl, options.openSocket, options.serverTimeoutMs);
   }
   log(`${SMOKE_MARKER} ${JSON.stringify(result)}`);
   return result;

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Asserts the native smoke result (ADR-022; apps/web/src/platform/smoke.ts) in a device log:
 // Android logcat (`Capacitor/Console`) or the iOS app's stdout (Capacitor prints JS console lines).
-// Usage: node scripts/check-smoke-log.mjs <log file> <android|ios>
+// Usage: node scripts/check-smoke-log.mjs <log file> <android|ios> [--expect-welcome]
+//   --expect-welcome: the build had VITE_MOBILE_SMOKE_SERVER_URL; the app must have received
+//   `welcome` from that engine server (M26-2: the hub accepts the app's WebView origin).
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -34,9 +36,10 @@ export function findSmokeResult(log) {
 /**
  * @param {Record<string, unknown> | null} r
  * @param {string} platform expected `platform` field
+ * @param {{ expectWelcome?: boolean }} [opts]
  * @returns {string[]} errors (empty = ok)
  */
-export function checkSmokeResult(r, platform) {
+export function checkSmokeResult(r, platform, opts = {}) {
   if (!r) return [`no ${SMOKE_MARKER} line in the log`];
   /** @type {string[]} */
   const errors = [];
@@ -48,17 +51,28 @@ export function checkSmokeResult(r, platform) {
     errors.push(`no bestmove (${String(r.bestmove)})`);
   }
   if (r.error !== undefined) errors.push(`error: ${String(r.error)}`);
+  if (opts.expectWelcome) {
+    const s = /** @type {Record<string, unknown> | undefined} */ (
+      r.server && typeof r.server === 'object' ? r.server : undefined
+    );
+    if (!s) errors.push('no server result (built without VITE_MOBILE_SMOKE_SERVER_URL?)');
+    else if (s.welcome !== true)
+      errors.push(`no welcome from ${String(s.url)}${s.error ? ` (${String(s.error)})` : ''}`);
+  }
   return errors;
 }
 
 function main() {
-  const [file, platform] = process.argv.slice(2);
-  if (!file || (platform !== 'android' && platform !== 'ios')) {
-    console.error('usage: check-smoke-log.mjs <log file> <android|ios>');
+  const [file, platform, ...flags] = process.argv.slice(2);
+  const unknown = flags.filter((f) => f !== '--expect-welcome');
+  if (!file || (platform !== 'android' && platform !== 'ios') || unknown.length) {
+    console.error('usage: check-smoke-log.mjs <log file> <android|ios> [--expect-welcome]');
     process.exit(2);
   }
   const result = findSmokeResult(readFileSync(file, 'utf8'));
-  const errors = checkSmokeResult(result, platform);
+  const errors = checkSmokeResult(result, platform, {
+    expectWelcome: flags.includes('--expect-welcome'),
+  });
   console.log(`smoke result: ${JSON.stringify(result)}`);
   if (errors.length) {
     console.error(`smoke check failed:\n- ${errors.join('\n- ')}`);

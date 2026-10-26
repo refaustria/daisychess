@@ -1,4 +1,5 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
+import { isNativeApp } from '../platform';
 import { challengeS256, createState, createVerifier } from './pkce';
 
 /**
@@ -12,6 +13,14 @@ import { challengeS256, createState, createVerifier } from './pkce';
  * code for a token, reads the username from /api/account, stores `{token, username, scopes}` in
  * localStorage `daisychess.lichess` and removes the parameters from the URL.
  *
+ * In the iOS/Android app (ADR-022, M26-2) the page cannot be the redirect target: `login()` opens
+ * lichess in the system browser (`@capacitor/browser`: SFSafariViewController / Custom Tab) with
+ * the redirect URI {@link LICHESS_APP_REDIRECT_URI}; the OS hands that URL back to the app, the app
+ * URL dispatcher (`platform/appUrl.ts`) calls {@link handleLichessCallback}, which runs the same
+ * checks and exchange. PKCE makes an intercepted code useless to another app. The round-trip data
+ * lives in localStorage there (with an expiry): the OS may end the WebView process while the
+ * browser is in front, and sessionStorage would be gone with it.
+ *
  * The token is only ever sent as an `Authorization: Bearer` header to lichess hosts. It never
  * appears in a URL, a log line or an error message.
  */
@@ -21,8 +30,21 @@ export const LICHESS_AUTHORIZE_URL = `${LICHESS_ORIGIN}/oauth`;
 export const LICHESS_TOKEN_URL = `${LICHESS_ORIGIN}/api/token`;
 export const LICHESS_ACCOUNT_URL = `${LICHESS_ORIGIN}/api/account`;
 export const LICHESS_TOKEN_TEST_URL = `${LICHESS_ORIGIN}/api/token/test`;
-/** Shown by lichess on the consent page. */
+/**
+ * Shown by lichess on the consent page. lichess has no client registration ("choose any"), so the
+ * apps use the same id; what differs is the redirect URI.
+ */
 export const LICHESS_CLIENT_ID = 'play.daisychess.org';
+/**
+ * Redirect URI of the iOS/Android app. A private-use scheme in reverse-domain notation (RFC 8252
+ * §7.1, the bundle id): lichess accepts custom schemes only when they contain a dot ("exotic
+ * redirect_uri scheme not allowed (use reverse domain notation like com.example://…)"), so the
+ * ADR-022 draft `daisychess://lichess-callback` is refused with HTTP 400. The native projects
+ * register `org.daisychess.app` as a URL scheme next to `daisychess`.
+ */
+export const LICHESS_APP_REDIRECT_URI = 'org.daisychess.app://lichess-callback';
+/** A round trip in the app's system browser older than this is ignored (stale `state`). */
+export const APP_PENDING_TTL_MS = 15 * 60_000;
 /** Requested at login so live games can use the same token (the explorer needs no scope). */
 export const LICHESS_SCOPES: readonly string[] = [
   'board:play',
@@ -81,6 +103,8 @@ interface PendingLogin {
   verifier: string;
   state: string;
   redirectUri: string;
+  /** Epoch ms; absent in objects written before M26-2. */
+  createdAt?: number;
 }
 
 // --- storage (every access guarded: private mode, blocked storage) ----------------------------
@@ -120,9 +144,17 @@ function writeStored(a: StoredAuth | null): void {
   }
 }
 
+/**
+ * Where the PKCE round trip is kept: sessionStorage on the web (one tab, gone with it);
+ * localStorage in the app, whose WebView process may be ended while the system browser is in front.
+ */
+function pendingStorage(): Storage | undefined {
+  return isNativeApp() ? globalThis.localStorage : globalThis.sessionStorage;
+}
+
 function readPending(): PendingLogin | null {
   try {
-    const raw = globalThis.sessionStorage?.getItem(PENDING_STORAGE_KEY);
+    const raw = pendingStorage()?.getItem(PENDING_STORAGE_KEY);
     if (!raw) return null;
     const v = JSON.parse(raw) as Partial<Record<keyof PendingLogin, unknown>>;
     if (
@@ -131,17 +163,34 @@ function readPending(): PendingLogin | null {
       typeof v.redirectUri !== 'string'
     )
       return null;
-    return { verifier: v.verifier, state: v.state, redirectUri: v.redirectUri };
+    const out: PendingLogin = { verifier: v.verifier, state: v.state, redirectUri: v.redirectUri };
+    if (typeof v.createdAt === 'number') out.createdAt = v.createdAt;
+    // localStorage outlives the attempt: an abandoned app login must not stay valid for ever.
+    if (
+      isNativeApp() &&
+      (out.createdAt === undefined || Date.now() - out.createdAt > APP_PENDING_TTL_MS)
+    )
+      return null;
+    return out;
   } catch {
     return null;
   }
 }
 
+function writePending(p: PendingLogin): void {
+  // Throws when storage is blocked; login() reports that.
+  const store = pendingStorage();
+  if (!store) throw new Error('no storage');
+  store.setItem(PENDING_STORAGE_KEY, JSON.stringify(p));
+}
+
 function clearPending(): void {
-  try {
-    globalThis.sessionStorage?.removeItem(PENDING_STORAGE_KEY);
-  } catch {
-    /* nothing to clear */
+  for (const store of [globalThis.sessionStorage, globalThis.localStorage]) {
+    try {
+      store?.removeItem(PENDING_STORAGE_KEY);
+    } catch {
+      /* nothing to clear */
+    }
   }
 }
 
@@ -177,19 +226,94 @@ export function setLichessNavigate(fn: Navigate | undefined): void {
   navigateImpl = fn ?? defaultNavigate;
 }
 
+/** The system browser of the app (`@capacitor/browser`); injectable for tests. */
+export interface ExternalBrowser {
+  open(url: string): Promise<void>;
+  /** Closes it where the OS allows (iOS); a no-op or rejection elsewhere is fine. */
+  close(): Promise<void>;
+  /** `cb` runs when the user closes the browser; resolves to the unsubscribe function. */
+  onFinished(cb: () => void): Promise<() => void>;
+}
+
+/**
+ * `@capacitor/browser`, imported lazily and only in the mobile build (the web bundle has no trace
+ * of it: the mode check is a compile-time constant).
+ */
+const capacitorBrowser: ExternalBrowser = {
+  async open(url) {
+    if (import.meta.env.MODE !== 'mobile') throw new Error('no system browser on the web');
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.open({ url });
+  },
+  async close() {
+    if (import.meta.env.MODE !== 'mobile') return;
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.close();
+  },
+  async onFinished(cb) {
+    if (import.meta.env.MODE !== 'mobile') return () => undefined;
+    const { Browser } = await import('@capacitor/browser');
+    const handle = await Browser.addListener('browserFinished', cb);
+    return () => void handle.remove();
+  },
+};
+let browserImpl: ExternalBrowser = capacitorBrowser;
+
+/** Test hook: replace the app's system browser (undefined = `@capacitor/browser`). */
+export function setLichessBrowser(b: ExternalBrowser | undefined): void {
+  browserImpl = b ?? capacitorBrowser;
+}
+
+/**
+ * After the user closes the app's browser without finishing, the store leaves `authorizing`
+ * once this delay has passed without a callback (the callback URL may arrive just after the
+ * browser reports itself closed).
+ */
+export const BROWSER_CANCEL_GRACE_MS = 1500;
+
+/** Set by the store (it needs the store's internals); see {@link handleLichessCallback}. */
+let handleCallbackUrl: (url: string) => Promise<boolean> = async () => false;
+/** App callbacks being processed; a browser-closed event must not cancel them. */
+let callbacksInFlight = 0;
 let callbackRun: Promise<boolean> | undefined;
+/** Unsubscribes the browser-closed watcher of the current app login attempt. */
+let stopBrowserWatch: (() => void) | undefined;
+/** `state` of the last callback processed: the OS may deliver the same URL twice. */
+let lastCallbackState: string | null = null;
 
 /** Test hook: re-read the stored login and forget a processed callback. */
 export function resetLichessAuth(): void {
   callbackRun = undefined;
+  lastCallbackState = null;
   useLichessAuth.setState(stateFromStored(readStored()));
 }
 
 // --- helpers ------------------------------------------------------------------------------------
 
-/** Redirect URI: this page without query or hash (https://play.daisychess.org/, http://localhost:4180/). */
+/**
+ * Redirect URI: on the web this page without query or hash (https://play.daisychess.org/,
+ * http://localhost:4180/); in the iOS/Android app {@link LICHESS_APP_REDIRECT_URI} (the WebView
+ * origin is not a page lichess can redirect to).
+ */
 export function redirectUri(): string {
+  if (isNativeApp()) return LICHESS_APP_REDIRECT_URI;
   return `${globalThis.location.origin}${globalThis.location.pathname}`;
+}
+
+/**
+ * True for the app's lichess callback URL (`org.daisychess.app://lichess-callback?code=…`), scheme
+ * and host case-insensitive; `…/lichess-callbackX` or other paths do not match.
+ */
+export function isLichessCallbackUrl(url: string): boolean {
+  const base = LICHESS_APP_REDIRECT_URI;
+  if (url.length < base.length || url.slice(0, base.length).toLowerCase() !== base) return false;
+  const next = url.charAt(base.length);
+  return (
+    next === '' ||
+    next === '?' ||
+    next === '#' ||
+    (next === '/' && /^\/?(?:[?#]|$)/.test(url.slice(base.length)))
+  );
 }
 
 export function buildAuthorizeUrl(p: {
@@ -371,27 +495,30 @@ export const useLichessAuth: UseBoundStore<StoreApi<LichessAuthStore>> = create<
     const fail = (error: string): void =>
       set({ status: 'error', error, token: undefined, username: undefined, scopes: [] });
 
-    const processCallback = async (): Promise<boolean> => {
-      let params: URLSearchParams;
-      try {
-        params = new URLSearchParams(globalThis.location.search);
-      } catch {
-        return false;
-      }
+    /**
+     * The callback parameters, from the page URL (web, `fromPage`: also removed from the address
+     * bar) or from the app's callback URL.
+     */
+    const processParams = async (params: URLSearchParams, fromPage: boolean): Promise<boolean> => {
       const code = params.get('code');
       const state = params.get('state');
       const error = params.get('error');
+      // The same URL delivered twice (launch URL + appUrlOpen): already handled.
+      if (state !== null && state === lastCallbackState) return true;
       const pending = readPending();
+      const tidy = (): void => {
+        clearPending();
+        if (fromPage) cleanUrl();
+        if (state !== null) lastCallbackState = state;
+      };
       // Only our own round trip: the redirect carries `state`, or we have a pending login.
       if (error !== null && (state !== null || pending !== null)) {
-        clearPending();
-        cleanUrl();
+        tidy();
         fail(errorText(error, params.get('error_description')));
         return true;
       }
       if (code === null || state === null) return false;
-      clearPending();
-      cleanUrl();
+      tidy();
       if (!pending || pending.state !== state) {
         fail(
           'Login failed: the response from lichess did not match this login attempt. Please try again.',
@@ -416,6 +543,53 @@ export const useLichessAuth: UseBoundStore<StoreApi<LichessAuthStore>> = create<
       return true;
     };
 
+    const processCallback = async (): Promise<boolean> => {
+      let params: URLSearchParams;
+      try {
+        params = new URLSearchParams(globalThis.location.search);
+      } catch {
+        return false;
+      }
+      return processParams(params, true);
+    };
+
+    handleCallbackUrl = async (url) => {
+      if (!isLichessCallbackUrl(url)) return false;
+      // iOS keeps SFSafariViewController in front of the app until it is closed; Android's
+      // Custom Tab is already behind the app (close is unsupported there and rejects).
+      void browserImpl.close().catch(() => undefined);
+      const q = url.indexOf('?');
+      const h = url.indexOf('#', q < 0 ? 0 : q);
+      const query = q < 0 ? '' : url.slice(q + 1, h < 0 ? undefined : h);
+      callbacksInFlight++;
+      try {
+        return await processParams(new URLSearchParams(query), false);
+      } finally {
+        callbacksInFlight--;
+      }
+    };
+
+    /** In the app: the user closed the browser without logging in → leave `authorizing`. */
+    const watchBrowserClose = async (): Promise<void> => {
+      // One watcher at a time: a second login replaces the first attempt's listener.
+      stopBrowserWatch?.();
+      stopBrowserWatch = undefined;
+      let off: (() => void) | undefined;
+      try {
+        off = await browserImpl.onFinished(() => {
+          off?.();
+          if (stopBrowserWatch === off) stopBrowserWatch = undefined;
+          setTimeout(() => {
+            if (get().status === 'authorizing' && callbacksInFlight === 0)
+              set(stateFromStored(readStored()));
+          }, BROWSER_CANCEL_GRACE_MS);
+        });
+        stopBrowserWatch = off;
+      } catch {
+        /* no event: the user can press login again */
+      }
+    };
+
     return {
       ...stateFromStored(readStored()),
 
@@ -425,10 +599,7 @@ export const useLichessAuth: UseBoundStore<StoreApi<LichessAuthStore>> = create<
         const state = createState();
         const uri = redirectUri();
         try {
-          globalThis.sessionStorage.setItem(
-            PENDING_STORAGE_KEY,
-            JSON.stringify({ verifier, state, redirectUri: uri }),
-          );
+          writePending({ verifier, state, redirectUri: uri, createdAt: Date.now() });
         } catch {
           fail('Logging in needs session storage, which this browser blocks for the site');
           return;
@@ -441,7 +612,18 @@ export const useLichessAuth: UseBoundStore<StoreApi<LichessAuthStore>> = create<
           fail('Logging in needs a secure connection (https)');
           return;
         }
-        navigateImpl(buildAuthorizeUrl({ challenge, state, redirectUri: uri }));
+        const authorizeUrl = buildAuthorizeUrl({ challenge, state, redirectUri: uri });
+        if (!isNativeApp()) {
+          navigateImpl(authorizeUrl);
+          return;
+        }
+        await watchBrowserClose();
+        try {
+          await browserImpl.open(authorizeUrl);
+        } catch {
+          clearPending();
+          fail('Could not open the browser for the lichess login');
+        }
       },
 
       loginWithToken: async (raw) => {
@@ -493,6 +675,15 @@ export const useLichessAuth: UseBoundStore<StoreApi<LichessAuthStore>> = create<
     };
   },
 );
+
+/**
+ * The app's lichess callback (`org.daisychess.app://lichess-callback?code=&state=`, handed over by
+ * the app URL dispatcher): same checks and token exchange as the web redirect. Resolves to false
+ * for any other URL, true when the URL was a callback (successful or not; the store says which).
+ */
+export function handleLichessCallback(url: string): Promise<boolean> {
+  return handleCallbackUrl(url);
+}
 
 // Another tab logged in or out: follow it.
 if (typeof window !== 'undefined') {

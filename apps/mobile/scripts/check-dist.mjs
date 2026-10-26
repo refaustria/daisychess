@@ -83,9 +83,11 @@ async function main() {
   const files = listFiles(dir);
   const totalBytes = files.reduce((n, f) => n + statSync(join(dir, f)).size, 0);
   const indexHtml = readFileSync(join(dir, 'index.html'), 'utf8');
-  /** @type {{ metaCsp(): string }} */
+  /** @type {{ mobileMetaCsp(): string }} */
   const csp = await import('../../web/csp.config.mjs');
-  const errors = checkDist({ files, indexHtml, expectedCsp: csp.metaCsp(), totalBytes });
+  // Same policy as the build: the production meta policy, plus the loopback smoke server in a
+  // CI smoke build (VITE_MOBILE_SMOKE=1 + VITE_MOBILE_SMOKE_SERVER_URL, M26-2).
+  const errors = checkDist({ files, indexHtml, expectedCsp: csp.mobileMetaCsp(), totalBytes });
   // Absolute asset URLs inside the stylesheets (url(...)).
   for (const f of files.filter((x) => x.endsWith('.css'))) {
     const css = readFileSync(join(dir, f), 'utf8');

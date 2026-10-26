@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only (merged over src/main): lets the CI smoke reach an engine server on the
+     emulator's loopback, forwarded by `adb reverse` (M26-2, apps/mobile/scripts/android-smoke.sh).
+     WebView honours the cleartext policy for apps targeting API 26+. Release builds keep the
+     platform default (no cleartext). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/network_security_config_debug" />
+</manifest>

@@ -96,3 +96,17 @@ VITE_MOBILE_SMOKE=1 pnpm --filter @daisychess/mobile build
 (cd apps/mobile/android && ./gradlew assembleDebug)
 bash apps/mobile/scripts/android-smoke.sh apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk apps/mobile/smoke/android
 ```
+
+## Deep links (M26-3)
+
+- iOS: `ios/App/App/App.entitlements` (`applinks:play.daisychess.org`, referenced by both build
+  configurations), `CFBundleURLTypes` scheme `daisychess` in `Info.plist`. The App ID needs the
+  Associated Domains capability (owner step, M26-9). `apple-app-site-association` (Team
+  `PM7LTV7M72`) is served from `apps/web/public/.well-known/`.
+- Android: `MainActivity` intent filters in `AndroidManifest.xml`: App Links
+  `https://play.daisychess.org/` with exact path `/` (`autoVerify`, needs `assetlinks.json`,
+  see `deploy/README.md`) and `daisychess://setup` and `org.daisychess.app://lichess-callback` (lichess login redirect; iOS registers both schemes).
+- Web side: `apps/web/src/platform/appUrl.ts` (`registerAppUrlHandler(prefixOrMatcher, fn)`,
+  `@capacitor/app` `appUrlOpen` + launch URL). Test on a device/emulator:
+  `adb shell am start -a android.intent.action.VIEW -d 'daisychess://setup?token=dc1_x&hub=wss%3A%2F%2Fhub.example%2Fws'`,
+  `xcrun simctl openurl booted 'daisychess://setup?token=dc1_x'`.

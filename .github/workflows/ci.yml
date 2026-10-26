@@ -130,6 +130,8 @@ jobs:
     env:
       # Store budget per platform (M26-1).
       MAX_APP_BYTES: 15728640
+      # Engine server on the runner that the app must reach from its WebView origin (M26-2).
+      SMOKE_SERVER_PORT: 18580
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -140,11 +142,30 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @daisychess/engine-core build
       # dist-mobile with the smoke hook, checked (check-dist.mjs), then `cap sync` into both projects.
+      # The smoke also says hello to the runner's engine server (CSP gets that loopback origin).
       - run: pnpm --filter @daisychess/mobile build
         env:
           VITE_MOBILE_SMOKE: '1'
+          VITE_MOBILE_SMOKE_SERVER_URL: ws://127.0.0.1:${{ env.SMOKE_SERVER_PORT }}/ws
       # `cap sync` must leave the committed native projects unchanged.
       - run: git diff --exit-code -- apps/mobile
+
+      # Standalone server (no engine binaries needed for `welcome`) that allows exactly the app's
+      # WebView origins, as the production hub does (M26-2, ADR-022 §4).
+      - name: Start engine server for the smoke
+        run: |
+          pnpm --filter @daisychess/server build
+          mkdir -p "apps/mobile/smoke/${{ matrix.platform }}"
+          log="$PWD/apps/mobile/smoke/${{ matrix.platform }}/server.log"
+          (cd apps/server && PORT=$SMOKE_SERVER_PORT HOST=127.0.0.1 REVIEW_STORE=off MAIA=off \
+            ALLOWED_ORIGINS=https://app.daisychess.org,capacitor://app.daisychess.org \
+            nohup node dist/index.js > "$log" 2>&1 &)
+          for _ in $(seq 1 30); do
+            curl -fsS "http://127.0.0.1:$SMOKE_SERVER_PORT/health" && exit 0
+            sleep 1
+          done
+          cat "$log"
+          exit 1
 
       # --- Android ---
       - if: matrix.platform == 'android'

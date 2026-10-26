@@ -69,6 +69,34 @@ export function metaCsp(policy = PRODUCTION_CSP) {
     .join('; ');
 }
 
+/**
+ * Loopback engine server of the CI native smoke (M26-2): `ws://127.0.0.1:<port>/ws` or
+ * `ws://localhost:<port>/ws`. Nothing else is accepted, so a store build cannot widen its policy.
+ */
+const SMOKE_SERVER_URL = /^ws:\/\/(?:127\.0\.0\.1|localhost):\d{1,5}\/ws$/;
+
+/**
+ * Self-hosted hubs (ADR-022 §4, M26-3): `hub=` setup links and `settings.remoteUrl` can point the
+ * app at any `wss://` server, so the mobile policy allows secure WebSockets to any host. Only the
+ * app's meta policy has it; the web/nginx policy (PRODUCTION_CSP) is unchanged.
+ */
+export const MOBILE_HUB_SOURCE = 'wss:';
+
+/**
+ * The meta policy of the mobile bundle (`vite build --mode mobile`, checked by
+ * `apps/mobile/scripts/check-dist.mjs`): {@link metaCsp} with `wss:` ({@link MOBILE_HUB_SOURCE}) added to connect-src, plus — only in a CI smoke build
+ * (`VITE_MOBILE_SMOKE=1`) with `VITE_MOBILE_SMOKE_SERVER_URL` set — that loopback server's origin
+ * in connect-src. Throws for any other smoke server URL.
+ * @param {Record<string, string | undefined>} [env]
+ */
+export function mobileMetaCsp(env = process.env) {
+  const url = env.VITE_MOBILE_SMOKE === '1' ? env.VITE_MOBILE_SMOKE_SERVER_URL : undefined;
+  if (url && !SMOKE_SERVER_URL.test(url)) {
+    throw new Error(`VITE_MOBILE_SMOKE_SERVER_URL must be ws://127.0.0.1:<port>/ws, got ${url}`);
+  }
+  return metaCsp(buildCsp([MOBILE_HUB_SOURCE, ...(url ? [url.slice(0, -'/ws'.length)] : [])]));
+}
+
 /** hub.daisychess.org serves no documents, only /link (WebSocket) and /health (JSON). */
 export const HUB_CSP = "default-src 'none'; frame-ancestors 'none'";
 

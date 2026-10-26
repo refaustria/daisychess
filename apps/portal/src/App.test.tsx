@@ -237,7 +237,7 @@ describe('tokens', () => {
       'GET /tokens': () => ({ json: { tokens: listed } }),
       'POST /tokens': () => {
         listed = [...listed, created];
-        return { status: 201, json: { token: created, playerToken: 'dc1_ZZZZ2222_PLAYERSECRET', setupLink: 'https://play.daisychess.org/#setup-token=dc1_ZZZZ2222_PLAYERSECRET' } };
+        return { status: 201, json: { token: created, playerToken: 'dc1_ZZZZ2222_PLAYERSECRET', setupLink: 'https://hub.example/#setup-token=dc1_ZZZZ2222_PLAYERSECRET', appLink: 'daisychess://setup?token=dc1_ZZZZ2222_PLAYERSECRET&hub=wss%3A%2F%2Fhub.example%2Fws' } };
       },
     });
     render(<App fetchImpl={hub.fetchImpl} />);
@@ -258,6 +258,7 @@ describe('tokens', () => {
     expect(body).toEqual({ kind: 'player', label: 'for carol', nodeIds: ['n1'], poolFallback: false, tier: 'standard', expiresInDays: 30 });
     expect(within(dlg).getByLabelText('Player token').textContent).toBe('dc1_ZZZZ2222_PLAYERSECRET');
     expect(within(dlg).getByLabelText('Setup link').textContent).toContain('#setup-token=');
+    expect(within(dlg).getByLabelText('App link (iOS and Android app)').textContent).toMatch(/^daisychess:\/\/setup\?token=/);
     expect(within(dlg).getByRole('img', { name: /QR code/ }).querySelector('path')?.getAttribute('d')).toMatch(/^M/);
     await userEvent.click(within(dlg).getByRole('button', { name: /close/ }));
     expect(document.body.textContent).not.toContain('PLAYERSECRET');

@@ -69,6 +69,28 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ALLOWED_ORIGINS: 'play.daisychess.org' })).toThrow(/ALLOWED_ORIGINS/);
   });
 
+  it('ALLOWED_ORIGINS takes the app WebView origins (ADR-022), but no capacitor entry with a path', () => {
+    expect(
+      loadConfig({
+        ROLE: 'hub',
+        PUBLIC_ORIGIN: 'https://play.daisychess.org',
+        ALLOWED_ORIGINS:
+          'https://play.daisychess.org,https://app.daisychess.org,capacitor://app.daisychess.org',
+      }).allowedOrigins,
+    ).toEqual([
+      'https://play.daisychess.org',
+      'https://app.daisychess.org',
+      'capacitor://app.daisychess.org',
+    ]);
+    expect(() =>
+      loadConfig({ ALLOWED_ORIGINS: 'capacitor://app.daisychess.org/index.html' }),
+    ).toThrow(/ALLOWED_ORIGINS/);
+    // PUBLIC_ORIGIN (setup links, portal) stays http(s) only.
+    expect(() => loadConfig({ PUBLIC_ORIGIN: 'capacitor://app.daisychess.org' })).toThrow(
+      /PUBLIC_ORIGIN/,
+    );
+  });
+
   it('per-IP cap (default 2, never above MAX_SESSIONS), crash backoff, trusted proxies', () => {
     const d = loadConfig({});
     expect(d).toMatchObject({

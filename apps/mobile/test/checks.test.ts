@@ -109,4 +109,23 @@ describe('checkSmokeResult', () => {
       'error: timed out',
     ]);
   });
+
+  it('--expect-welcome: requires the server result with welcome (M26-2)', () => {
+    const server = { url: 'ws://127.0.0.1:18580/ws', welcome: true, serverVersion: '0.0.0' };
+    expect(checkSmokeResult(good, 'android')).toEqual([]); // not asked: not required
+    expect(checkSmokeResult({ ...good, server }, 'android', { expectWelcome: true })).toEqual([]);
+    expect(checkSmokeResult(good, 'android', { expectWelcome: true })).toEqual([
+      'no server result (built without VITE_MOBILE_SMOKE_SERVER_URL?)',
+    ]);
+    expect(
+      checkSmokeResult(
+        {
+          ...good,
+          server: { url: server.url, welcome: false, error: 'websocket error (origin refused?)' },
+        },
+        'android',
+        { expectWelcome: true },
+      ),
+    ).toEqual(['no welcome from ws://127.0.0.1:18580/ws (websocket error (origin refused?))']);
+  });
 });

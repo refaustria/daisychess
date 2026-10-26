@@ -155,6 +155,7 @@ export function Tokens() {
           secretLabel="Player token"
           secret={created.playerToken}
           setupLink={created.setupLink}
+          appLink={created.appLink ?? null}
           onClose={() => {
             setCreated(null);
             tokens.reload();

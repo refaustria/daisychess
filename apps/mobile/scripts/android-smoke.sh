@@ -3,6 +3,10 @@
 # waits for the DAISYCHESS_SMOKE line of the smoke build (VITE_MOBILE_SMOKE=1) in logcat, then
 # asserts it with check-smoke-log.mjs. Needs a running emulator/device (`adb`).
 # Usage: android-smoke.sh <apk> <out dir> [timeout seconds]
+# SMOKE_SERVER_PORT=<port>: an engine server listens on the host's 127.0.0.1:<port> and the build
+# has VITE_MOBILE_SMOKE_SERVER_URL=ws://127.0.0.1:<port>/ws (M26-2). `adb reverse` maps the
+# emulator's loopback to it (10.0.2.2 would be mixed content from https://app.daisychess.org;
+# loopback is potentially trustworthy), and the app must receive `welcome`.
 set -euo pipefail
 APK=$1
 OUT=$2
@@ -13,6 +17,11 @@ mkdir -p "$OUT"
 
 adb wait-for-device
 adb install -r "$APK"
+CHECK_FLAGS=()
+if [[ -n "${SMOKE_SERVER_PORT:-}" ]]; then
+  adb reverse "tcp:$SMOKE_SERVER_PORT" "tcp:$SMOKE_SERVER_PORT"
+  CHECK_FLAGS+=(--expect-welcome)
+fi
 adb logcat -c
 adb shell am start -W -n "$APP_ID/.MainActivity"
 
@@ -31,4 +40,4 @@ grep -E 'Capacitor|chromium|DAISYCHESS' "$OUT/logcat.txt" > "$OUT/logcat-app.txt
 adb exec-out screencap -p > "$OUT/screen.png" || true
 adb shell am force-stop "$APP_ID" || true
 ((found)) || echo "no smoke result within ${TIMEOUT}s" >&2
-node "$HERE/check-smoke-log.mjs" "$OUT/logcat.txt" android
+node "$HERE/check-smoke-log.mjs" "$OUT/logcat.txt" android ${CHECK_FLAGS[@]+"${CHECK_FLAGS[@]}"}

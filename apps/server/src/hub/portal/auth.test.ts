@@ -66,6 +66,16 @@ describe('portal auth helpers', () => {
     ).toBe(true);
   });
 
+  it('origin rule: a listed capacitor app origin (ADR-022) never opens the portal', () => {
+    const list = ['https://play.daisychess.org', 'capacitor://app.daisychess.org'];
+    const pub = 'https://play.daisychess.org';
+    expect(
+      portalOriginAllowed('capacitor://app.daisychess.org', 'play.daisychess.org', pub, list),
+    ).toBe(false);
+    expect(portalOriginAllowed('capacitor://app.daisychess.org', 'h', null, list)).toBe(false);
+    expect(portalOriginAllowed('https://play.daisychess.org', 'h', pub, list)).toBe(true);
+  });
+
   it('WindowLimiter counts per key and window, with a bounded key set', () => {
     const l = new WindowLimiter({ max: 2, windowMs: 1_000 }, 2);
     expect(l.allow('a', 0)).toBe(true);

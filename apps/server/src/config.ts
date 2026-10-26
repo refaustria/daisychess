@@ -78,6 +78,7 @@ export const EnvSchema = z.object({
   /**
    * Browser origins allowed to open `/ws` (ADR-008): comma-separated `scheme://host[:port]`
    * list, or `*` to disable the check. Unset: the origin must match the request's `Host`.
+   * Besides http(s) origins the list takes exact app WebView origins (`capacitor://host`, ADR-022).
    */
   ALLOWED_ORIGINS: z
     .string()

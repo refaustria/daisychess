@@ -18,6 +18,7 @@ import { fakeSpawner, registry, until } from '../../test/helpers.js';
 import { fixtureReview, ITALIAN, SCHOLAR, START_FEN } from '../../test/review-fixtures.js';
 import { TestClient } from '../../test/ws-client.js';
 import { loadSqlite } from '../review/ReviewStore.js';
+import { parseAllowedOrigins } from './origin.js';
 
 const TOKEN = 'review-secret';
 const sqlite = await loadSqlite();
@@ -72,8 +73,12 @@ async function client(
   url: string,
   token?: string,
   realIp?: string,
+  origin?: string,
 ): Promise<{ c: TestClient; welcome: WelcomeMessage }> {
-  const c = await TestClient.connect(url, realIp ? { headers: { 'x-real-ip': realIp } } : {});
+  const c = await TestClient.connect(url, {
+    ...(realIp ? { headers: { 'x-real-ip': realIp } } : {}),
+    ...(origin ? { origin } : {}),
+  });
   clients.push(c);
   c.send({
     type: 'hello',
@@ -97,6 +102,32 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     expect(holder.capabilities).toEqual({ analysis: true, rooms: true, reviewStore: true });
   });
 
+  it('is reachable from the app WebView origins listed in ALLOWED_ORIGINS (ADR-022)', async () => {
+    const { url } = await start({
+      allowedOrigins: parseAllowedOrigins(
+        'https://play.daisychess.org,https://app.daisychess.org,capacitor://app.daisychess.org',
+      ),
+    });
+    const put = fixtureReview(SCHOLAR, 'deep');
+    const { c: ios, welcome } = await client(
+      url,
+      TOKEN,
+      undefined,
+      'capacitor://app.daisychess.org',
+    );
+    expect(welcome.capabilities?.reviewStore).toBe(true);
+    ios.send(put);
+    expect(await ios.waitFor(isStored)).toMatchObject({ stored: true });
+    const { c: android } = await client(url, undefined, undefined, 'https://app.daisychess.org');
+    android.send({
+      type: 'review.get',
+      gameKey: put.gameKey,
+      startFen: START_FEN,
+      moves: put.moves,
+    });
+    expect(await android.waitFor(isRecord)).toMatchObject({ found: true, record: put.record });
+  });
+
   it('REVIEW_STORE=off: capabilities.reviewStore is false, writes are `disabled`, reads miss', async () => {
     const { url, app } = await start({ reviewStore: { enabled: false } });
     const { c, welcome } = await client(url, TOKEN);
@@ -105,9 +136,19 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     c.send(put);
     expect(await c.waitFor(isStored)).toMatchObject({ stored: false, reason: 'disabled' });
     c.send({ type: 'review.get', gameKey: put.gameKey, startFen: START_FEN, moves: put.moves });
-    expect(await c.waitFor(isRecord)).toEqual({ type: 'review.record', gameKey: put.gameKey, found: false });
+    expect(await c.waitFor(isRecord)).toEqual({
+      type: 'review.record',
+      gameKey: put.gameKey,
+      found: false,
+    });
     const detail = await app.inject({ method: 'GET', url: '/health/detail' });
-    expect(detail.json().reviewStore).toEqual({ enabled: false, reviews: 0, positions: 0, bytes: 0, maxBytes: 0 });
+    expect(detail.json().reviewStore).toEqual({
+      enabled: false,
+      reviews: 0,
+      positions: 0,
+      bytes: 0,
+      maxBytes: 0,
+    });
   });
 
   it('a put without the token is refused, with it stored; a guest on another connection reads it', async () => {
@@ -123,14 +164,28 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     });
     const { c: holder } = await client(url, TOKEN);
     holder.send(put);
-    expect(await holder.waitFor(isStored)).toEqual({ type: 'review.stored', gameKey: put.gameKey, stored: true });
+    expect(await holder.waitFor(isStored)).toEqual({
+      type: 'review.stored',
+      gameKey: put.gameKey,
+      stored: true,
+    });
     const { c: reader } = await client(url);
-    reader.send({ type: 'review.get', gameKey: put.gameKey, startFen: START_FEN, moves: put.moves });
+    reader.send({
+      type: 'review.get',
+      gameKey: put.gameKey,
+      startFen: START_FEN,
+      moves: put.moves,
+    });
     const rec = await reader.waitFor(isRecord);
     expect(rec).toMatchObject({ found: true, preset: 'deep', record: put.record });
     expect(typeof rec.createdAt).toBe('number');
     const detail = await app.inject({ method: 'GET', url: '/health/detail' });
-    expect(detail.json().reviewStore).toMatchObject({ enabled: true, reviews: 1, positions: 0, maxBytes: 5_000_000_000 });
+    expect(detail.json().reviewStore).toMatchObject({
+      enabled: true,
+      reviews: 1,
+      positions: 0,
+      maxBytes: 5_000_000_000,
+    });
     expect(detail.json().reviewStore.bytes).toBeGreaterThan(0);
   });
 
@@ -140,9 +195,15 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     const deep = fixtureReview(SCHOLAR, 'deep');
     const other = fixtureReview(ITALIAN);
     c.send({ ...deep, gameKey: other.gameKey });
-    expect(await c.waitFor(isStored)).toMatchObject({ gameKey: other.gameKey, stored: false, reason: 'key_mismatch' });
+    expect(await c.waitFor(isStored)).toMatchObject({
+      gameKey: other.gameKey,
+      stored: false,
+      reason: 'key_mismatch',
+    });
     c.send(deep);
-    expect(await c.waitFor((m) => isStored(m) && m.gameKey === deep.gameKey)).toMatchObject({ stored: true });
+    expect(await c.waitFor((m) => isStored(m) && m.gameKey === deep.gameKey)).toMatchObject({
+      stored: true,
+    });
     c.send(fixtureReview(SCHOLAR, 'fast'));
     await until(() => c.messages.filter(isStored).length === 3);
     expect(c.messages.filter(isStored)[2]).toMatchObject({ stored: false, reason: 'superseded' });
@@ -152,8 +213,14 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     const { url } = await start();
     const { c: holder } = await client(url, TOKEN);
     const result = { eval: { cp: 33 }, bestMove: 'e2e4', pv: ['e2e4', 'e7e5'], depth: 25 };
-    holder.send({ type: 'review.positions.put', optsKey: 'mt:300', entries: [{ fen: START_FEN, result }] });
-    expect(await holder.waitFor((m) => m.type === 'review.positions.stored')).toMatchObject({ stored: true });
+    holder.send({
+      type: 'review.positions.put',
+      optsKey: 'mt:300',
+      entries: [{ fen: START_FEN, result }],
+    });
+    expect(await holder.waitFor((m) => m.type === 'review.positions.stored')).toMatchObject({
+      stored: true,
+    });
     const { c: guest } = await client(url);
     const after = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
     guest.send({ type: 'review.positions.get', optsKey: 'mt:300', fens: [START_FEN, after] });
@@ -163,7 +230,10 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
       results: { [START_FEN]: result },
     });
     guest.send({ type: 'review.stats.get' });
-    expect(await guest.waitFor((m) => m.type === 'review.stats')).toMatchObject({ enabled: true, positions: 1 });
+    expect(await guest.waitFor((m) => m.type === 'review.stats')).toMatchObject({
+      enabled: true,
+      positions: 1,
+    });
   });
 
   it('frame sizes: a large review.put passes, a large ping is invalid, above the hard cap the socket closes', async () => {
@@ -177,18 +247,24 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     expect(await c.waitFor(isStored)).toMatchObject({ stored: true });
     c.send({ type: 'ping', pad: 'x'.repeat(MAX_MESSAGE_BYTES) });
     const err = await c.waitFor((m) => m.type === 'error');
-    expect(err).toMatchObject({ code: 'invalid_message', message: `message exceeds ${MAX_MESSAGE_BYTES} bytes` });
+    expect(err).toMatchObject({
+      code: 'invalid_message',
+      message: `message exceeds ${MAX_MESSAGE_BYTES} bytes`,
+    });
     c.send({ type: 'review.put', pad: 'x'.repeat(MAX_LARGE_MESSAGE_BYTES) });
     expect(await c.waitClosed()).toBe(1009);
   });
 
   it('rate-limits review reads and writes per connection (error rate_limited, socket stays open)', async () => {
-    const { url } = await start({}, {
-      connection: {
-        reviewGetRateLimit: { max: 3, windowMs: 60_000 },
-        reviewPutRateLimit: { max: 2, windowMs: 60_000 },
+    const { url } = await start(
+      {},
+      {
+        connection: {
+          reviewGetRateLimit: { max: 3, windowMs: 60_000 },
+          reviewPutRateLimit: { max: 2, windowMs: 60_000 },
+        },
       },
-    });
+    );
     const { c } = await client(url, TOKEN);
     for (let i = 0; i < 4; i++) c.send({ type: 'review.stats.get' });
     await until(() => c.messages.filter((m) => m.type === 'review.stats').length === 3);
@@ -199,7 +275,9 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     const entries = [{ fen: START_FEN, result: { eval: { cp: 0 } } }];
     for (let i = 0; i < 3; i++) c.send({ type: 'review.positions.put', optsKey: 'd:18', entries });
     await until(() => c.messages.filter((m) => m.type === 'error').length === 2);
-    expect(c.messages.filter((m) => m.type === 'error')[1]).toMatchObject({ message: 'too many review writes' });
+    expect(c.messages.filter((m) => m.type === 'error')[1]).toMatchObject({
+      message: 'too many review writes',
+    });
     expect(c.messages.filter((m) => m.type === 'review.positions.stored')).toHaveLength(2);
     expect(c.closeCode).toBeNull();
   });
@@ -210,12 +288,20 @@ describe.skipIf(!sqlite)('review store over the WebSocket (ADR-017)', () => {
     const entries = [{ fen: START_FEN, result: { eval: { cp: 0 } } }];
     for (let i = 0; i < 3; i++) c.send({ type: 'review.positions.put', optsKey: 'd:18', entries });
     await until(() => c.messages.filter((m) => m.type === 'review.positions.stored').length === 3);
-    expect(c.messages.filter((m) => m.type === 'review.positions.stored').map((m) => (m.type === 'review.positions.stored' ? m.stored : null))).toEqual([true, true, false]);
-    expect(c.messages.filter((m) => m.type === 'review.positions.stored')[2]).toMatchObject({ reason: 'quota' });
+    expect(
+      c.messages
+        .filter((m) => m.type === 'review.positions.stored')
+        .map((m) => (m.type === 'review.positions.stored' ? m.stored : null)),
+    ).toEqual([true, true, false]);
+    expect(c.messages.filter((m) => m.type === 'review.positions.stored')[2]).toMatchObject({
+      reason: 'quota',
+    });
     // Another address is unaffected.
     const { c: other } = await client(url, TOKEN, '203.0.113.8');
     other.send({ type: 'review.positions.put', optsKey: 'd:18', entries });
-    expect(await other.waitFor((m) => m.type === 'review.positions.stored')).toMatchObject({ stored: true });
+    expect(await other.waitFor((m) => m.type === 'review.positions.stored')).toMatchObject({
+      stored: true,
+    });
   });
 
   it('a public server (no ACCESS_TOKEN) accepts writes from everyone', async () => {

@@ -17,3 +17,12 @@ export function defaultServerUrl(): string {
   if (fixed && (!httpOrigin || isNativeApp())) return fixed;
   return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`;
 }
+
+/**
+ * `value` when it is an acceptable engine server URL (`ws://` or `wss://`, no whitespace, at most
+ * 200 characters after the scheme), else undefined. Used for `settings.remoteUrl` and for the
+ * `hub` of setup links, so both accept exactly the same values.
+ */
+export function parseRemoteUrl(value: unknown): string | undefined {
+  return typeof value === 'string' && /^wss?:\/\/\S{1,200}$/.test(value) ? value : undefined;
+}

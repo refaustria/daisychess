@@ -51,6 +51,15 @@ deploy/deploy-web.sh
 Runs `pnpm install --frozen-lockfile`, `pnpm --filter @daisychess/web build`,
 then `rsync -a --delete --exclude /portal/ apps/web/dist/ /var/www/play.daisychess.org/`. No nginx reload
 needed.
+Android App Links (ADR-022 §4): after the rsync it writes
+`/var/www/play.daisychess.org/.well-known/assetlinks.json` from `deploy/assetlinks.json.template` when
+`PLAY_SIGNING_SHA256` is set in the environment (Play Console, Setup, App signing, SHA-256 certificate
+fingerprint, `AA:BB:...`; several comma-separated values are allowed, e.g. for the upload key during
+testing), for example `PLAY_SIGNING_SHA256=AA:BB:... deploy/deploy-web.sh`. Without it an existing
+file is kept and none is created (the repo variable `PLAY_SIGNING_SHA256` of M26-9 is the source of
+the value). `public/.well-known/apple-app-site-association` (Team ID `PM7LTV7M72`) ships with the
+build; nginx serves both files from the exact locations in `deploy/nginx/play.daisychess.org.conf`
+(reload needed once when these locations are first installed).
 The build includes the opt-in full-strength Stockfish build
 (`assets/engine/stockfish-<version>/stockfish-19.wasm`, ~99 MB; ADR-010), so `dist/`
 is ~105 MB; browsers fetch it only when a user enables "maximum strength".
@@ -94,8 +103,11 @@ DAISYCHESS_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" n
 `apps/server/.env.production` via `EnvironmentFile=-` (optional file, not
 created by the script; copy from `apps/server/.env.example`; currently
 `MAX_SESSIONS=4`, `MAX_THREADS=4`, `LOG_LEVEL=info`). The unit itself sets
-`ALLOWED_ORIGINS=https://play.daisychess.org` (ADR-008: browser origins allowed on `/ws`;
-other origins get 403 at the upgrade). Edit it, then
+`ALLOWED_ORIGINS=https://play.daisychess.org,https://app.daisychess.org,capacitor://app.daisychess.org`
+(ADR-008: browser origins allowed on `/ws`; other origins get 403 at the upgrade. The two
+`app.daisychess.org` entries are the WebView origins of the Android and iOS apps, ADR-022;
+`capacitor://` entries are only accepted in an explicit list, and only by a server build that
+has M26-2 — an older build refuses to start with them). Edit it, then
 `sudo systemctl restart daisychess-server`. Per-engine defaults and
 `maxInstances` live in `apps/server/engines.json`. Resource caps (`MemoryMax`,
 `CPUWeight`, `TasksMax`) are in the unit; after editing it, rerun the script.
@@ -303,7 +315,7 @@ Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/
    ```bash
    ROLE=hub
    PUBLIC_ORIGIN=https://play.daisychess.org
-   ALLOWED_ORIGINS=https://play.daisychess.org
+   ALLOWED_ORIGINS=https://play.daisychess.org,https://app.daisychess.org,capacitor://app.daisychess.org
    HUB_ADMIN_LICHESS=<your lichess username>
    ```
 

@@ -12,7 +12,7 @@ import { HubStore, utcDay } from '../store/HubStore.js';
 import { HubTokenService, LOCAL_NODE_ID, POOL_TOKEN_DEFAULT_TTL_MS } from '../tokens.js';
 import { PORTAL_COOKIE, PORTAL_SESSION_TTL_MS, hashSessionId } from './auth.js';
 import { LichessError, createLichessFetcher, type LichessAccountFetcher } from './lichess.js';
-import { registerPortalRoutes, type PortalOptions } from './routes.js';
+import { appSetupLink, registerPortalRoutes, type PortalOptions } from './routes.js';
 
 const sqlite = await loadSqlite();
 const ORIGIN = 'https://hub.example';
@@ -597,10 +597,13 @@ describe.skipIf(!sqlite)('portal API: tokens (M24-9)', () => {
       },
     });
     expect(created.statusCode).toBe(201);
-    const { token, playerToken, setupLink } = created.json();
+    const { token, playerToken, setupLink, appLink } = created.json();
     remember(playerToken);
     expect(playerToken).toMatch(TOKEN_PATTERNS.player);
     expect(setupLink).toBe(`${ORIGIN}/#setup-token=${encodeURIComponent(playerToken)}`);
+    expect(appLink).toBe(
+      `daisychess://setup?token=${encodeURIComponent(playerToken)}&hub=${encodeURIComponent('wss://hub.example/ws')}`,
+    );
     expect(token).toMatchObject({
       kind: 'player',
       label: "Anna's iPad",
@@ -1087,5 +1090,22 @@ describe.skipIf(!sqlite)('portal API: administrator (M24-9)', () => {
     expect(links.evictShared).toHaveBeenCalledWith(id, expect.any(String));
     expect(links.closeNode).not.toHaveBeenCalled();
     expect(tokens.verifyNodeToken(created.nodeToken, T0)).toMatchObject({ kind: 'node' });
+  });
+});
+
+describe('appSetupLink', () => {
+  it('builds the daisychess:// variant with the hub URL for self-hosted origins', () => {
+    expect(appSetupLink('https://hub.example', 'dc1_a b')).toBe(
+      'daisychess://setup?token=dc1_a%20b&hub=wss%3A%2F%2Fhub.example%2Fws',
+    );
+    expect(appSetupLink('http://localhost:8580', 't')).toBe(
+      'daisychess://setup?token=t&hub=ws%3A%2F%2Flocalhost%3A8580%2Fws',
+    );
+  });
+
+  it('is null for play.daisychess.org (its https link opens the app) and for non-http origins', () => {
+    expect(appSetupLink('https://play.daisychess.org', 't')).toBeNull();
+    expect(appSetupLink('ftp://hub.example', 't')).toBeNull();
+    expect(appSetupLink('not a url', 't')).toBeNull();
   });
 });

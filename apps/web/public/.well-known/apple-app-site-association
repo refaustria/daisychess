@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["PM7LTV7M72.org.daisychess.app"],
+        "components": [
+          { "/": "/", "#": "setup-token=*", "comment": "Setup link: token (and optional hub) in the fragment" },
+          { "/": "/", "#": "/room/*", "comment": "Friend game room link" }
+        ]
+      }
+    ]
+  }
+}

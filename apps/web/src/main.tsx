@@ -1,6 +1,9 @@
 import './zodConfig';
 import './storage/runMigration';
 import './setup/runSetupLink';
+// Before the app URL routing starts: the lichess callback handler of the app (M26-2).
+import './lichess/appCallback';
+import './platform/installAppUrls';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';

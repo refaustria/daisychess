@@ -22,6 +22,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Android App Links (ADR-022 §4): https://play.daisychess.org/ exactly (setup and room
+                 links carry their data in the fragment, which intent filters cannot see; /portal/
+                 and /assets/ are not claimed). Verified through /.well-known/assetlinks.json. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="play.daisychess.org" android:path="/" />
+            </intent-filter>
+
+            <!-- Custom schemes: setup links of self-hosted hubs (daisychess://setup) and the lichess login redirect (org.daisychess.app://lichess-callback; lichess requires a reverse-domain scheme). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="daisychess" android:host="setup" />
+                <data android:scheme="org.daisychess.app" android:host="lichess-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider

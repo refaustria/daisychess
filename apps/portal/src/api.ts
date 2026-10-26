@@ -56,6 +56,8 @@ export interface CreatedToken {
   token: TokenView;
   playerToken: string;
   setupLink: string | null;
+  /** `daisychess://setup?…` variant; null when the hub is play.daisychess.org (its https link opens the app). */
+  appLink?: string | null;
 }
 
 export interface PortalApi {

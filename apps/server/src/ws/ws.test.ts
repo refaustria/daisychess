@@ -13,6 +13,7 @@ import { loadConfig, type ServerConfig } from '../config.js';
 import { fakeSpawner, registry, until } from '../../test/helpers.js';
 import { TestClient } from '../../test/ws-client.js';
 import { tokenMatches } from './connection.js';
+import { parseAllowedOrigins } from './origin.js';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 /** The fake engine crashes on `go` for full-move 999 and ignores `stop` for 998. */
@@ -550,6 +551,32 @@ describe('WebSocket /ws', () => {
       expect((await upgradeError(loopback)).message).toMatch(/403/);
       const c = await TestClient.connect(url); // no Origin header: allowed
       clients.push(c);
+    });
+
+    it('app origins (ADR-022): accepted only when listed explicitly', async () => {
+      const appList = parseAllowedOrigins(
+        'https://play.daisychess.org,https://app.daisychess.org,capacitor://app.daisychess.org',
+      );
+      const { url } = await start({ allowedOrigins: appList });
+      for (const origin of ['capacitor://app.daisychess.org', 'https://app.daisychess.org']) {
+        const { client, welcome } = await TestClient.connectAndHello(url, { origin });
+        clients.push(client);
+        expect(welcome.type).toBe('welcome');
+      }
+      for (const origin of [
+        'capacitor://localhost',
+        'capacitor://app.daisychess.org/index.html',
+        'ionic://app.daisychess.org',
+      ]) {
+        expect((await upgradeError(new WebSocket(url, { origin }))).message).toMatch(/403/);
+      }
+      // Same-host default: an app origin never passes, even with a matching Host header.
+      const { url: defaultUrl } = await start();
+      const sameHostApp = new WebSocket(defaultUrl, {
+        origin: 'capacitor://127.0.0.1',
+        headers: { host: '127.0.0.1' },
+      });
+      expect((await upgradeError(sameHostApp)).message).toMatch(/403/);
     });
 
     it('wildcard disables the check', async () => {

@@ -2,7 +2,13 @@
 // Mobile build mode (ADR-022): CSP meta policy and the engine files emitted per build.
 import { describe, expect, it } from 'vitest';
 import type { Plugin } from 'vite';
-import { metaCsp, PRODUCTION_CSP } from '../csp.config.mjs';
+import {
+  buildCsp,
+  metaCsp,
+  mobileMetaCsp,
+  MOBILE_HUB_SOURCE,
+  PRODUCTION_CSP,
+} from '../csp.config.mjs';
 import { stockfishEngines } from '../vite-plugin-stockfish';
 import { cspMetaTag, MOBILE_DEFAULT_SERVER_URL, MOBILE_OUT_DIR } from '../vite.config';
 
@@ -28,6 +34,48 @@ describe('metaCsp', () => {
   });
 });
 
+describe('mobileMetaCsp (M26-2 smoke server)', () => {
+  const connect = (policy: string) =>
+    policy.split('; ').find((d) => d.startsWith('connect-src')) ?? '';
+
+  const store = metaCsp(buildCsp([MOBILE_HUB_SOURCE]));
+
+  it('is metaCsp() plus wss: for store builds, whatever the smoke server variable says', () => {
+    expect(mobileMetaCsp({})).toBe(store);
+    expect(mobileMetaCsp({ VITE_MOBILE_SMOKE_SERVER_URL: 'ws://127.0.0.1:18580/ws' })).toBe(store);
+    expect(mobileMetaCsp({ VITE_MOBILE_SMOKE: '1' })).toBe(store);
+  });
+
+  it('wss: (any self-hosted hub) is in the mobile connect-src only, not in the web policy', () => {
+    expect(connect(store).split(' ')).toContain('wss:');
+    expect(PRODUCTION_CSP).not.toMatch(/\swss:(;|\s|$)/);
+    expect(connect(store).split(' ')).not.toContain('ws:');
+  });
+
+  it('adds only the loopback smoke server origin in a smoke build', () => {
+    const p = mobileMetaCsp({
+      VITE_MOBILE_SMOKE: '1',
+      VITE_MOBILE_SMOKE_SERVER_URL: 'ws://127.0.0.1:18580/ws',
+    });
+    expect(connect(p)).toBe(`${connect(store)} ws://127.0.0.1:18580`);
+    expect(p.replace(' ws://127.0.0.1:18580', '')).toBe(store);
+  });
+
+  it('refuses any other smoke server URL', () => {
+    for (const url of [
+      'wss://evil.example/ws',
+      'ws://10.0.2.2:18580/ws',
+      'ws://127.0.0.1:18580',
+      'ws://*/ws',
+    ]) {
+      expect(
+        () => mobileMetaCsp({ VITE_MOBILE_SMOKE: '1', VITE_MOBILE_SMOKE_SERVER_URL: url }),
+        url,
+      ).toThrow(/VITE_MOBILE_SMOKE_SERVER_URL/);
+    }
+  });
+});
+
 describe('cspMetaTag', () => {
   it('prepends the meta policy to <head> in builds only', () => {
     const plugin = cspMetaTag();
@@ -37,7 +85,7 @@ describe('cspMetaTag', () => {
     expect(hook.handler()).toEqual([
       {
         tag: 'meta',
-        attrs: { 'http-equiv': 'Content-Security-Policy', content: metaCsp() },
+        attrs: { 'http-equiv': 'Content-Security-Policy', content: mobileMetaCsp({}) },
         injectTo: 'head-prepend',
       },
     ]);

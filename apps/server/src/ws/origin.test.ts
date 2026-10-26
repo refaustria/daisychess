@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isOriginAllowed, normalizeOrigin, parseAllowedOrigins } from './origin.js';
+import {
+  isOriginAllowed,
+  normalizeAppOrigin,
+  normalizeOrigin,
+  parseAllowedOrigins,
+} from './origin.js';
 
 describe('parseAllowedOrigins', () => {
   it('returns null (same-host policy) when unset or empty', () => {
@@ -80,5 +85,106 @@ describe('isOriginAllowed', () => {
   it('wildcard allows everything', () => {
     expect(isOriginAllowed('https://evil.example', 'play.daisychess.org', '*')).toBe(true);
     expect(isOriginAllowed('null', 'play.daisychess.org', '*')).toBe(true);
+  });
+});
+
+// ADR-022: native app WebView origins (iOS `capacitor://app.daisychess.org`).
+const APP_ORIGINS =
+  'https://play.daisychess.org,https://app.daisychess.org,capacitor://app.daisychess.org';
+
+describe('app origins (capacitor:)', () => {
+  it('normalizeAppOrigin accepts exactly capacitor://host[:port], lower-cased', () => {
+    expect(normalizeAppOrigin('capacitor://app.daisychess.org')).toBe(
+      'capacitor://app.daisychess.org',
+    );
+    expect(normalizeAppOrigin('CAPACITOR://App.DaisyChess.ORG')).toBe(
+      'capacitor://app.daisychess.org',
+    );
+    expect(normalizeAppOrigin('capacitor://app.daisychess.org/')).toBe(
+      'capacitor://app.daisychess.org',
+    );
+    expect(normalizeAppOrigin('capacitor://localhost:8443')).toBe('capacitor://localhost:8443');
+  });
+  it('normalizeAppOrigin rejects credentials, paths, query, fragment, empty hosts, other schemes', () => {
+    for (const bad of [
+      'capacitor://user@app.daisychess.org',
+      'capacitor://user:pw@app.daisychess.org',
+      'capacitor://app.daisychess.org/index.html',
+      'capacitor://app.daisychess.org/ws',
+      'capacitor://app.daisychess.org?x=1',
+      'capacitor://app.daisychess.org?',
+      'capacitor://app.daisychess.org#',
+      'capacitor://',
+      'capacitor:app.daisychess.org',
+      'ionic://app.daisychess.org',
+      'daisychess://app.daisychess.org',
+      'https://app.daisychess.org',
+      'null',
+      '',
+    ]) {
+      expect(normalizeAppOrigin(bad), bad).toBeNull();
+    }
+  });
+  it('normalizeOrigin (http(s) only) never returns an app origin', () => {
+    expect(normalizeOrigin('capacitor://app.daisychess.org')).toBeNull();
+  });
+  it('parseAllowedOrigins accepts explicit capacitor entries next to http(s) ones', () => {
+    expect(parseAllowedOrigins(APP_ORIGINS)).toEqual([
+      'https://play.daisychess.org',
+      'https://app.daisychess.org',
+      'capacitor://app.daisychess.org',
+    ]);
+    expect(parseAllowedOrigins(' Capacitor://APP.daisychess.org/ ')).toEqual([
+      'capacitor://app.daisychess.org',
+    ]);
+  });
+  it('parseAllowedOrigins rejects capacitor entries with credentials or paths', () => {
+    expect(() => parseAllowedOrigins('capacitor://u:p@app.daisychess.org')).toThrow(
+      /capacitor:\/\/host/,
+    );
+    expect(() =>
+      parseAllowedOrigins('https://play.daisychess.org,capacitor://app.daisychess.org/x'),
+    ).toThrow();
+    expect(() => parseAllowedOrigins('capacitor://')).toThrow();
+    expect(() => parseAllowedOrigins('ionic://app.daisychess.org')).toThrow();
+  });
+  it('default policy never accepts an app origin, whatever the Host', () => {
+    expect(isOriginAllowed('capacitor://app.daisychess.org', 'app.daisychess.org', null)).toBe(
+      false,
+    );
+    expect(isOriginAllowed('capacitor://localhost', 'localhost', null)).toBe(false);
+    expect(isOriginAllowed('capacitor://localhost', '127.0.0.1:8580', null)).toBe(false);
+    // The Android origin is plain https: same-host rules apply (it never matches our hosts).
+    expect(isOriginAllowed('https://app.daisychess.org', 'play.daisychess.org', null)).toBe(false);
+  });
+  it('explicit list: listed app origins are accepted, others and malformed ones are not', () => {
+    const list = parseAllowedOrigins(APP_ORIGINS);
+    expect(isOriginAllowed('capacitor://app.daisychess.org', 'play.daisychess.org', list)).toBe(
+      true,
+    );
+    expect(isOriginAllowed('capacitor://APP.daisychess.org', 'play.daisychess.org', list)).toBe(
+      true,
+    );
+    expect(isOriginAllowed('https://app.daisychess.org', 'play.daisychess.org', list)).toBe(true);
+    expect(isOriginAllowed('capacitor://localhost', 'play.daisychess.org', list)).toBe(false);
+    expect(isOriginAllowed('capacitor://evil.example', 'play.daisychess.org', list)).toBe(false);
+    expect(isOriginAllowed('ionic://app.daisychess.org', 'play.daisychess.org', list)).toBe(false);
+    expect(isOriginAllowed('http://app.daisychess.org', 'play.daisychess.org', list)).toBe(false);
+    expect(
+      isOriginAllowed('capacitor://user@app.daisychess.org', 'play.daisychess.org', list),
+    ).toBe(false);
+    expect(
+      isOriginAllowed('capacitor://app.daisychess.org/path', 'play.daisychess.org', list),
+    ).toBe(false);
+    expect(
+      isOriginAllowed('capacitor://app.daisychess.org.evil.example', 'play.daisychess.org', list),
+    ).toBe(false);
+  });
+  it('a list without app origins rejects them', () => {
+    const list = parseAllowedOrigins('https://play.daisychess.org');
+    expect(isOriginAllowed('capacitor://app.daisychess.org', 'play.daisychess.org', list)).toBe(
+      false,
+    );
+    expect(isOriginAllowed('https://app.daisychess.org', 'play.daisychess.org', list)).toBe(false);
   });
 });

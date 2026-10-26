@@ -272,6 +272,27 @@ interface UsageTotals {
  * Registers the portal routes under {@link PORTAL_PREFIX} on `app` (an encapsulated plugin: the
  * hooks and the error handler apply to these routes only).
  */
+/** Origin whose setup links are claimed by the DaisyChess apps as universal/app links (ADR-022 §4). */
+export const APP_LINK_HOST = 'play.daisychess.org';
+
+/**
+ * The `daisychess://setup?token=…&hub=<wss url>` variant of a setup link for hubs that are not
+ * play.daisychess.org (self-hosters cannot be in the app-link association files); null for the
+ * official host, whose https link already opens the app, and for origins that are not http(s).
+ */
+export function appSetupLink(origin: string, token: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(origin);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (u.hostname === APP_LINK_HOST) return null;
+  const hub = `${u.protocol === 'https:' ? 'wss' : 'ws'}://${u.host}${u.pathname.replace(/\/+$/, '')}/ws`;
+  return `daisychess://setup?token=${encodeURIComponent(token)}&hub=${encodeURIComponent(hub)}`;
+}
+
 export async function registerPortalRoutes(
   app: FastifyInstance,
   opts: PortalOptions,
@@ -692,6 +713,7 @@ export async function registerPortalRoutes(
             setupLink: setupOrigin
               ? `${setupOrigin}/#setup-token=${encodeURIComponent(minted.token)}`
               : null,
+            appLink: setupOrigin ? appSetupLink(setupOrigin, minted.token) : null,
           });
         });
       });
