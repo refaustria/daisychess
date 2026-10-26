@@ -78,6 +78,12 @@ test('legal pages carry no placeholders or draft banners', async ({ page }) => {
   await expect(page.locator('a[href="mailto:hello@daisychess.org"]').first()).toBeVisible();
 });
 
+test('imprint names the company register and VAT ID', async ({ page }) => {
+  await page.goto('/imprint/');
+  await expect(page.locator('article')).toContainText('FN 400396v');
+  await expect(page.locator('article')).toContainText('ATU68207022');
+});
+
 test('skip link moves focus to the main content', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/features/');

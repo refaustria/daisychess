@@ -4,7 +4,7 @@ This notice explains in plain language what data DaisyChess handles, for players
 
 ## 1. Who is responsible
 
-Data controller: **Bojan Savicevic aka appac**, **1220 Vienna, Austria**, contact: **hello@daisychess.org**.
+Data controller: **INCEPTUM e.U. (owner Bojan Savicevic)**, **Brunellengasse 1/3, 1220 Vienna, Austria**, contact: **hello@daisychess.org**.
 
 ## 2. The short version
 

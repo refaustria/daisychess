@@ -1,6 +1,6 @@
 # DaisyChess terms of use (node operators and players)
 
-These terms apply to the DaisyChess hub operated by **Bojan Savicevic, 1220 Vienna, Austria** ("we"), reachable at play.daisychess.org, including the web app, the operator portal and the shared pool. Contact: **hello@daisychess.org**. How personal data is handled: [`PRIVACY.md`](./PRIVACY.md).
+These terms apply to the DaisyChess hub operated by **INCEPTUM e.U. (owner Bojan Savicevic), Brunellengasse 1/3, 1220 Vienna, Austria** ("we"), reachable at play.daisychess.org, including the web app, the operator portal and the shared pool. Contact: **hello@daisychess.org**. How personal data is handled: [`PRIVACY.md`](./PRIVACY.md).
 
 ## 1. The service and the software
 
@@ -52,6 +52,15 @@ Austrian law applies, excluding its conflict-of-law rules and the UN Sales Conve
 
 ## 9. Provider information
 
-**Bojan Savicevic (private person), 1220 Vienna, Austria, hello@daisychess.org**
+**INCEPTUM e.U.** (owner Bojan Savicevic), registered sole proprietorship (eingetragenes Einzelunternehmen)
 
-*Last updated: 2026-10-26.*
+- Address: Brunellengasse 1/3, 1220 Vienna, Austria
+- E-mail: hello@daisychess.org
+- Company register: FN 400396v, Commercial Court Vienna (Handelsgericht Wien)
+- VAT ID (UID): ATU68207022
+- Trade: management consultancy (Unternehmensberatung); Austrian Economic Chamber Vienna (WKO Wien), professional group UBIT
+- Trade authority: Magistratisches Bezirksamt für den 22. Bezirk (Vienna)
+- Applicable rules: Gewerbeordnung (GewO), www.ris.bka.gv.at
+- Media owner (§ 25 MedienG): INCEPTUM e.U., Vienna. DaisyChess is free and non-commercial.
+
+_Last updated: 2026-10-26._
