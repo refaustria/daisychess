@@ -52,6 +52,10 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 
 `src/puzzles/` is the data layer (index, shards, offline cache, bundled `data/starter.json`; provenance in `data/SOURCE.md`), `src/components/Puzzles/` the UI (solver panel, filters, daily card, rush, offline keep), pure logic in `packages/puzzles` (`@daisychess/puzzles`). Shards are static files under `/puzzles/v1/` (cached by nginx, CORS for the app); if they are unreachable the starter is used. Rating, daily streak and rush bests live in localStorage. Data: lichess puzzle database, CC0 (`THIRD_PARTY_NOTICES.md`). e2e: `e2e/puzzles.spec.ts`, `puzzle-solve.spec.ts`, `puzzle-rush.spec.ts`.
 
+### Your mistakes
+
+`puzzles/gameLedger.ts` + `installLedger.ts` record reviewed games (store `games`, <= 500) with the user's side (`userSide.ts`, "My names" in Settings, ask-once prompt); `mistakeGenerator.ts` turns the missed tactics into puzzles with engine searches (`mistakeStore.ts`, store `mistakes`, spaced-repetition schedule, scan markers so handled candidates are not searched again); `components/Puzzles/MistakesPanel.tsx` is the UI (Train due, Find puzzles in my games, list with Open game and delete). Tests: component and scripted-engine unit tests, `e2e/puzzle-mistakes.spec.ts` (seeded store, side prompt, training) and `e2e/puzzle-mistakes-generate.spec.ts` (load a PGN with a missed Qxf7#, review, generate with the real browser engine, solve). Opt-in native-engine test: `DAISYCHESS_SLOW_TESTS=1`.
+
 ## Clocks and time controls (Play vs Engine)
 
 - **Setup:** Play tab → "Time control": presets grouped by lichess category (estimated duration = initial + 40 × increment: < 30 s UltraBullet, < 3 min Bullet, < 8 min Blitz, < 25 min Rapid, else Classical) — Bullet 1+0, 2+1; Blitz 3+0, 3+2, 5+0, 5+3; Rapid 10+0, 10+5, 15+10; Classical 30+0, 30+20 — plus "Custom…" (0.25–180 min, 0–60 s increment, clamped) and "No clock" (the previous behaviour). Labels read `3+2 · Blitz`. The whole setup (colour, strength, thinking time, time control) is remembered in localStorage `daisychess.play`.

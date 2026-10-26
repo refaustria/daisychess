@@ -28,7 +28,7 @@ All milestones M0–M10 are implemented (play, browser and server analysis, game
 | Theming (board colours, piece sets Cburnett/Letters, coordinates, highlights, sounds, dark/light)                            | done                                                                                 |
 | Accessibility / performance pass                                                                                             | done (axe e2e checks, keyboard-operable tabs; the board itself is mouse/touch only)  |
 | Play a friend via link (rooms on the server: nickname, time control, colour; reconnect, draw/resign/abort/claim, spectators) | server done (ADR-013); web UI in progress (M16-2)                                    |
-| Puzzles (stage 1: lichess puzzle database, rating, daily, rush, filters, offline starter; ADR-023)                           | done; stage 2 (puzzles from your own mistakes) in progress                           |
+| Puzzles (stage 1: lichess puzzle database, rating, daily, rush, filters, offline starter; ADR-023)                           | done (stage 2, puzzles from your own mistakes, included)                             |
 | Accounts                                                                                                                     | not built (non-goal for v1)                                                          |
 
 ---
@@ -261,6 +261,7 @@ Protocol (additive, `PROTOCOL_VERSION` stays 1):
 - Filters by theme and by opening family/variation; "Puzzles from this opening" in the Openings tab opens the Puzzles tab with that opening filtered.
 - Daily puzzle (same for everyone, rated on the first attempt of the day) with a streak and a 30-day strip; Puzzle Rush (3 or 5 minutes, three strikes, best scores kept).
 - Offline: Filters has "Keep puzzles for offline use" to cache shards around your rating on the device; with `/puzzles/v1/` unreachable the app falls back to the bundled starter.
+- Your mistakes (stage 2): puzzles made from the mistakes in your own reviewed games. Every reviewed game is noted in a local ledger (IndexedDB `daisychess-puzzles`, at most 500 games) with the side you played (from the game source, the PGN names matched against Settings → Puzzles "My names", the lichess login and the import usernames; otherwise asked once). "Find puzzles in my games" takes the reviews (local cache; the server review store only when a token is set), lets the engine check each of your mistakes (multipv 2; the puzzle is kept only if the best move is clearly better, e.g. a missed mate) and stores it with a spaced-repetition schedule. "Train due" solves the due ones (unrated, a correct first try pushes the next review out, a miss brings it back at once); each puzzle has "Open game" (jumps to the ply) and delete. Search can be cancelled and pauses during human games. Everything stays on the device (`docs/PRIVACY.md`).
 - Attribution: puzzles are from the lichess.org puzzle database, CC0 (see `THIRD_PARTY_NOTICES.md`). Requests for the static files carry no identifier (`docs/PRIVACY.md`).
 
 ### Online import
