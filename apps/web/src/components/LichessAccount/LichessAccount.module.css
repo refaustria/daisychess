@@ -3,7 +3,7 @@
   min-height: 36px;
   padding: 0 0.85rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -21,7 +21,7 @@
 
 .button:focus-visible,
 .chip:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -143,6 +143,6 @@
 
 .input:focus-visible,
 .details summary:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }

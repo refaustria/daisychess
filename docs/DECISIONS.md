@@ -532,3 +532,6 @@ Owner decision: `apps/site` (the community website) is licensed MIT (`apps/site/
 
 ### Addendum (2026-10-26) — legacy host retired
 2026-10-26: c.referee.at retired immediately by owner decision (never productive); legacy page and migration removed. The "moved" page, the `#migrate=` hand-over (`apps/web/legacy/`, `apps/web/src/migrate/`), `LEGACY_CSP`, `deploy/deploy-legacy.sh` and the legacy vhost are gone; there is no sunset date any more.
+
+### Theming tokens addendum (M29-1, 2026-10-26)
+The light theme was replaced (not supplemented) by the community-site "Daisy" palette; the dark theme keeps its warm-dark surfaces. `--accent` is now the yellow daisy (#f5c518) and is only a fill/underline colour, always paired with `--accent-contrast` (dark text). Text and outlines use the new `--accent-ink` (dark amber on light, yellow on dark) and `--focus`; `--radius` is 14px and buttons use `--radius-pill`. Inter Variable is self-hosted from `packages/ui-theme/src/fonts` (OFL-1.1, no external requests). Board colours, eval bar and move-quality colours are unchanged.

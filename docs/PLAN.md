@@ -226,3 +226,8 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M28-3 | Raise `engines.node` to `>=22.13` in all package.json files (CI already on 22/24) | worker | todo |
 | M28-4 | Operator account deletion: portal API `DELETE /api/portal/me` (revokes nodes/tokens, closes links/connections, deletes operator row, sessions, usage rows) + portal UI; PRIVACY.md already promises it | senior | todo (after M27-2) |
 | M28-5 | Hub store backup timer (daily `.backup`, 7 copies) as promised in PRIVACY.md | worker | todo |
+
+## M29 — UI polish (2026-10-26)
+| ID | Task | Tier | Status |
+|---|---|---|---|
+| M29-1 | "Daisy" look: the light theme is replaced by the community-site palette (cream, white cards, yellow accent, pill buttons, self-hosted Inter); dark theme keeps its look but uses the yellow accent. New tokens `--accent-ink`, `--accent-soft`, `--border-strong`, `--focus`, `--radius-pill` in `packages/ui-theme` | worker | done |

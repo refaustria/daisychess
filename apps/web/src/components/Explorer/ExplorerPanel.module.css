@@ -9,7 +9,7 @@
   min-height: 32px;
   padding: 0 0.75rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -24,7 +24,7 @@
 .panel summary:focus-visible,
 .panel a:focus-visible,
 .input:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -34,7 +34,7 @@
 }
 
 .panel a {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .header {
@@ -78,7 +78,7 @@
 }
 
 .db:focus-within {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 

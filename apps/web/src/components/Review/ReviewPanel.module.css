@@ -33,7 +33,7 @@
 .presetActive {
   padding: 0.35rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -57,7 +57,7 @@
 .preset:focus-visible,
 .presetActive:focus-visible,
 .moment:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -207,7 +207,7 @@ button:disabled {
   border: 0;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-ink);
   font: inherit;
   cursor: pointer;
 }
@@ -225,7 +225,7 @@ button:disabled {
 .linkBtn:focus-visible,
 .close:focus-visible,
 .line:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -385,7 +385,7 @@ button:disabled {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-ink);
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
@@ -418,7 +418,7 @@ button:disabled {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-ink);
   font: inherit;
   font-size: 0.85rem;
   text-decoration: underline;
