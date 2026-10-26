@@ -666,6 +666,58 @@ released tag. To rebuild a release (e.g. after a failed upload), run the workflo
   set the four `ANDROID_UPLOAD_*` secrets again after Google confirms. The app signing key (and so
   `PLAY_SIGNING_SHA256`) does not change.
 
+### App Store metadata
+
+`.github/workflows/store-metadata.yml` (manual, `workflow_dispatch`) fills the App Store Connect
+record of `org.daisychess.app` from the repo with `apps/mobile/scripts/asc-metadata.mjs` (App Store
+Connect API, same team key as the release). It is idempotent: unchanged fields are not written, and
+a screenshot set is replaced only when the files differ (name and MD5, in order).
+
+| Input     | Default | Effect                                                                         |
+| --------- | ------- | ------------------------------------------------------------------------------ |
+| `submit`  | false   | after filling the record, create a review submission and submit it for review  |
+| `dry_run` | false   | read the record and print the planned changes (log and job summary), no writes |
+
+What it sets, and where the values come from:
+
+| Field                                                                   | Source                                                                                                              |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| version `<apps/mobile/package.json version>` (renames the editable one) | `apps/mobile/package.json`; copyright from `listing.en.json`                                                        |
+| description, keywords, promotional text, support and marketing URL      | `apps/mobile/store/listing.en.json` (`apple`, URLs)                                                                 |
+| name, subtitle, privacy policy URL                                      | same                                                                                                                |
+| categories, content rights, age rating answers, availability, price     | `apps/mobile/store/app-store.json`                                                                                  |
+| App Review contact (name, e-mail; phone), notes, no demo account        | `app-store.json`, variable `REVIEW_CONTACT_PHONE`, secret `REVIEW_TOKEN`, notes from `apps/site/STORE_CHECKLIST.md` |
+| custom EULA (all territories)                                           | `apps/site/STORE_CHECKLIST.md`                                                                                      |
+| screenshots `APP_IPHONE_67` (6.9"), `APP_IPAD_PRO_3GEN_129` (13")       | `apps/mobile/store/screenshots/{iphone-6.9,ipad-13}/*.png`                                                          |
+| build                                                                   | newest processed TestFlight build of that version                                                                   |
+
+Extra inputs: secret `REVIEW_TOKEN` (a revocable reviewer token minted in the portal; the review
+notes quote it; without it the notes are left as they are and `submit` refuses to run) and variable
+`REVIEW_CONTACT_PHONE` (international format; App Review requires a phone). Both are optional for a
+fill-only run; without the phone the review details are not created at all (App Store Connect
+refuses them). Overrides for a local run: `REVIEW_CONTACT_FIRST_NAME`, `REVIEW_CONTACT_LAST_NAME`,
+`REVIEW_CONTACT_EMAIL`.
+
+```bash
+gh workflow run store-metadata.yml -f submit=false   # fill the record (no review submission)
+gh workflow run store-metadata.yml -f dry_run=true   # plan only
+gh workflow run store-metadata.yml -f submit=true    # fill and submit for App Review
+# local: ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_KEY_PATH=AuthKey_….p8 node apps/mobile/scripts/asc-metadata.mjs --dry-run
+```
+
+Not possible through the API (checked against the App Store Connect OpenAPI spec 4.5.1); every run
+prints these as "owner steps" at the end of the log and in the job summary:
+
+- **App Privacy** questionnaire (answers on https://daisychess.org/app-privacy/), then "Publish".
+- **Digital Services Act trader status** (EU).
+- Price and availability when the key's role gets HTTP 403 for them (the run then warns instead of
+  failing).
+- `availableInNewTerritories` on an existing availability record (the API has no update for it).
+
+Decisions encoded in `app-store.json` that the owner should know: primary category Games › Board,
+secondary Education; content rights "uses third-party content" (lichess puzzle database, lichess
+and chess.com APIs); China mainland excluded (needs an ICP filing and a game approval number).
+
 ### Troubleshooting
 
 - `play-publish: … HTTP 403/404` — the package has had no manual upload yet or the service account
@@ -678,3 +730,6 @@ released tag. To rebuild a release (e.g. after a failed upload), run the workflo
   `"action":"recreated","reason":"missing-entitlements"` after replacing it. With
   `IOS_PROVISIONING_PROFILE_B64` set the profile is not managed: regenerate it by hand.
 - `altool` "bundle version must be higher" — a build with that number exists; rerun (new run number).
+- `asc-metadata: … HTTP 409` — App Store Connect rejected a value; the log lists its error codes and
+  JSON pointers. `App Store version … is in state WAITING_FOR_REVIEW` — already submitted; nothing
+  to do until App Review decides (or the submission is cancelled in App Store Connect).

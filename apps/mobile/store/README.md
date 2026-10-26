@@ -1,6 +1,8 @@
 # Store assets (M26-7)
 
-Nothing here is uploaded automatically; the owner uploads by hand after review.
+Google Play: nothing here is uploaded automatically; the owner uploads by hand after review. App Store:
+`.github/workflows/store-metadata.yml` (`scripts/asc-metadata.mjs`) uploads the Apple texts, `app-store.json`
+settings and the `iphone-6.9` / `ipad-13` screenshots (deploy/README.md, App Store metadata).
 
 | What                                                                                       | Where                                                                                                                         | How it is made                                                                                                                                             |
 | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |

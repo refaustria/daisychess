@@ -1,0 +1,58 @@
+{
+  "$comment": "App Store Connect settings that are not listing texts (those are in listing.en.json). Applied by scripts/asc-metadata.mjs; see deploy/README.md, App Store metadata.",
+  "bundleId": "org.daisychess.app",
+  "locale": "en-US",
+  "categories": {
+    "primaryCategory": "GAMES",
+    "primarySubcategoryOne": "GAMES_BOARD",
+    "secondaryCategory": "EDUCATION"
+  },
+  "contentRightsDeclaration": "USES_THIRD_PARTY_CONTENT",
+  "reviewContact": {
+    "firstName": "Bojan",
+    "lastName": "Savicevic",
+    "email": "hello@daisychess.org"
+  },
+  "price": "free",
+  "availability": {
+    "availableInNewTerritories": true,
+    "excludeTerritories": ["CHN"]
+  },
+  "ageRating": {
+    "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+    "contests": "NONE",
+    "gamblingSimulated": "NONE",
+    "gunsOrOtherWeapons": "NONE",
+    "medicalOrTreatmentInformation": "NONE",
+    "profanityOrCrudeHumor": "NONE",
+    "sexualContentGraphicAndNudity": "NONE",
+    "sexualContentOrNudity": "NONE",
+    "horrorOrFearThemes": "NONE",
+    "matureOrSuggestiveThemes": "NONE",
+    "violenceCartoonOrFantasy": "NONE",
+    "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+    "violenceRealistic": "NONE",
+    "advertising": false,
+    "ageAssurance": false,
+    "gambling": false,
+    "healthOrWellnessTopics": false,
+    "lootBox": false,
+    "messagingAndChat": false,
+    "parentalControls": false,
+    "socialMedia": false,
+    "unrestrictedWebAccess": false,
+    "userGeneratedContent": false
+  },
+  "screenshots": [
+    {
+      "displayType": "APP_IPHONE_67",
+      "dir": "screenshots/iphone-6.9",
+      "sizes": ["1320x2868", "1290x2796", "1260x2736"]
+    },
+    {
+      "displayType": "APP_IPAD_PRO_3GEN_129",
+      "dir": "screenshots/ipad-13",
+      "sizes": ["2064x2752", "2048x2732"]
+    }
+  ]
+}
