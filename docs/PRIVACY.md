@@ -56,6 +56,7 @@ When you analyse on a **community node**, the hub relays your search to the mach
 - **Operator portal:** you log in with lichess (OAuth with PKCE). The hub receives the lichess access token **once**, asks lichess who you are (your user id and username), then **discards the token**; the portal also revokes it at lichess. The token is not stored.
 - **Web app (optional):** if you log in with lichess in the app to import your games, the token stays in your browser and is sent only to lichess.
 - Importing games from lichess or chess.com sends the username you type to those services' public APIs from your browser; their privacy policies apply.
+- The Puzzles tab downloads public, static puzzle files from play.daisychess.org (the same address as the app) like any other app file, without sending any identifier, account or parameter about you, and your puzzle rating, streak and history stay in your browser.
 
 ## 7. Cookies and local storage
 
