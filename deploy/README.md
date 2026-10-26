@@ -714,6 +714,11 @@ prints these as "owner steps" at the end of the log and in the job summary:
   failing).
 - `availableInNewTerritories` on an existing availability record (the API has no update for it).
 
+Other locales: App Store Connect auto-creates an empty localization of the app's primary language
+when the app is created, which blocks App Review (HTTP 409 on the submission). The script switches
+the app's primary locale to `locale` (en-US), deletes empty version-localization stubs of other
+locales and warns about ones with content (complete or delete them by hand).
+
 Decisions encoded in `app-store.json` that the owner should know: primary category Games › Board,
 secondary Education; content rights "uses third-party content" (lichess puzzle database, lichess
 and chess.com APIs); China mainland excluded (needs an ICP filing and a game approval number).

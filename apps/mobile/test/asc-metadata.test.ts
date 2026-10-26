@@ -100,7 +100,15 @@ const AGE_KEYS = [
 
 /** In-memory App Store Connect with just enough behaviour for the metadata flow. */
 function fakeAsc(
-  opts: { versions?: Res[]; forbid?: RegExp; failDelivery?: boolean; extraAgeKey?: string } = {},
+  opts: {
+    versions?: Res[];
+    forbid?: RegExp;
+    failDelivery?: boolean;
+    refusePrimary?: boolean;
+    otherLocs?: Res[];
+    primaryLocale?: string;
+    extraAgeKey?: string;
+  } = {},
 ) {
   const calls: Call[] = [];
   const uploads: { method: string; url: string; headers: Record<string, string>; bytes: number }[] =
@@ -115,6 +123,7 @@ function fakeAsc(
         bundleId: 'org.daisychess.app',
         name: 'DaisyChess',
         contentRightsDeclaration: null,
+        ...(opts.primaryLocale ? { primaryLocale: opts.primaryLocale } : {}),
       },
     } as Res,
     versions: opts.versions ?? [
@@ -128,7 +137,7 @@ function fakeAsc(
         },
       },
     ],
-    versionLocs: [] as Res[],
+    versionLocs: [...(opts.otherLocs ?? [])] as Res[],
     appInfos: [
       {
         id: 'I0',
@@ -268,7 +277,11 @@ function fakeAsc(
         return patch(st.versionLocs.find((v) => v.id === m?.[1]) as Res);
       if ((m = pp.match(/^\/v1\/appInfoLocalizations\/(\w+)$/)))
         return patch(st.infoLocs.find((v) => v.id === m?.[1]) as Res);
-      if (pp === '/v1/apps/A1') return patch(st.app);
+      if (pp === '/v1/apps/A1') {
+        if (opts.refusePrimary && attrs.primaryLocale)
+          throw new AscError('PATCH: HTTP 409', 409, '{"errors":[]}');
+        return patch(st.app);
+      }
       if (pp === '/v1/appInfos/I1') {
         const info = st.appInfos[1] as Res;
         for (const [k, v] of Object.entries(body?.data.relationships ?? {})) {
@@ -395,6 +408,10 @@ function fakeAsc(
       return { data: created };
     }
     if (method === 'DELETE') {
+      if ((m = pp.match(/^\/v1\/appStoreVersionLocalizations\/(\w+)$/))) {
+        st.versionLocs = st.versionLocs.filter((l) => l.id !== m?.[1]);
+        return null;
+      }
       if ((m = pp.match(/^\/v1\/appScreenshots\/(\w+)$/))) {
         for (const [k, v] of st.shots)
           st.shots.set(
@@ -581,6 +598,60 @@ describe('ensureVersion', () => {
     await expect(
       ensureVersion(ctxFor(g.api), 'A1', { versionString: '0.1.1', copyright: 'c' }),
     ).rejects.toThrow(/bump/);
+  });
+});
+
+describe('other locales', () => {
+  const stub = (id: string, locale: string, description?: string): Res => ({
+    id,
+    type: 'appStoreVersionLocalizations',
+    attributes: { locale, description: description ?? null },
+  });
+  const run = async (f: ReturnType<typeof fakeAsc>, dryRun = false) => {
+    const lines: string[] = [];
+    await syncAppStore({
+      api: f.api,
+      desired: desired(),
+      dryRun,
+      upload: f.upload,
+      sleep: async () => {},
+      log: (l: string) => lines.push(l),
+    });
+    return lines.join('\n');
+  };
+
+  it('switches the primary locale first, then deletes the empty stub', async () => {
+    const f = fakeAsc({ primaryLocale: 'de-DE', otherLocs: [stub('X1', 'de-DE')] });
+    const log = await run(f);
+    const w = writes(f.calls).map((c) => `${c.method} ${c.path}`);
+    const patch = w.indexOf('PATCH /v1/apps/A1');
+    const del = w.indexOf('DELETE /v1/appStoreVersionLocalizations/X1');
+    expect(patch).toBeGreaterThanOrEqual(0);
+    expect(del).toBeGreaterThan(patch);
+    expect(f.st.app.attributes?.primaryLocale).toBe('en-US');
+    expect(log).toMatch(/removed empty stub/);
+    expect(log).toContain('de-DE');
+  });
+
+  it('keeps a localization with content and warns', async () => {
+    const f = fakeAsc({ otherLocs: [stub('X2', 'en-GB', 'Hello')] });
+    const log = await run(f);
+    expect(f.calls.some((c) => c.method === 'DELETE')).toBe(false);
+    expect(log).toMatch(/warning\s+version localization en-GB/);
+  });
+
+  it('warns and continues when Apple refuses the primary locale switch', async () => {
+    const f = fakeAsc({ primaryLocale: 'de-DE', refusePrimary: true });
+    const log = await run(f);
+    expect(log).toMatch(/warning\s+app primaryLocale/);
+  });
+
+  it('dry run plans the switch and the deletion without writing', async () => {
+    const f = fakeAsc({ primaryLocale: 'de-DE', otherLocs: [stub('X1', 'de-DE')] });
+    const log = await run(f, true);
+    expect(writes(f.calls)).toEqual([]);
+    expect(log).toMatch(/planned\s+app primaryLocale/);
+    expect(log).toMatch(/planned\s+version localization de-DE: removed empty stub/);
   });
 });
 

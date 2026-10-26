@@ -517,6 +517,77 @@ export function syncVersionLocalization(ctx, versionId, d) {
   });
 }
 
+/**
+ * Other locales than `d.locale`: App Store Connect auto-creates a localization of the app's primary
+ * locale (e.g. de-DE) that blocks App Review while it is empty. Switches the primary locale first
+ * (the primary one cannot be deleted), then removes empty version-localization stubs; localizations
+ * with content are kept and reported. App info localizations hold the app name and are never deleted.
+ * @param {Ctx} ctx @param {Resource} app @param {string} versionId @param {Resource} info @param {Desired} d
+ */
+export async function syncOtherLocales(ctx, app, versionId, info, d) {
+  const primary = attr(app, 'primaryLocale');
+  if (primary && primary !== d.locale) {
+    reportChange(ctx, 'app primaryLocale', { primaryLocale: d.locale });
+    try {
+      await write(ctx, 'PATCH', `/v1/apps/${app.id}`, {
+        data: { type: 'apps', id: app.id, attributes: { primaryLocale: d.locale } },
+      });
+    } catch (e) {
+      if (!(e instanceof AscError)) throw e;
+      report(
+        ctx,
+        'warning',
+        'app primaryLocale',
+        `could not switch ${primary} to ${d.locale} (${e.message}); set it in App Store Connect → App Information → Primary Language`,
+      );
+    }
+  }
+  const { data: locs } = await getAll(
+    ctx,
+    `/v1/appStoreVersions/${versionId}/appStoreVersionLocalizations?limit=50`,
+  );
+  for (const loc of locs) {
+    const locale = attr(loc, 'locale');
+    if (locale === d.locale) continue;
+    if (attr(loc, 'description')) {
+      report(
+        ctx,
+        'warning',
+        `version localization ${locale}`,
+        'has content and is not managed by this script; complete it (description, keywords, support URL, screenshots) or delete it in App Store Connect',
+      );
+      continue;
+    }
+    ctx.log(`found other version localization ${locale} (${loc.id}), empty`);
+    report(
+      ctx,
+      ctx.dryRun ? 'planned' : 'changed',
+      `version localization ${locale}`,
+      'removed empty stub',
+    );
+    try {
+      await write(ctx, 'DELETE', `/v1/appStoreVersionLocalizations/${loc.id}`);
+    } catch (e) {
+      if (!(e instanceof AscError)) throw e;
+      report(
+        ctx,
+        'warning',
+        `version localization ${locale}`,
+        `could not delete the empty stub (${e.message})`,
+      );
+    }
+  }
+  const { data: infoLocs } = await getAll(
+    ctx,
+    `/v1/appInfos/${info.id}/appInfoLocalizations?limit=50`,
+  );
+  for (const l of infoLocs) {
+    const locale = attr(l, 'locale');
+    if (locale !== d.locale)
+      ctx.log(`found other app info localization ${locale} (${l.id}), left as is`);
+  }
+}
+
 /** @param {Ctx} ctx @param {Resource} app @param {Desired} d */
 export async function syncAppAttributes(ctx, app, d) {
   const changes = diffAttributes(app.attributes, {
@@ -1115,6 +1186,7 @@ export async function syncAppStore({
   await syncAppAttributes(ctx, app, d);
   const info = await editableAppInfo(ctx, app.id);
   await syncAppInfo(ctx, info, d);
+  await syncOtherLocales(ctx, app, version.id, info, d);
   const review = await syncReviewDetail(ctx, version.id, d);
   await syncEula(ctx, app.id, d.eula);
   if (d.price === 'free') {
