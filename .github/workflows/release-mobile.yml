@@ -320,6 +320,7 @@ jobs:
           uuid=$(pb UUID)
           echo "profile $(pb Name) ($uuid), expires $(pb ExpirationDate)"
           test "$(pb Entitlements:application-identifier)" = "$TEAM_ID.$APP_ID"
+          echo "profile associated domains: $(pb Entitlements:com.apple.developer.associated-domains 2> /dev/null | tr -s ' \n' ' ' || echo none)"
           if pb Entitlements:get-task-allow 2>/dev/null | grep -q true; then
             echo "::error::the profile is a development profile, not an App Store one"
             exit 1
@@ -378,11 +379,20 @@ jobs:
           codesign --verify --strict --deep "$x/Payload/App.app"
           codesign -dvv "$x/Payload/App.app" 2>&1 | grep -E '^(Authority|TeamIdentifier)=' | head -2
           codesign -d --entitlements - --xml "$x/Payload/App.app" 2> /dev/null > "$x/ent.plist"
-          if ! plutil -extract com.apple.developer.associated-domains json -o - "$x/ent.plist"; then
-            echo "::error::The exported app has no com.apple.developer.associated-domains entitlement: enable the Associated Domains capability on App ID $APP_ID and rerun so the provisioning profile \"$IOS_PROFILE_NAME\" is recreated (or regenerate the profile in IOS_PROVISIONING_PROFILE_B64)."
-            exit 1
-          fi
-          test "$(plutil -extract get-task-allow raw "$x/ent.plist")" = false
+          # PlistBuddy, not plutil -extract: plutil splits key paths at '.', so a dotted
+          # entitlement name is never found.
+          ent() { /usr/libexec/PlistBuddy -c "Print :$1" "$x/ent.plist"; }
+          domains=$(ent com.apple.developer.associated-domains 2> /dev/null || true)
+          echo "associated domains: $(echo "$domains" | tr -s ' \n' ' ')"
+          wants=$(sed -n 's|.*<string>\(applinks:[^<]*\)</string>.*|\1|p' apps/mobile/ios/App/App/App.entitlements)
+          test -n "$wants"
+          for want in $wants; do
+            if ! printf '%s\n' "$domains" | sed 's/^[[:space:]]*//' | grep -qxF "$want"; then
+              echo "::error::The exported app lacks $want in com.apple.developer.associated-domains: enable the Associated Domains capability on App ID $APP_ID and rerun so the provisioning profile \"$IOS_PROFILE_NAME\" is recreated (or regenerate the profile in IOS_PROVISIONING_PROFILE_B64)."
+              exit 1
+            fi
+          done
+          test "$(ent get-task-allow)" = false
           ls -l "$ipa"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.inputs.outputs.signed == 'true'
