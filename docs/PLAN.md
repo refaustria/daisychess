@@ -232,3 +232,4 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | ID | Task | Tier | Status |
 |---|---|---|---|
 | M29-1 | "Daisy" look: the light theme is replaced by the community-site palette (cream, white cards, yellow accent, pill buttons, self-hosted Inter); dark theme keeps its look but uses the yellow accent. New tokens `--accent-ink`, `--accent-soft`, `--border-strong`, `--focus`, `--radius-pill` in `packages/ui-theme` | worker | done |
+| M29-2 | Theme toggle on the community site (apps/site): moon/sun button in the header, system default, choice in localStorage `daisychess.theme`, applied before first paint by external `/theme-init.js` (CSP unchanged), hero pawn follows live | worker | done |

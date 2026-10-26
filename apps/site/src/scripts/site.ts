@@ -1,5 +1,6 @@
 // Runs on every page: marks JS as available and wires the mobile navigation toggle. The button's
 // name stays "Menu"; aria-expanded carries the state.
+import { initThemeToggle } from './theme';
 
 export function initNav(doc: Document = document): void {
   const toggle = doc.querySelector<HTMLButtonElement>('.nav-toggle');
@@ -27,4 +28,5 @@ export function initSite(doc: Document = document): void {
   doc.documentElement.classList.remove('no-js');
   doc.documentElement.classList.add('js');
   initNav(doc);
+  initThemeToggle(doc);
 }

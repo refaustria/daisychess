@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { applyPartials, buildSitemap, escapeHtml, renderFooter, renderHead, renderHeader, replaceTokens } from '../../build/partials';
+import {
+  applyPartials,
+  buildSitemap,
+  escapeHtml,
+  renderFooter,
+  renderHead,
+  renderHeader,
+  replaceTokens,
+} from '../../build/partials';
 import { APP_URL, PAGES, REPO_URL, SITE_URL, canonicalUrl, pageByFile } from '../../site.config';
 
 const home = pageByFile('index.html')!;
@@ -19,7 +27,9 @@ describe('site.config', () => {
 
   it('builds canonical URLs on the apex domain', () => {
     expect(canonicalUrl(home)).toBe('https://daisychess.org/');
-    expect(canonicalUrl(pageByFile('features/index.html')!)).toBe('https://daisychess.org/features/');
+    expect(canonicalUrl(pageByFile('features/index.html')!)).toBe(
+      'https://daisychess.org/features/',
+    );
   });
 
   it('finds pages by file, also with Windows separators', () => {
@@ -31,7 +41,9 @@ describe('site.config', () => {
 
 describe('partials', () => {
   it('escapes HTML', () => {
-    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe('&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;');
+    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe(
+      '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;',
+    );
   });
 
   it('replaces known tokens and rejects unknown ones', () => {
@@ -47,12 +59,19 @@ describe('partials', () => {
     expect(head).toContain('twitter:card" content="summary_large_image"');
     expect(head).toContain('<title>DaisyChess — free, open-source chess analysis</title>');
     expect(head).not.toContain('noindex');
+    expect(head).toContain('<script src="/theme-init.js"></script>');
   });
 
   it('marks the 404 page noindex without a canonical link', () => {
     const head = renderHead(notFound);
     expect(head).toContain('<meta name="robots" content="noindex" />');
     expect(head).not.toContain('rel="canonical"');
+  });
+
+  it('renders the theme toggle button, hidden until JS runs', () => {
+    expect(renderHeader('home')).toMatch(
+      /<button class="theme-toggle"[^>]*aria-label="Switch to dark theme" hidden>/,
+    );
   });
 
   it('marks exactly the active nav item', () => {
@@ -65,7 +84,15 @@ describe('partials', () => {
 
   it('links every legal page from the footer', () => {
     const f = renderFooter();
-    for (const path of ['/privacy/', '/terms/', '/imprint/', '/app-privacy/', '/delete-data/', '/accessibility/', '/support/']) {
+    for (const path of [
+      '/privacy/',
+      '/terms/',
+      '/imprint/',
+      '/app-privacy/',
+      '/delete-data/',
+      '/accessibility/',
+      '/support/',
+    ]) {
       expect(f).toContain(`href="${path}"`);
     }
   });
@@ -84,7 +111,8 @@ describe('partials', () => {
 describe('buildSitemap', () => {
   it('lists every indexable page once and leaves out the 404 page', () => {
     const xml = buildSitemap(PAGES, '2026-10-25');
-    for (const p of PAGES.filter((x) => x.sitemap)) expect(xml).toContain(`<loc>${canonicalUrl(p)}</loc>`);
+    for (const p of PAGES.filter((x) => x.sitemap))
+      expect(xml).toContain(`<loc>${canonicalUrl(p)}</loc>`);
     expect(xml).not.toContain('404');
     expect(xml).toContain('<lastmod>2026-10-25</lastmod>');
     expect(xml.startsWith('<?xml')).toBe(true);

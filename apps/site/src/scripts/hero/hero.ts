@@ -3,6 +3,7 @@
 // rotation, and renders only while the hero is on screen and the tab is visible.
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { effectiveTheme, watchTheme } from '../theme';
 import { DAISY_SCALE, createPawnScene, type PawnScene } from './scene';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -19,13 +20,12 @@ export function mountHero(container: HTMLElement, trigger: HTMLElement): HeroHan
   canvas.setAttribute('role', 'presentation');
   container.appendChild(canvas);
 
-  const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  const scene = createPawnScene(canvas, { dark: darkQuery.matches });
-  const onScheme = (e: MediaQueryListEvent) => {
-    scene.setDark(e.matches);
+  const scene = createPawnScene(canvas, { dark: effectiveTheme() === 'dark' });
+  // Follows the visitor's choice (data-theme) and the system preference, live.
+  const stopTheme = watchTheme((theme) => {
+    scene.setDark(theme === 'dark');
     requestRender();
-  };
-  darkQuery.addEventListener('change', onScheme);
+  });
 
   // --- render loop: only while visible --------------------------------------------------------
   let onScreen = true;
@@ -75,16 +75,44 @@ export function mountHero(container: HTMLElement, trigger: HTMLElement): HeroHan
   const intro = gsap.timeline({ defaults: { ease: 'expo.out' } });
   intro
     .fromTo(introGroup.rotation, { y: -Math.PI * 1.15 }, { y: 0.5, duration: 2.4 }, 0)
-    .fromTo(introGroup.position, { y: introGroup.position.y - 0.55 }, { y: introGroup.position.y, duration: 2 }, 0)
+    .fromTo(
+      introGroup.position,
+      { y: introGroup.position.y - 0.55 },
+      { y: introGroup.position.y, duration: 2 },
+      0,
+    )
     .fromTo(introGroup.scale, { x: 0.82, y: 0.82, z: 0.82 }, { x: 1, y: 1, z: 1, duration: 2 }, 0)
     .fromTo(daisy.rotation, { y: -Math.PI }, { y: 0, duration: 2.6, ease: 'power3.out' }, 0.25)
-    .fromTo(daisy.scale, { x: 0.2, y: 0.2, z: 0.2 }, { x: DAISY_SCALE, y: DAISY_SCALE, z: DAISY_SCALE, duration: 1.6, ease: 'back.out(2)' }, 0.5);
+    .fromTo(
+      daisy.scale,
+      { x: 0.2, y: 0.2, z: 0.2 },
+      { x: DAISY_SCALE, y: DAISY_SCALE, z: DAISY_SCALE, duration: 1.6, ease: 'back.out(2)' },
+      0.5,
+    );
   container.classList.add('is-3d');
   document.documentElement.dataset.hero = '3d';
 
-  const float = gsap.to(floatGroup.position, { y: 0.07, duration: 2.8, ease: 'sine.inOut', yoyo: true, repeat: -1 });
-  const sway = gsap.to(floatGroup.rotation, { z: 0.035, duration: 3.6, ease: 'sine.inOut', yoyo: true, repeat: -1 });
-  const spin = gsap.to(daisy.rotation, { y: '+=' + Math.PI * 2, duration: 40, ease: 'none', repeat: -1, delay: 2.8 });
+  const float = gsap.to(floatGroup.position, {
+    y: 0.07,
+    duration: 2.8,
+    ease: 'sine.inOut',
+    yoyo: true,
+    repeat: -1,
+  });
+  const sway = gsap.to(floatGroup.rotation, {
+    z: 0.035,
+    duration: 3.6,
+    ease: 'sine.inOut',
+    yoyo: true,
+    repeat: -1,
+  });
+  const spin = gsap.to(daisy.rotation, {
+    y: '+=' + Math.PI * 2,
+    duration: 40,
+    ease: 'none',
+    repeat: -1,
+    delay: 2.8,
+  });
 
   // Pointer parallax on fine pointers only.
   const finePointer = window.matchMedia('(pointer: fine)').matches;
@@ -121,7 +149,7 @@ export function mountHero(container: HTMLElement, trigger: HTMLElement): HeroHan
       io.disconnect();
       ro.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
-      darkQuery.removeEventListener('change', onScheme);
+      stopTheme();
       window.removeEventListener('pointermove', onPointer);
       scene.dispose();
       canvas.remove();
