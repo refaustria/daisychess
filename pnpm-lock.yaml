@@ -446,6 +446,19 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@20.19.43)(jsdom@25.0.1(supports-color@7.2.0))(supports-color@7.2.0)(tsx@4.23.15)
 
+  packages/puzzles:
+    dependencies:
+      chess.js:
+        specifier: ^1.4.0
+        version: 1.4.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@20.19.43)(jsdom@25.0.1(supports-color@7.2.0))(supports-color@7.2.0)(tsx@4.23.15)
+
   packages/ui-theme: {}
 
 packages:

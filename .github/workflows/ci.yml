@@ -103,7 +103,7 @@ jobs:
           fi
           files=$(git diff --name-only "$range")
           printf '%s\n' "$files"
-          if printf '%s\n' "$files" | grep -qE '^(apps/(mobile|web)/|packages/(engine-core|ui-theme)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$files" | grep -qE '^(apps/(mobile|web)/|packages/(engine-core|ui-theme|puzzles)/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/ci\.yml$)'; then
             echo "mobile=true" >> "$GITHUB_OUTPUT"
           else
             echo "mobile=false" >> "$GITHUB_OUTPUT"
