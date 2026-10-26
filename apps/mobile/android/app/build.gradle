@@ -1,5 +1,24 @@
 apply plugin: 'com.android.application'
 
+// Release versioning and upload signing (M26-8, ADR-022 §6; deploy/README.md "Mobile release").
+// versionName = apps/mobile/package.json `version` (single source of truth; the release workflow
+// checks it against the mobile-v* tag). versionCode = DAISYCHESS_VERSION_CODE (the workflow run
+// number), 1 for local builds. Upload signing only when ANDROID_UPLOAD_KEYSTORE_FILE is set; the
+// passwords come from the environment, never from files in the repo. Play App Signing re-signs.
+def mobilePackage = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json'))
+def releaseVersionCode = (System.getenv('DAISYCHESS_VERSION_CODE') ?: '1') as int
+def uploadKeystore = System.getenv('ANDROID_UPLOAD_KEYSTORE_FILE')
+if (uploadKeystore) {
+    ['ANDROID_UPLOAD_KEYSTORE_PASSWORD', 'ANDROID_UPLOAD_KEY_ALIAS', 'ANDROID_UPLOAD_KEY_PASSWORD'].each { name ->
+        if (!System.getenv(name)) {
+            throw new GradleException("ANDROID_UPLOAD_KEYSTORE_FILE is set but ${name} is not")
+        }
+    }
+    if (!file(uploadKeystore).isFile()) {
+        throw new GradleException("upload keystore ${uploadKeystore} does not exist")
+    }
+}
+
 android {
     namespace = "org.daisychess.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +26,8 @@ android {
         applicationId "org.daisychess.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode releaseVersionCode
+        versionName mobilePackage.version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +35,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (uploadKeystore) {
+            upload {
+                storeFile file(uploadKeystore)
+                storePassword System.getenv('ANDROID_UPLOAD_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_UPLOAD_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (uploadKeystore) {
+                signingConfig signingConfigs.upload
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

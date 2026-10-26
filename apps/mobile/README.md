@@ -58,7 +58,10 @@ xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesi
 ```
 
 Safari → Develop → Simulator inspects the WebView. Signing and store uploads are not part of this
-package's build (release pipeline: M26-8).
+package's build: `.github/workflows/release-mobile.yml` on `mobile-v*` tags (M26-8; secrets, owner
+steps and the local signed-AAB build in `deploy/README.md`, "Mobile release"). Its helpers are
+`scripts/release-version.mjs`, `scripts/asc-profile.mjs`, `scripts/ios-signing.mjs` and
+`scripts/play-publish.mjs`.
 
 ## Mobile build mode of `apps/web`
 

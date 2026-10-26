@@ -475,3 +475,137 @@ Maia move, plus a 1-CPU `MAIA=off` run. Releases: push a `node-v<x.y.z>` tag;
 `.github/workflows/release-node.yml` builds both architectures on native runners, runs the smoke
 test on each and pushes `ghcr.io/<owner>/daisychess-node:<x.y.z>`, `:<x.y>` and `:latest`
 with provenance and an SBOM.
+
+## Mobile release
+
+`.github/workflows/release-mobile.yml` (ADR-022 §6, M26-8) builds the store versions of
+`apps/mobile` (`org.daisychess.app`). Marketing version = `apps/mobile/package.json` `version`
+(must equal the tag); build number (Android `versionCode`, iOS `CFBundleVersion`) = the workflow
+run number, so it rises with every run, dry runs included.
+
+| Trigger                                         | Android                                                                                                                                           | iOS                                                             |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| tag `mobile-v<x.y.z>`                           | signed AAB as artifact `android-aab-<version>-<build>` (30 days); Play **internal** track only when the variable `PLAY_PUBLISH_ENABLED` is `true` | signed IPA as artifact `ios-ipa-…` and upload to **TestFlight** |
+| `workflow_dispatch`, `dry_run` = true (default) | AAB, signed when the secrets exist, else unsigned; no upload                                                                                      | archive (+ signed IPA when the secrets exist); no upload        |
+| `workflow_dispatch` on a tag, `dry_run` = false | like a tag push (re-release with a new build number)                                                                                              | same                                                            |
+
+A tag run with missing signing inputs fails in its first step, before building, naming what is
+missing. Secret values are never printed (GitHub masks them; the scripts print no key material).
+
+### Secrets and variables
+
+| Name                                                              | Kind             | Content                                                              | Set with                                                                       |
+| ----------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `ANDROID_UPLOAD_KEYSTORE_B64`                                     | secret           | base64 of the upload keystore (PKCS12)                               | `scripts/mobile/new-upload-keystore.sh` prints the command                     |
+| `ANDROID_UPLOAD_KEYSTORE_PASSWORD`, `ANDROID_UPLOAD_KEY_PASSWORD` | secret           | the keystore password (PKCS12: both equal)                           | `gh secret set …` (prompts)                                                    |
+| `ANDROID_UPLOAD_KEY_ALIAS`                                        | secret           | `daisychess-upload`                                                  | `gh secret set … --body daisychess-upload`                                     |
+| `PLAY_SERVICE_ACCOUNT_JSON`                                       | secret           | JSON key of `gitref-play-release@gitref.iam.gserviceaccount.com`     | `gh secret set PLAY_SERVICE_ACCOUNT_JSON < ~/gitref-play-service-account.json` |
+| `IOS_DIST_CERT_P12_B64`, `IOS_DIST_CERT_PASSWORD`                 | secret           | Apple Distribution certificate + private key (.p12) and its password | `scripts/mobile/set-ios-secrets.sh --apply <file.p12>`                         |
+| `ASC_API_KEY_P8_B64`                                              | secret           | base64 of the App Store Connect team key `AuthKey_<ASC_KEY_ID>.p8`   | set                                                                            |
+| `IOS_PROVISIONING_PROFILE_B64`                                    | secret, optional | a manually created App Store profile; overrides the API (see below)  | `set-ios-secrets.sh --apply <p12> <profile>`                                   |
+| `APPLE_TEAM_ID` (`PM7LTV7M72`), `ASC_KEY_ID`, `ASC_ISSUER_ID`     | variables        |                                                                      | set                                                                            |
+| `PLAY_PUBLISH_ENABLED`                                            | variable         | `true` after the first manual Play upload                            | `gh variable set PLAY_PUBLISH_ENABLED --body true`                             |
+| `PLAY_SIGNING_SHA256`                                             | variable         | Play **app signing** certificate SHA-256 (for `assetlinks.json`)     | `gh variable set PLAY_SIGNING_SHA256 --body 'AA:BB:…'`                         |
+
+### How the jobs sign
+
+- **Android**: `app/build.gradle` reads `versionName` from `apps/mobile/package.json`,
+  `versionCode` from `DAISYCHESS_VERSION_CODE` (default 1) and signs `bundleRelease` with the upload
+  key only when `ANDROID_UPLOAD_KEYSTORE_FILE` (+ the password/alias variables) is set. **Play App
+  Signing** stays on: Google re-signs with the app signing key, the upload key only authenticates
+  uploads. Publishing is `apps/mobile/scripts/play-publish.mjs` (Android Publisher API v3: edit →
+  bundle upload → internal track → commit; it falls back to a `draft` release while the app itself
+  is still a draft in Play Console). It replaces the Gradle Play Publisher plugin named in ADR-022:
+  four API calls, no Gradle plugin in the committed project.
+- **iOS**: the .p12 goes into a temporary keychain; `apps/mobile/scripts/asc-profile.mjs` finds or
+  creates the App Store profile `DaisyChess App Store CI` for `org.daisychess.app` containing exactly
+  that certificate through the App Store Connect API (reused while active and valid for > 7 days;
+  stale ones — expired, invalidated by a capability change, other certificate — are deleted and
+  recreated). The job then switches only the App target's Release configuration to manual signing
+  (`ios-signing.mjs patch`, in the runner's checkout), archives, exports with method
+  `app-store-connect` and uploads with `xcrun altool --upload-app` (API key from `~/private_keys`).
+  Keychain, key and profile are deleted in an `always()` step. `ITSAppUsesNonExemptEncryption=false`
+  (HTTPS/WSS only) is in `Info.plist`, so TestFlight asks no export-compliance question.
+  _Why not `xcodebuild -allowProvisioningUpdates` with the API key:_ automatic signing archives with
+  a _development_ identity first and, on a clean runner, creates a new Apple Development certificate
+  per run (certificate limit, needs a role that may create certificates; cloud-managed distribution
+  certificates need an Admin key). Manual signing with an API-managed profile is deterministic,
+  idempotent and needs only profile access. If the App Manager key gets HTTP 403 on
+  `/v1/profiles`, the job says so: either give the key access to Certificates, Identifiers &
+  Profiles, or create the profile in the developer portal (App Store, `org.daisychess.app`, the
+  distribution certificate) and set `IOS_PROVISIONING_PROFILE_B64`.
+
+### Owner checklist (once, in this order)
+
+1. **Android upload key** (on this host; outside the repo):
+   `scripts/mobile/new-upload-keystore.sh` (default `~/daisychess-upload.p12`), back up the file and
+   the password, then run the four `gh secret set` commands it prints.
+2. **Play service account**: `gh secret set PLAY_SERVICE_ACCOUNT_JSON < ~/gitref-play-service-account.json`.
+   In Play Console → Users and permissions, invite `gitref-play-release@gitref.iam.gserviceaccount.com`
+   for the app DaisyChess with "Release apps to testing tracks" (and "View app information"); the
+   Google Play Android Developer API must be enabled in the `gitref` Cloud project (it is for gitref).
+3. **iOS certificate**: `scripts/mobile/set-ios-secrets.sh --apply ~/ios-signing/<distribution>.p12`
+   (checks the password locally, then sets `IOS_DIST_CERT_P12_B64` and `IOS_DIST_CERT_PASSWORD`).
+4. **App Store Connect app record** (needed for TestFlight): Apps → + → New App, iOS, name
+   DaisyChess, bundle id `org.daisychess.app`, any SKU (e.g. `daisychess-ios`).
+5. **Dry run** (after this workflow is on `main`):
+   `gh workflow run release-mobile.yml -f dry_run=true`, then `gh run watch`. Both jobs must be
+   green; the iOS log shows `"action":"created"` for the profile, the Android log the upload
+   certificate fingerprint.
+6. **First Play upload (manual)**: `gh run download <run id> -n android-aab-<version>-<build>` (or
+   build locally: `scripts/mobile/build-signed-aab.sh ~/daisychess-upload.p12 1`, see below), then
+   Play Console → DaisyChess → Test and release → Testing → Internal testing → Create new release →
+   upload the AAB; accept Play App Signing with a Google-generated app signing key.
+7. **App Links fingerprint**: Play Console → Test and release → App integrity → App signing → "App
+   signing key certificate" SHA-256 → `gh variable set PLAY_SIGNING_SHA256 --body 'AA:BB:…'` and on
+   the server `PLAY_SIGNING_SHA256='AA:BB:…' deploy/deploy-web.sh` (renders `assetlinks.json`).
+8. `gh variable set PLAY_PUBLISH_ENABLED --body true`.
+9. **Release**: see "How to tag".
+
+### First Android upload from this host
+
+```bash
+scripts/mobile/build-signed-aab.sh ~/daisychess-upload.p12 1
+# = pnpm install --frozen-lockfile && pnpm --filter @daisychess/engine-core build
+#   && pnpm --filter @daisychess/mobile build
+#   && (cd apps/mobile/android && ANDROID_UPLOAD_KEYSTORE_FILE=… ANDROID_UPLOAD_KEYSTORE_PASSWORD=…
+#       ANDROID_UPLOAD_KEY_ALIAS=daisychess-upload ANDROID_UPLOAD_KEY_PASSWORD=…
+#       DAISYCHESS_VERSION_CODE=1 ./gradlew --no-daemon bundleRelease)
+```
+
+It prompts for the password (hidden) and leaves
+`apps/mobile/android/app/build/outputs/bundle/release/app-release.aab` (git-ignored). Play rejects a
+`versionCode` it has seen: after a manual upload with code N, the next CI upload needs a run number
+greater than N (the dry run of step 5 already makes the first tag run #2 or later).
+
+### How to tag
+
+```bash
+# bump apps/mobile/package.json "version" (x.y.z, no pre-release suffix) in a commit on main, then
+git tag mobile-v0.1.0 && git push origin mobile-v0.1.0
+```
+
+The tag is the GPL "corresponding source" of that store build (ADR-022 §3); never move or delete a
+released tag. To rebuild a release (e.g. after a failed upload), run the workflow from the tag with
+`dry_run` false; it gets a new build number.
+
+### Rotation
+
+- **Distribution certificate** (expires yearly): create a new Apple Distribution certificate,
+  export it with its key as .p12, run `set-ios-secrets.sh --apply` again. The next run notices that
+  the profile lacks the new certificate and replaces it. Revoke the old certificate afterwards.
+- **App Store Connect key**: create a new team key, `gh variable set ASC_KEY_ID --body <id>`,
+  `gh secret set ASC_API_KEY_P8_B64 < <(base64 < AuthKey_<id>.p8 | tr -d '\n')`, revoke the old key.
+- **Play service account key**: create a new JSON key in the Cloud console, set
+  `PLAY_SERVICE_ACCOUNT_JSON` again, delete the old key.
+- **Upload key** lost or leaked: `new-upload-keystore.sh` a new one (it also writes
+  `<name>-cert.pem`), request an upload key reset in Play Console → App integrity with that PEM,
+  set the four `ANDROID_UPLOAD_*` secrets again after Google confirms. The app signing key (and so
+  `PLAY_SIGNING_SHA256`) does not change.
+
+### Troubleshooting
+
+- `play-publish: … HTTP 403/404` — the package has had no manual upload yet or the service account
+  lacks app permissions; keep `PLAY_PUBLISH_ENABLED` unset and upload the artifact by hand.
+- `asc-profile: … not (or no longer) registered` — the .p12 certificate was revoked or expired.
+- `altool` "bundle version must be higher" — a build with that number exists; rerun (new run number).
