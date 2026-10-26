@@ -1196,13 +1196,16 @@ export function explainMetadataError(e) {
   let details = [];
   try {
     const body =
-      /** @type {{ errors?: { code?: string, title?: string, detail?: string, source?: { pointer?: string } }[] }} */ (
+      /** @type {{ errors?: { code?: string, title?: string, detail?: string, source?: { pointer?: string }, meta?: { associatedErrors?: Record<string, { code?: string, title?: string, detail?: string }[]> } }[] }} */ (
         JSON.parse(e.body)
       );
-    details = (body.errors ?? []).map(
-      (x) =>
-        `${x.code ?? ''}: ${x.detail ?? x.title ?? ''}${x.source?.pointer ? ` (${x.source.pointer})` : ''}`,
-    );
+    details = (body.errors ?? []).flatMap((x) => [
+      `${x.code ?? ''}: ${x.detail ?? x.title ?? ''}${x.source?.pointer ? ` (${x.source.pointer})` : ''}`,
+      // A 409 on a review submission lists the actual reasons here, keyed by resource path.
+      ...Object.entries(x.meta?.associatedErrors ?? {}).flatMap(([path, list]) =>
+        list.map((a) => `  ${path}: ${a.code ?? ''}: ${a.detail ?? a.title ?? ''}`),
+      ),
+    ]);
   } catch {
     if (e.body) details = [e.body.slice(0, 500)];
   }
