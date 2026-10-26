@@ -123,6 +123,11 @@ export interface PuzzleActions {
   stop(message?: string): void;
   setDifficulty(difficulty: Difficulty): void;
   setFilter(filter: PuzzleFilter): void;
+  /**
+   * Sets `filter`, shows the Puzzles tab and fetches the first matching puzzle ("Puzzles from this
+   * opening"); an empty result shows the "No more puzzles for this filter offline" state.
+   */
+  openWithFilter(filter: PuzzleFilter): Promise<void>;
 }
 
 export type PuzzleStore = PuzzleState & PuzzleActions;
@@ -606,6 +611,12 @@ const actions: PuzzleActions = {
     } catch {
       // Not remembered.
     }
+  },
+
+  openWithFilter: async (filter) => {
+    get().setFilter(filter);
+    useUiStore.getState().setActiveTab('puzzles');
+    await get().next();
   },
 };
 

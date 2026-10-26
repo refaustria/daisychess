@@ -135,3 +135,79 @@
 .footer {
   margin-top: 0.4rem;
 }
+
+/* M30-5: filters, daily card, offline */
+.filters {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+}
+
+.filters summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.filters[open] > :not(summary) {
+  margin-top: 0.5rem;
+}
+
+.active {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+}
+
+.offline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.daily {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.dailyHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.dailyDays {
+  display: grid;
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dailyDays li {
+  height: 12px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.dailyDays .daySolved {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.dailyDays .dayFailed {
+  background: var(--danger);
+  border-color: var(--danger);
+}

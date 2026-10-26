@@ -23,6 +23,8 @@ import { humanAvailability, humanEngineReason } from '../../maia/opponentAvailab
 import { useHumanProbe } from '../../maia/opponentHooks';
 import { HUMAN_PRESETS } from '../../play/strength';
 import type { DrillAfterBook } from '../../trainer/drillState';
+import { loadFilterOptions, pickOpeningTag } from '../../puzzles/filterOptions';
+import { usePuzzleStore } from '../../puzzles/puzzleStore';
 import styles from './OpeningsPanel.module.css';
 
 /** Results shown at most (the search ranks, so the best hits are on top). */
@@ -262,6 +264,38 @@ interface OpeningViewProps {
   onBack(): void;
 }
 
+/** "Puzzles from this opening": filters the Puzzles tab by the opening's lichess tag. */
+function PuzzlesLink({ opening }: { opening: BookOpening }) {
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const onClick = async () => {
+    setBusy(true);
+    setNotice('');
+    try {
+      const tag = pickOpeningTag(opening.name, await loadFilterOptions());
+      if (!tag) {
+        setNotice('No puzzles for this opening yet.');
+        return;
+      }
+      void usePuzzleStore.getState().openWithFilter({ opening: tag });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={styles.puzzlesLink}>
+      <button type="button" disabled={busy} onClick={() => void onClick()}>
+        Puzzles from this opening
+      </button>
+      {notice && (
+        <p className={styles.note} role="status" data-testid="opening-puzzles-notice">
+          {notice}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function OpeningView({ book, opening, mode, onMode, onSelect, onBack }: OpeningViewProps) {
   const status = useDrillStore((s) => s.status);
   const subs = book.countUnder(opening);
@@ -300,6 +334,7 @@ function OpeningView({ book, opening, mode, onMode, onSelect, onBack }: OpeningV
       ) : (
         <Drill opening={opening} />
       )}
+      <PuzzlesLink opening={opening} />
     </>
   );
 }

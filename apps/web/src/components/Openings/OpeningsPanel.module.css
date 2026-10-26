@@ -364,3 +364,10 @@
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
+
+.puzzlesLink {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}

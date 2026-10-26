@@ -2,6 +2,9 @@ import { formatPuzzleRating, type Difficulty, type SolverState } from '@daisyche
 import { useId, useState, type FormEvent } from 'react';
 import { lockText, useHumanGameLockReason } from '../../live/lock';
 import { usePuzzleStore, type PuzzleState } from '../../puzzles/puzzleStore';
+import { PuzzleModes } from './PuzzleModes';
+import { DailyCard } from './DailyCard';
+import { Filters } from './Filters';
 import styles from './PuzzlesPanel.module.css';
 
 const DIFFICULTIES: { id: Difficulty; label: string }[] = [
@@ -44,7 +47,7 @@ export function statusLine(s: Pick<PuzzleState, 'status' | 'solver' | 'message'>
   }
 }
 
-export function PuzzlesPanel() {
+function SolverPanel() {
   const status = usePuzzleStore((s) => s.status);
   const solver = usePuzzleStore((s) => s.solver);
   const message = usePuzzleStore((s) => s.message);
@@ -195,7 +198,18 @@ export function PuzzlesPanel() {
         <p className={styles.note}>Hints and “Show solution” count as a miss for the rating.</p>
       )}
 
+      <Filters />
+      <DailyCard />
+
       <p className={styles.footer}>Puzzles from the lichess.org database (CC0)</p>
     </div>
+  );
+}
+
+export function PuzzlesPanel() {
+  return (
+    <PuzzleModes>
+      <SolverPanel />
+    </PuzzleModes>
   );
 }
