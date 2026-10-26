@@ -63,7 +63,7 @@ the built site for `class="ph"` to find them all.
 - Google Data safety: see /app-privacy/ (encrypted in transit: yes; deletion request: yes).
 - Apple App Privacy: "Data Not Linked to You" per /app-privacy/; Tracking: no; no ATT prompt.
 - Licences: the app bundles GPL-3.0 code (chessground, maybe Stockfish). App Store distribution of
-  GPL code is contested (FSF position) — see PLAN M26-0 before bundling an engine.
+  GPL code is contested (FSF position) — decision, mitigation and the custom EULA wording: docs/DECISIONS.md ADR-022 §3.
 
 ## Store listing assets
 
