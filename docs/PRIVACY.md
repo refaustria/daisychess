@@ -57,6 +57,7 @@ When you analyse on a **community node**, the hub relays your search to the mach
 - **Web app (optional):** if you log in with lichess in the app to import your games, the token stays in your browser and is sent only to lichess.
 - Importing games from lichess or chess.com sends the username you type to those services' public APIs from your browser; their privacy policies apply.
 - The Puzzles tab downloads public, static puzzle files from play.daisychess.org (the same address as the app) like any other app file, without sending any identifier, account or parameter about you, and your puzzle rating, streak and history stay in your browser.
+- Puzzles from your own mistakes use the reviews of your games and a small list of those games (names, moves, the side you played) that stay in your browser; if you configured a review server token, the app fetches only your own stored reviews from it, and nothing else about your games is uploaded.
 
 ## 7. Cookies and local storage
 
