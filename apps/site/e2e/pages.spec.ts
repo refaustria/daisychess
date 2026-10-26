@@ -8,7 +8,9 @@ const SERIOUS = new Set(['serious', 'critical']);
 
 for (const meta of PAGES) {
   for (const motion of ['no-preference', 'reduce'] as const) {
-    test(`${meta.path} loads cleanly with the production CSP (motion: ${motion})`, async ({ page }) => {
+    test(`${meta.path} loads cleanly with the production CSP (motion: ${motion})`, async ({
+      page,
+    }) => {
       await page.emulateMedia({ reducedMotion: motion });
       const problems = await watchProblems(page);
       const res = await page.goto(meta.path);
@@ -24,7 +26,9 @@ for (const meta of PAGES) {
       // Give animations and lazy chunks a moment, then scroll through the page once.
       await page.mouse.wheel(0, 4000);
       await page.waitForTimeout(400);
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
       expect(overflow, 'horizontal overflow (px)').toBeLessThanOrEqual(0);
       expect(problems.console, 'console errors').toEqual([]);
       expect(problems.csp, 'CSP violations').toEqual([]);
@@ -35,9 +39,13 @@ for (const meta of PAGES) {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(meta.path);
     await page.waitForLoadState('networkidle');
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+      .analyze();
     const bad = results.violations.filter((v) => SERIOUS.has(v.impact ?? ''));
-    expect(bad.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).join(', ')})`)).toEqual([]);
+    expect(
+      bad.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).join(', ')})`),
+    ).toEqual([]);
   });
 }
 
@@ -48,18 +56,23 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(1200);
-      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
       const bad = results.violations.filter((v) => SERIOUS.has(v.impact ?? ''));
-      expect(bad.map((v) => `${path} ${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+      expect(
+        bad.map((v) => `${path} ${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
+      ).toEqual([]);
     }
   });
 }
 
-test('legal pages show their placeholders clearly', async ({ page }) => {
+test('legal pages carry no placeholders or draft banners', async ({ page }) => {
   for (const path of ['/privacy/', '/terms/', '/imprint/']) {
     await page.goto(path);
-    await expect(page.locator('.draft-banner')).toBeVisible();
-    await expect(page.locator('.ph').first()).toBeVisible();
+    await expect(page.locator('.draft-banner')).toHaveCount(0);
+    await expect(page.locator('.ph')).toHaveCount(0);
+    await expect(page.locator('article')).not.toContainText(/\[[A-Z][A-Z ,/&'-]{3,}|OWNER/);
   }
   await page.goto('/support/');
   await expect(page.locator('a[href="mailto:hello@daisychess.org"]').first()).toBeVisible();
@@ -81,7 +94,9 @@ test('no horizontal scroll at phone width', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const meta of PAGES) {
     await page.goto(meta.path);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
     expect(overflow, meta.path).toBeLessThanOrEqual(0);
   }
 });
@@ -91,11 +106,15 @@ test('mobile navigation opens with the keyboard and closes with Escape', async (
   await page.goto('/');
   const toggle = page.locator('.nav-toggle');
   await expect(toggle).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Features' })).toBeHidden();
+  await expect(
+    page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Features' }),
+  ).toBeHidden();
   await toggle.focus();
   await page.keyboard.press('Enter');
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Features' })).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Features' }),
+  ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
 });

@@ -1,8 +1,6 @@
 # DaisyChess terms of use (node operators and players)
 
-> **Draft — not legal advice; review before publishing.** Placeholders in square brackets must be filled in by the owner.
-
-These terms apply to the DaisyChess hub operated by **Bojan Savicevic, 1220 Vienna, Austria** ("we"), reachable at play.daisychess.org (formerly c.referee.at, which redirects; node links at hub.daisychess.org), including the web app, the operator portal and the shared pool. Contact: **hello@daisychess.org**. How personal data is handled: [`PRIVACY.md`](./PRIVACY.md).
+These terms apply to the DaisyChess hub operated by **Bojan Savicevic, 1220 Vienna, Austria** ("we"), reachable at play.daisychess.org, including the web app, the operator portal and the shared pool. Contact: **hello@daisychess.org**. How personal data is handled: [`PRIVACY.md`](./PRIVACY.md).
 
 ## 1. The service and the software
 
@@ -50,10 +48,10 @@ We may change these terms and the service. Material changes will be announced in
 
 ## 8. Governing law and venue
 
-Austrian law applies, excluding its conflict-of-law rules and the UN Sales Convention. For consumers, mandatory consumer protection provisions of their country of residence remain unaffected. Venue, to the extent legally permissible: **[COMPETENT COURT, AUSTRIA]**.
+Austrian law applies, excluding its conflict-of-law rules and the UN Sales Convention. For consumers, mandatory consumer protection provisions of their country of residence remain unaffected. Venue, to the extent legally permissible: **Vienna, Austria**.
 
 ## 9. Provider information
 
-**[OWNER NAME / COMPANY, POSTAL ADDRESS, E-MAIL, ANY LEGALLY REQUIRED IMPRINT DETAILS (E-Commerce Act / Mediengesetz)]**
+**Bojan Savicevic / Inceptum, 1220 Wien, Österreich, bojan@inceptum.at**
 
-*Last updated: 2026-10-25 (draft).*
+*Last updated: 2026-10-26.*

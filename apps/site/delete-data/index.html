@@ -11,7 +11,11 @@
         <div class="container">
           <p class="kicker">Your data</p>
           <h1>Delete your data</h1>
-          <p class="lead">DaisyChess has no player accounts. Almost everything lives on your own device, so you can delete it yourself in a minute. Here is how — for the web app, the mobile apps and the operator portal.</p>
+          <p class="lead">
+            DaisyChess has no player accounts. Almost everything lives on your own device, so you
+            can delete it yourself in a minute. Here is how — for the web app, the mobile apps and
+            the operator portal.
+          </p>
         </div>
       </header>
 
@@ -28,29 +32,80 @@
         </nav>
         <article class="prose">
           <h2 id="device">1. On your device (web app)</h2>
-          <p>The app stores your settings, the server access token, your openings-trainer progress and the review cache in your browser (localStorage and IndexedDB).</p>
+          <p>
+            The app stores your settings, the server access token, your openings-trainer progress
+            and the review cache in your browser (localStorage and IndexedDB).
+          </p>
           <ol class="steps">
-            <li><h3>Clear the review cache</h3><p>Open <a href="{{APP_URL}}">DaisyChess</a> → <strong>Settings</strong> → <strong>Review cache</strong> → <strong>Clear cache</strong>.</p></li>
-            <li><h3>Reset your settings</h3><p>In <strong>Settings</strong>, choose <strong>Reset to defaults</strong>. If you logged in with lichess, log out there too; that also revokes the login at lichess.</p></li>
-            <li><h3>Remove everything</h3><p>Clear the site data for <code>play.daisychess.org</code> in your browser — in Chrome: site settings → <em>Delete data</em>; in Safari: Settings → Privacy → <em>Manage Website Data</em>; in Firefox: the padlock → <em>Clear cookies and site data</em>. This deletes all of the above at once.</p></li>
+            <li>
+              <h3>Clear the review cache</h3>
+              <p>
+                Open <a href="{{APP_URL}}">DaisyChess</a> → <strong>Settings</strong> →
+                <strong>Review cache</strong> → <strong>Clear cache</strong>.
+              </p>
+            </li>
+            <li>
+              <h3>Reset your settings</h3>
+              <p>
+                In <strong>Settings</strong>, choose <strong>Reset to defaults</strong>. If you
+                logged in with lichess, log out there too; that also revokes the login at lichess.
+              </p>
+            </li>
+            <li>
+              <h3>Remove everything</h3>
+              <p>
+                Clear the site data for <code>play.daisychess.org</code> in your browser — in
+                Chrome: site settings → <em>Delete data</em>; in Safari: Settings → Privacy →
+                <em>Manage Website Data</em>; in Firefox: the padlock →
+                <em>Clear cookies and site data</em>. This deletes all of the above at once.
+              </p>
+            </li>
           </ol>
 
           <h2 id="apps">2. Mobile apps (iOS and Android)</h2>
-          <p>Uninstalling the app deletes all of its data on the device. On Android you can also use <em>Settings → Apps → DaisyChess → Storage → Clear storage</em>.</p>
+          <p>
+            Uninstalling the app deletes all of its data on the device. On Android you can also use
+            <em>Settings → Apps → DaisyChess → Storage → Clear storage</em>.
+          </p>
 
           <h2 id="server">3. On the server</h2>
           <ul>
-            <li><strong>Reviews and position evaluations</strong> that were uploaded to the shared review store contain only moves and evaluations — no names, no PGN headers, no addresses. They cannot be linked to a person and are removed automatically when the store reaches its size limit.</li>
-            <li><strong>Friend games</strong> (nicknames and moves) live only in server memory and disappear when the room expires.</li>
-            <li><strong>Logs</strong> contain a daily-changing hash instead of your IP address and are deleted after <span class="ph">[7 days — OWNER: confirm]</span>; web server access logs after <span class="ph">[14 days — OWNER: confirm]</span>.</li>
-            <li><strong>Usage counters</strong> of a player token (searches, engine time per day) are deleted after 90 days, or with the token when its operator deletes it.</li>
+            <li>
+              <strong>Reviews and position evaluations</strong> that were uploaded to the shared
+              review store contain only moves and evaluations — no names, no PGN headers, no
+              addresses. They cannot be linked to a person and are removed automatically when the
+              store reaches its size limit.
+            </li>
+            <li>
+              <strong>Friend games</strong> (nicknames and moves) live only in server memory and
+              disappear when the room expires.
+            </li>
+            <li>
+              <strong>Logs</strong> contain a daily-changing hash instead of your IP address and are
+              deleted after 7 days; web server access logs after 14 days.
+            </li>
+            <li>
+              <strong>Usage counters</strong> of a player token (searches, engine time per day) are
+              deleted after 90 days, or with the token when its operator deletes it.
+            </li>
           </ul>
 
           <h2 id="operators">4. Node operators</h2>
-          <p>Log in to the <a href="{{PORTAL_URL}}">operator portal</a> and open <strong>Account → Delete account</strong>. This deletes your operator account (lichess id and username), all your nodes and all tokens you issued, immediately; backups are overwritten within 7 days.</p>
+          <p>
+            Log in to the <a href="{{PORTAL_URL}}">operator portal</a> and open
+            <strong>Account → Delete account</strong>. This deletes your operator account (lichess
+            id and username), all your nodes and all tokens you issued, immediately; backups are
+            overwritten within 7 days.
+          </p>
 
           <h2 id="request">5. Ask us</h2>
-          <p>If you want us to delete or show you anything else, write to <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>. Because our data is pseudonymous, it helps to mention a token id or the approximate time of use. We answer within one month, as the GDPR requires. More in the <a href="/privacy/#rights">privacy policy</a>.</p>
+          <p>
+            If you want us to delete or show you anything else, write to
+            <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>. Because our data is
+            pseudonymous, it helps to mention a token id or the approximate time of use. We answer
+            within one month, as the GDPR requires. More in the
+            <a href="/privacy/#rights">privacy policy</a>.
+          </p>
         </article>
       </div>
     </main>

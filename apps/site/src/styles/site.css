@@ -30,7 +30,9 @@
   --shadow-lg: 0 2px 4px rgba(40, 30, 10, 0.04), 0 18px 48px -12px rgba(40, 30, 10, 0.18);
   --glow: rgba(245, 197, 24, 0.32);
 
-  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans:
+    'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   --radius-sm: 10px;
   --radius: 18px;
@@ -1341,33 +1343,6 @@ dl.facts dd {
   dl.facts dd {
     margin-bottom: 12px;
   }
-}
-
-/* Placeholders the owner must fill in: visible on purpose. */
-.ph {
-  padding: 0.05em 0.35em;
-  border-radius: 4px;
-  background: var(--mark-bg);
-  border: 1px dashed var(--mark-border);
-  color: var(--text);
-  font-weight: 620;
-  white-space: nowrap;
-}
-
-.draft-banner {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-  margin-bottom: 40px;
-  padding: 16px 20px;
-  border-radius: var(--radius);
-  background: var(--mark-bg);
-  border: 1px dashed var(--mark-border);
-  font-size: 0.9375rem;
-}
-
-.draft-banner p {
-  margin: 0;
 }
 
 .meta-line {

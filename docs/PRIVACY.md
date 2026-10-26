@@ -1,8 +1,6 @@
 # DaisyChess privacy notice
 
-> **Draft — not legal advice; review before publishing.** Placeholders in square brackets must be filled in by the owner.
-
-This notice explains in plain language what data DaisyChess handles, for players of the web app and for people who run or use community engine nodes. It applies to the hub run at **play.daisychess.org** (web app and operator portal; community nodes connect to hub.daisychess.org). The former address c.referee.at only redirects there. If you self-host DaisyChess, you are the controller of your own installation.
+This notice explains in plain language what data DaisyChess handles, for players of the web app and for people who run or use community engine nodes. It applies to the hub run at **play.daisychess.org** (web app and operator portal; community nodes connect to hub.daisychess.org). 
 
 ## 1. Who is responsible
 
@@ -28,13 +26,13 @@ Data controller: **Bojan Savicevic aka appac**, **1220 Vienna, Austria**, contac
 | Portal login sessions | operators | Keep you logged in | 30 days or until logout |
 | Game reviews and position evaluations in the review store | nobody in particular | Re-use of finished analyses | Until evicted by the size limit |
 | Application log (journal): token id, node id, connection id, error events, a **daily-salted hash** of the client address | players, operators | Operating and debugging the service | See the retention row below |
-| Web server access log: client IP address, time, request path (no query string, no body), status, `Origin` and User-Agent | everyone who visits | Security (abuse detection, fail2ban) | Stock log rotation, **14 days by default on the current host (deploy README)** — **[OWNER: confirm the actual setting]** |
+| Web server access log: client IP address, time, request path (no query string, no body), status, `Origin` and User-Agent | everyone who visits | Security (abuse detection, fail2ban) | Stock log rotation, **14 days by default on the current host (deploy README)**
 
 Notes:
 
 - Token labels are free text written by the operator. Please do not put real names in them.
 - **Reviews** contain moves and evaluations only, keyed by a hash of the game. They contain no player names, PGN headers or addresses. Anyone who knows a game can look up its review; do not rely on reviews being secret.
-- **Application logs** do not contain raw IP addresses, tokens or secrets. The salted hash changes every day and cannot be reversed to an address; it only lets the operator see that several events came from the same address on the same day. Chess positions (FEN) are logged only if the server is run at debug level, which is not the default. Journal retention is a host setting, planned at 7 days — **[OWNER: confirm the actual setting]**.
+- **Application logs** do not contain raw IP addresses, tokens or secrets. The salted hash changes every day and cannot be reversed to an address; it only lets the operator see that several events came from the same address on the same day. Chess positions (FEN) are logged only if the server is run at debug level, which is not the default. The server logs into its own journal namespace, which deletes entries after 7 days.
 - **Rooms** ("play a friend") live in server memory only: nicknames and moves of a game disappear when the room expires (minutes to hours).
 - The hub does **not** store e-mail addresses, passwords or payment data. There are none.
 - Backups of the hub database contain the operator data above and are kept for 7 days.
@@ -63,11 +61,10 @@ When you analyse on a **community node**, the hub relays your search to the mach
 
 - The portal sets **one cookie**, `__Host-dc_portal`: a login session identifier, HttpOnly, Secure, SameSite=Strict, valid up to 30 days. It is strictly necessary for the login, so no consent banner is required. The web app and the player side set no cookies.
 - The web app uses your browser's **localStorage / IndexedDB** for settings (theme, board, engine choices, access token for the server, review cache). It never leaves your device unless you use a feature that says so (for example a setup link you copy yourself). Clear it in your browser's site settings.
-- **Move from c.referee.at:** when you open the old address once, a small page there copies these browser settings (including your server access token and lichess login) to play.daisychess.org inside the address's `#` part, which browsers never send to any server; the app saves them in your browser and removes them from the address bar. Nothing is stored on our side. Reviews cached in the browser are not copied. The copy on c.referee.at stays in your browser until you clear that site's data.
 
 ## 8. Sharing and processors
 
-Data is not sold or shared for advertising. The hub is hosted on a server operated by the controller. lichess receives the one login call described above. Node operators receive positions as described in section 5. Disclosure to authorities only where legally required.
+Data is not sold or shared for advertising. The hub is hosted on a virtual server rented from Nessus GmbH, Austria (hosting provider, acting as processor). lichess receives the one login call described above. Node operators receive positions as described in section 5. Disclosure to authorities only where legally required.
 
 ## 9. Your rights
 
@@ -79,4 +76,4 @@ DaisyChess is a general-purpose chess tool and not aimed at children; it collect
 
 ## 11. Changes
 
-We will update this notice when the service changes and note the date here: **Last updated: 2026-10-25 (draft)**.
+We will update this notice when the service changes and note the date here: **Last updated: 2026-10-26**.

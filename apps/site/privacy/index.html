@@ -11,7 +11,10 @@
         <div class="container">
           <p class="kicker">Legal</p>
           <h1>Privacy policy</h1>
-          <p class="lead">What data DaisyChess handles — for players, for people who run community nodes, and for visitors of this website. In plain language.</p>
+          <p class="lead">
+            What data DaisyChess handles — for players, for people who run community nodes, and for
+            visitors of this website. In plain language.
+          </p>
         </div>
       </header>
 
@@ -35,94 +38,289 @@
           </ol>
         </nav>
         <article class="prose">
-          <div class="draft-banner" role="note">
-            <p><strong>Draft — not legal advice.</strong> Values in <span class="ph">[brackets]</span> are placeholders that must be filled in before publication.</p>
-          </div>
-
-          <p>This policy applies to the DaisyChess service: this website (daisychess.org), the web app and the hub at play.daisychess.org (community nodes connect to hub.daisychess.org), the operator portal and the DaisyChess mobile apps. If you self-host DaisyChess, you are the controller of your own installation.</p>
+          <p>
+            This policy applies to the DaisyChess service: this website (daisychess.org), the web
+            app and the hub at play.daisychess.org (community nodes connect to hub.daisychess.org),
+            the operator portal and the DaisyChess mobile apps. If you self-host DaisyChess, you are
+            the controller of your own installation.
+          </p>
 
           <h2 id="controller">1. Who is responsible</h2>
-          <p>Data controller: Bojan Savicevic aka appac, 1220 Vienna, Austria, contact: <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>.</p>
+          <p>
+            Data controller: Bojan Savicevic aka appac, 1220 Vienna, Austria, contact:
+            <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>.
+          </p>
 
           <h2 id="short">2. The short version</h2>
           <ul>
-            <li>DaisyChess is free and has <strong>no ads and no tracking</strong>: no analytics, no third-party trackers, no fingerprinting, no data sales.</li>
-            <li>The app keeps your settings on your own device. You do not need an account to play or analyse.</li>
-            <li>If you analyse on a <strong>server</strong> or a <strong>community node</strong>, the chess positions you send are processed there. On a community node the <strong>node operator can see those positions</strong> (<a href="#nodes">section 6</a>).</li>
-            <li>Node operators log in with lichess; the hub stores their lichess id and username.</li>
-            <li>IP addresses are not stored in the hub's application logs. The web server's access log does contain them for a limited time (<a href="#ip">section 5</a>).</li>
+            <li>
+              DaisyChess is free and has <strong>no ads and no tracking</strong>: no analytics, no
+              third-party trackers, no fingerprinting, no data sales.
+            </li>
+            <li>
+              The app keeps your settings on your own device. You do not need an account to play or
+              analyse.
+            </li>
+            <li>
+              If you analyse on a <strong>server</strong> or a <strong>community node</strong>, the
+              chess positions you send are processed there. On a community node the
+              <strong>node operator can see those positions</strong> (<a href="#nodes">section 6</a
+              >).
+            </li>
+            <li>
+              Node operators log in with lichess; the hub stores their lichess id and username.
+            </li>
+            <li>
+              IP addresses are not stored in the hub's application logs. The web server's access log
+              does contain them for a limited time (<a href="#ip">section 5</a>).
+            </li>
           </ul>
 
           <h2 id="website">3. This website</h2>
-          <p>daisychess.org is a static website. It sets <strong>no cookies</strong>, uses no analytics and loads nothing from other servers — fonts, scripts and images all come from daisychess.org itself. Like every web server, ours writes an access log (IP address, time, requested page, status, browser user agent) for security purposes; it is kept as described in <a href="#ip">section 5</a>.</p>
+          <p>
+            daisychess.org is a static website. It sets <strong>no cookies</strong>, uses no
+            analytics and loads nothing from other servers — fonts, scripts and images all come from
+            daisychess.org itself. Like every web server, ours writes an access log (IP address,
+            time, requested page, status, browser user agent) for security purposes; it is kept as
+            described in <a href="#ip">section 5</a>.
+          </p>
 
           <h2 id="hub">4. What the hub stores</h2>
           <div class="table-wrap">
             <table>
-              <thead><tr><th scope="col">Data</th><th scope="col">Whose</th><th scope="col">Purpose</th><th scope="col">How long</th></tr></thead>
+              <thead>
+                <tr>
+                  <th scope="col">Data</th>
+                  <th scope="col">Whose</th>
+                  <th scope="col">Purpose</th>
+                  <th scope="col">How long</th>
+                </tr>
+              </thead>
               <tbody>
-                <tr><td>lichess user id and username, first and last login time</td><td>node operators</td><td>Identify the operator, show the operator name next to a node, administration</td><td>Until the operator deletes the account in the portal</td></tr>
-                <tr><td>Nodes: name, pool settings, hashed node secret, last seen time, version, architecture</td><td>operators</td><td>Routing and portal</td><td>Until the node or the account is deleted</td></tr>
-                <tr><td>Tokens: id, label chosen by the operator, hashed secret, which nodes it may use, expiry, last used time, number of uses</td><td>operators (and, indirectly, the people they give tokens to)</td><td>Access control and routing</td><td>Until revoked or deleted; pool tokens expire after a default period</td></tr>
-                <tr><td>Usage counters per token, node and day (searches, sessions, engine seconds)</td><td>token holders (pseudonymous)</td><td>Fair-use budget and the operator's usage view</td><td>90 days</td></tr>
-                <tr><td>Spot-check results (node id, time, agreed yes/no)</td><td>nodes</td><td>Quality control of the shared pool</td><td>24 hours</td></tr>
-                <tr><td>Portal login sessions</td><td>operators</td><td>Keep you logged in</td><td>30 days or until logout</td></tr>
-                <tr><td>Game reviews and position evaluations in the review store</td><td>nobody in particular</td><td>Re-use of finished analyses</td><td>Until evicted by the size limit</td></tr>
-                <tr><td>Application log: token id, node id, connection id, error events, a <strong>daily-salted hash</strong> of the client address</td><td>players, operators</td><td>Operating and debugging the service</td><td><span class="ph">[7 days — OWNER: confirm]</span></td></tr>
-                <tr><td>Web server access log: client IP address, time, request path (no query string, no body), status, <code>Origin</code> and user agent</td><td>everyone who visits</td><td>Security (abuse detection, blocking abusive clients)</td><td><span class="ph">[14 days — OWNER: confirm]</span></td></tr>
+                <tr>
+                  <td>lichess user id and username, first and last login time</td>
+                  <td>node operators</td>
+                  <td>
+                    Identify the operator, show the operator name next to a node, administration
+                  </td>
+                  <td>Until the operator deletes the account in the portal</td>
+                </tr>
+                <tr>
+                  <td>
+                    Nodes: name, pool settings, hashed node secret, last seen time, version,
+                    architecture
+                  </td>
+                  <td>operators</td>
+                  <td>Routing and portal</td>
+                  <td>Until the node or the account is deleted</td>
+                </tr>
+                <tr>
+                  <td>
+                    Tokens: id, label chosen by the operator, hashed secret, which nodes it may use,
+                    expiry, last used time, number of uses
+                  </td>
+                  <td>operators (and, indirectly, the people they give tokens to)</td>
+                  <td>Access control and routing</td>
+                  <td>Until revoked or deleted; pool tokens expire after a default period</td>
+                </tr>
+                <tr>
+                  <td>
+                    Usage counters per token, node and day (searches, sessions, engine seconds)
+                  </td>
+                  <td>token holders (pseudonymous)</td>
+                  <td>Fair-use budget and the operator's usage view</td>
+                  <td>90 days</td>
+                </tr>
+                <tr>
+                  <td>Spot-check results (node id, time, agreed yes/no)</td>
+                  <td>nodes</td>
+                  <td>Quality control of the shared pool</td>
+                  <td>24 hours</td>
+                </tr>
+                <tr>
+                  <td>Portal login sessions</td>
+                  <td>operators</td>
+                  <td>Keep you logged in</td>
+                  <td>30 days or until logout</td>
+                </tr>
+                <tr>
+                  <td>Game reviews and position evaluations in the review store</td>
+                  <td>nobody in particular</td>
+                  <td>Re-use of finished analyses</td>
+                  <td>Until evicted by the size limit</td>
+                </tr>
+                <tr>
+                  <td>
+                    Application log: token id, node id, connection id, error events, a
+                    <strong>daily-salted hash</strong> of the client address
+                  </td>
+                  <td>players, operators</td>
+                  <td>Operating and debugging the service</td>
+                  <td>7 days</td>
+                </tr>
+                <tr>
+                  <td>
+                    Web server access log: client IP address, time, request path (no query string,
+                    no body), status, <code>Origin</code> and user agent
+                  </td>
+                  <td>everyone who visits</td>
+                  <td>Security (abuse detection, blocking abusive clients)</td>
+                  <td>14 days</td>
+                </tr>
               </tbody>
             </table>
           </div>
           <ul>
-            <li>Token labels are free text written by the operator. Please do not put real names in them.</li>
-            <li><strong>Reviews</strong> contain moves and evaluations only, keyed by a hash of the game. They contain no player names, PGN headers or addresses. Anyone who knows a game can look up its review, so do not rely on reviews being secret.</li>
-            <li><strong>Application logs</strong> contain no raw IP addresses, tokens or secrets. The salted hash changes every day and cannot be turned back into an address; it only shows that several events came from the same address on the same day. Chess positions are logged only when the server runs at debug level, which is not the default.</li>
-            <li><strong>Rooms</strong> (“play a friend”) live in server memory only: nicknames and moves disappear when the room expires (minutes to hours).</li>
-            <li>The hub stores <strong>no e-mail addresses, passwords or payment data</strong>. There are none.</li>
-            <li>Backups of the hub database contain the operator data above and are kept for 7 days.</li>
+            <li>
+              Token labels are free text written by the operator. Please do not put real names in
+              them.
+            </li>
+            <li>
+              <strong>Reviews</strong> contain moves and evaluations only, keyed by a hash of the
+              game. They contain no player names, PGN headers or addresses. Anyone who knows a game
+              can look up its review, so do not rely on reviews being secret.
+            </li>
+            <li>
+              <strong>Application logs</strong> contain no raw IP addresses, tokens or secrets. The
+              salted hash changes every day and cannot be turned back into an address; it only shows
+              that several events came from the same address on the same day. Chess positions are
+              logged only when the server runs at debug level, which is not the default.
+            </li>
+            <li>
+              <strong>Rooms</strong> (“play a friend”) live in server memory only: nicknames and
+              moves disappear when the room expires (minutes to hours).
+            </li>
+            <li>
+              The hub stores <strong>no e-mail addresses, passwords or payment data</strong>. There
+              are none.
+            </li>
+            <li>
+              Backups of the hub database contain the operator data above and are kept for 7 days.
+            </li>
           </ul>
 
           <h2 id="ip">5. Where your IP address appears</h2>
-          <p>Every web server records the address of a connection. Here: the nginx access logs of the website and the hub (for security, our legitimate interest under Art. 6(1)(f) GDPR) and, hashed with a daily salt, the hub's application log. IP addresses are used to limit abuse (per-address session and connection limits) and to block abusive clients. They are never passed to node operators.</p>
+          <p>
+            Every web server records the address of a connection. Here: the nginx access logs of the
+            website and the hub (for security, our legitimate interest under Art. 6(1)(f) GDPR) and,
+            hashed with a daily salt, the hub's application log. IP addresses are used to limit
+            abuse (per-address session and connection limits) and to block abusive clients. They are
+            never passed to node operators.
+          </p>
 
           <h2 id="nodes">6. Community nodes: who sees what</h2>
-          <p>When you analyse on a <strong>community node</strong>, the hub relays your search to the computer of a volunteer operator.</p>
+          <p>
+            When you analyse on a <strong>community node</strong>, the hub relays your search to the
+            computer of a volunteer operator.
+          </p>
           <ul>
-            <li>The operator's node <strong>receives the chess positions (FEN) and search settings</strong> you analyse, including the moves of a game under review, one position at a time. That is inherent in how the service works. A position can be personal — a game in progress, your opening preparation. If you do not want a stranger's machine to see it, use the in-browser engine, your own node or the hub's own engines.</li>
-            <li>The node does <strong>not</strong> receive your IP address, name, lichess account, PGN headers or token. For shared-pool searches the node cannot tell who you are; for tokens issued by the operator it sees the token's id and label.</li>
-            <li>The app shows which node and operator a search runs on, and shows a notice before your first search on a shared-pool node.</li>
-            <li>Operators agree in the <a href="/terms/#operators">terms</a> not to log, keep or misuse positions. The hub cannot technically prevent a dishonest operator from doing so; it checks the quality of results (spot-checks), not privacy.</li>
+            <li>
+              The operator's node
+              <strong>receives the chess positions (FEN) and search settings</strong> you analyse,
+              including the moves of a game under review, one position at a time. That is inherent
+              in how the service works. A position can be personal — a game in progress, your
+              opening preparation. If you do not want a stranger's machine to see it, use the
+              in-browser engine, your own node or the hub's own engines.
+            </li>
+            <li>
+              The node does <strong>not</strong> receive your IP address, name, lichess account, PGN
+              headers or token. For shared-pool searches the node cannot tell who you are; for
+              tokens issued by the operator it sees the token's id and label.
+            </li>
+            <li>
+              The app shows which node and operator a search runs on, and shows a notice before your
+              first search on a shared-pool node.
+            </li>
+            <li>
+              Operators agree in the <a href="/terms/#operators">terms</a> not to log, keep or
+              misuse positions. The hub cannot technically prevent a dishonest operator from doing
+              so; it checks the quality of results (spot-checks), not privacy.
+            </li>
           </ul>
-          <div class="note"><p><strong>Pool notice, as shown in the app:</strong> “Searches in the shared pool run on volunteers' computers. The operator of that computer can see the positions you analyse, but not who you are.”</p></div>
+          <div class="note">
+            <p>
+              <strong>Pool notice, as shown in the app:</strong> “Searches in the shared pool run on
+              volunteers' computers. The operator of that computer can see the positions you
+              analyse, but not who you are.”
+            </p>
+          </div>
 
           <h2 id="lichess">7. lichess login and imports</h2>
           <ul>
-            <li><strong>Operator portal:</strong> you log in with lichess (OAuth with PKCE). The hub receives the lichess access token <strong>once</strong>, asks lichess who you are (user id and username) and then <strong>discards the token</strong>; the portal also revokes it at lichess. The token is not stored.</li>
-            <li><strong>App (optional):</strong> if you log in with lichess in the app — for live games, the explorer or importing your own games — the token stays on your device and is sent only to lichess.</li>
-            <li>Importing games from lichess or chess.com sends the username you type to those services' public APIs, directly from your device. Their privacy policies apply.</li>
+            <li>
+              <strong>Operator portal:</strong> you log in with lichess (OAuth with PKCE). The hub
+              receives the lichess access token <strong>once</strong>, asks lichess who you are
+              (user id and username) and then <strong>discards the token</strong>; the portal also
+              revokes it at lichess. The token is not stored.
+            </li>
+            <li>
+              <strong>App (optional):</strong> if you log in with lichess in the app — for live
+              games, the explorer or importing your own games — the token stays on your device and
+              is sent only to lichess.
+            </li>
+            <li>
+              Importing games from lichess or chess.com sends the username you type to those
+              services' public APIs, directly from your device. Their privacy policies apply.
+            </li>
           </ul>
 
           <h2 id="storage">8. Cookies and local storage</h2>
           <ul>
-            <li>The operator portal sets <strong>one cookie</strong>, <code>__Host-dc_portal</code>: a login session identifier (HttpOnly, Secure, SameSite=Strict, valid up to 30 days). It is strictly necessary for the login, so no consent banner is required. The website, the app and the player side set no cookies.</li>
-            <li>The app uses your browser's <strong>localStorage and IndexedDB</strong> for settings (theme, board, engine choices, the server access token), the openings trainer progress and the review cache. This data does not leave your device unless you use a feature that says so (for example a setup link you copy yourself). You can delete it at any time — see <a href="/delete-data/">Delete your data</a>.</li>
+            <li>
+              The operator portal sets <strong>one cookie</strong>, <code>__Host-dc_portal</code>: a
+              login session identifier (HttpOnly, Secure, SameSite=Strict, valid up to 30 days). It
+              is strictly necessary for the login, so no consent banner is required. The website,
+              the app and the player side set no cookies.
+            </li>
+            <li>
+              The app uses your browser's <strong>localStorage and IndexedDB</strong> for settings
+              (theme, board, engine choices, the server access token), the openings trainer progress
+              and the review cache. This data does not leave your device unless you use a feature
+              that says so (for example a setup link you copy yourself). You can delete it at any
+              time — see <a href="/delete-data/">Delete your data</a>.
+            </li>
           </ul>
 
           <h2 id="apps">9. Mobile apps</h2>
-          <p>The iOS and Android apps work like the web app and handle the same data as described above. They contain no advertising or analytics SDKs and no crash reporting that sends data to third parties. A summary in the format of the app stores is on <a href="/app-privacy/">App privacy</a>.</p>
+          <p>
+            The iOS and Android apps work like the web app and handle the same data as described
+            above. They contain no advertising or analytics SDKs and no crash reporting that sends
+            data to third parties. A summary in the format of the app stores is on
+            <a href="/app-privacy/">App privacy</a>.
+          </p>
 
           <h2 id="sharing">10. Sharing and processors</h2>
-          <p>Data is not sold and not shared for advertising. The website and the hub are hosted on a server operated by the controller <span class="ph">[HOSTING PROVIDER, COUNTRY — OWNER: confirm]</span>. lichess receives the one login call described above. Node operators receive positions as described in <a href="#nodes">section 6</a>. Data is disclosed to authorities only where the law requires it.</p>
+          <p>
+            Data is not sold and not shared for advertising. The website and the hub are hosted on a
+            virtual server rented from Nessus GmbH, Austria (hosting provider, acting as processor).
+            lichess receives the one login call described above. Node operators receive positions as
+            described in <a href="#nodes">section 6</a>. Data is disclosed to authorities only where
+            the law requires it.
+          </p>
 
           <h2 id="rights">11. Your rights</h2>
-          <p>Under the GDPR you may request <strong>access</strong>, <strong>rectification</strong>, <strong>erasure</strong>, <strong>restriction</strong> and <strong>portability</strong>, and you may <strong>object</strong> to processing based on legitimate interest. Operators can delete their account, nodes and tokens themselves in the portal, which removes the lichess id and username from the live database (backups are overwritten within 7 days). For other requests write to <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>. Because logs and counters are pseudonymous, we may ask for the token id or the approximate time to find your data. You may also complain to the Austrian data protection authority (Datenschutzbehörde, <a href="https://www.dsb.gv.at">dsb.gv.at</a>).</p>
+          <p>
+            Under the GDPR you may request <strong>access</strong>, <strong>rectification</strong>,
+            <strong>erasure</strong>, <strong>restriction</strong> and <strong>portability</strong>,
+            and you may <strong>object</strong> to processing based on legitimate interest.
+            Operators can delete their account, nodes and tokens themselves in the portal, which
+            removes the lichess id and username from the live database (backups are overwritten
+            within 7 days). For other requests write to
+            <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>. Because logs and counters are
+            pseudonymous, we may ask for the token id or the approximate time to find your data. You
+            may also complain to the Austrian data protection authority (Datenschutzbehörde,
+            <a href="https://www.dsb.gv.at">dsb.gv.at</a>).
+          </p>
 
           <h2 id="children">12. Children</h2>
-          <p>DaisyChess is a general-purpose chess tool and not directed at children. It collects no data about age.</p>
+          <p>
+            DaisyChess is a general-purpose chess tool and not directed at children. It collects no
+            data about age.
+          </p>
 
           <h2 id="changes">13. Changes</h2>
           <p>We update this policy when the service changes and note the date here.</p>
-          <p class="meta-line">Last updated: <span class="ph">[DATE OF PUBLICATION]</span> (draft of 2026-10-25).</p>
+          <p class="meta-line">Last updated: 2026-10-26.</p>
         </article>
       </div>
     </main>
