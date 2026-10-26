@@ -32,7 +32,3 @@ pnpm lint && pnpm test && pnpm build
 - Do not change the WebSocket protocol or `engine-core` public interfaces without discussing it first (see `docs/DECISIONS.md`).
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/): `feat(web): ...`, `fix(server): ...`.
 - Never commit secrets or `.env*` files (only `*.env.example`). Security issues: see [`.github/SECURITY.md`](./.github/SECURITY.md).
-
-## How the AI agents fit in
-
-The project is developed by an orchestrating Claude Code session (`CLAUDE.md`) that plans work in `docs/PLAN.md`, delegates to sub-agents (`.claude/agents/`) and reviews the results. Human contributors do not need any of this: open a PR, the maintainer reviews it like any other.
