@@ -31,8 +31,9 @@ describe('store listing texts', () => {
     expect(len(l.apple.description)).toBeLessThanOrEqual(4000);
     expect(len(l.apple.keywords)).toBeLessThanOrEqual(100);
     expect(l.apple.keywords).not.toMatch(/\s|,,|^,|,$/);
-    // No features we do not have and no third-party names.
-    expect(l.apple.keywords).not.toMatch(/puzzle|tactic|lichess|chess\.com/i);
+    // No third-party names and no features we do not have (puzzles exist since M30).
+    expect(l.apple.keywords).not.toMatch(/tactic|lichess|chess\.com/i);
+    expect(l.apple.keywords).toMatch(/(^|,)puzzles?(,|$)/);
   });
 
   it('names the publisher and makes no false claims', () => {

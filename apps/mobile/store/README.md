@@ -16,7 +16,7 @@ Run from `apps/mobile` (or give the full path). Options of the screenshot script
 
 Screenshot sizes (pixels): `play-phone` 1080x2160, `play-tablet-7` 1200x1920, `play-tablet-10` 2560x1600 (Google Play),
 `iphone-6.9` 1320x2868, `ipad-13` 2064x2752 (App Store). Per size: 6 screenshots (reviewed game with arrows,
-review summary, play vs Maia, openings trainer, explorer, dark review) (5 light, 1 dark), each a marketing frame: caption, the app screen with rounded corners and a soft shadow.
+review summary, play vs Maia, openings trainer, puzzles, dark review) (5 light, 1 dark), each a marketing frame: caption, the app screen with rounded corners and a soft shadow.
 
 Content notes: the game is invented (players "Alex" and "Sam"); Maia is a real local engine server with a dummy token;
 the opening explorer needs a lichess login, so its responses are mocked (illustrative numbers, no games or players).

@@ -286,5 +286,5 @@ Order: M30-1 first (everything imports it). Then in parallel: M30-2 (pipeline/de
 | | *Acceptance:* component tests: due ordering, prompt sets the side and triggers generation, Open game loads the moves and the ply, delete removes the entry; axe clean | | |
 | M30-12 | Stage 2 docs + e2e: README/`apps/web/README.md` "Your mistakes", `docs/PRIVACY.md` (local reviews and ledger, nothing uploaded), e2e `puzzles-mistakes.spec.ts` (review a fixture PGN in the browser, pick the side, generate, solve one, SR state) | worker | todo |
 | | *Acceptance:* e2e green on CI (browser engine); docs reviewed by the orchestrator | | |
-| M30-13 | Store listing: "puzzle,puzzles" back in the keywords, PUZZLES paragraph (lichess puzzles, daily, rush, own mistakes; offline), screenshot of the Puzzles tab in `store-screenshots.mjs`; `apps/site/STORE_CHECKLIST.md` updated | worker | todo |
+| M30-13 | Store listing: "puzzle,puzzles" back in the keywords, PUZZLES paragraph (lichess puzzles, daily, rush, own mistakes; offline), screenshot of the Puzzles tab in `store-screenshots.mjs`; `apps/site/STORE_CHECKLIST.md` updated | worker | done (listing + screenshots; STORE_CHECKLIST.md not changed, it has no per-scene list) |
 | | *Acceptance:* `apps/mobile/test/store.test.ts` specs (keyword length ≤ 100, description lengths) pass; screenshot set regenerates | | |

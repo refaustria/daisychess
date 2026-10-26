@@ -48,7 +48,7 @@ export const SCENES = [
   { id: 'review-summary', theme: 'light', focus: 'panel', caption: 'Every move rated' },
   { id: 'play', theme: 'light', focus: 'board', caption: 'Play Maia at your level' },
   { id: 'openings', theme: 'light', focus: 'half', caption: 'Train your openings' },
-  { id: 'explorer', theme: 'light', focus: 'half', caption: 'Explore the database' },
+  { id: 'puzzles', theme: 'light', focus: 'board', caption: '300,000 puzzles, offline too' },
   { id: 'review', theme: 'dark', focus: 'board', caption: 'Light and dark themes' },
 ];
 
@@ -421,6 +421,16 @@ const scenes = {
     await scenes.openings(page);
     await page.getByRole('tab', { name: 'Explorer' }).click();
     await page.getByText(/[\d,]+ games/).waitFor({ timeout: 15_000 });
+  },
+  async puzzles(page) {
+    // Offline path: the data layer falls back to the puzzle starter bundled with the app.
+    await page.route('**/puzzles/v1/**', (route) => route.fulfill({ status: 404, body: '' }));
+    await page.getByRole('tab', { name: 'Puzzles' }).click();
+    await page.getByRole('button', { name: 'Start puzzles' }).click();
+    await page
+      .getByTestId('puzzle-status')
+      .filter({ hasText: 'Your turn' })
+      .waitFor({ timeout: 20_000 });
   },
   async settings(page) {
     await page.getByRole('tab', { name: 'Settings' }).click();
