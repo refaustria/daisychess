@@ -1,4 +1,6 @@
 import { useEffect, useId, useState } from 'react';
+import { fetchRatings, PERF_KEYS, type LichessRatings } from '../../live/ratings';
+import { ratingText } from '../PlayerBar/boardPlayers';
 import { LICHESS_TOKEN_CREATE_URL, useLichessAuth } from '../../lichess/auth';
 import { TokenLogin } from '../LichessAccount/LichessAccountSection';
 import { isRunning, toMove, type LiveGame, type LiveOpponent } from '../../live/LiveGameController';
@@ -44,8 +46,49 @@ export const REASON_TEXT: Record<string, string> = {
   unknownFinish: 'game over',
 };
 
-export function playerLabel(p: Pick<LiveOpponent, 'name' | 'rating' | 'title'>): string {
-  return `${p.title ? `${p.title} ` : ''}${p.name}${p.rating !== undefined ? ` (${p.rating})` : ''}`;
+export function playerLabel(
+  p: Pick<LiveOpponent, 'name' | 'rating' | 'title' | 'provisional' | 'ratingDiff' | 'aiLevel'>,
+): string {
+  if (p.aiLevel !== undefined) return `Stockfish level ${p.aiLevel}`;
+  const r = ratingText(p);
+  return `${p.title ? `${p.title} ` : ''}${p.name}${r !== undefined ? ` (${r})` : ''}`;
+}
+
+/** Own ratings per time control (bullet … correspondence), refreshed when the tab opens. */
+function MyRatings() {
+  const username = useLichessAuth((a) => a.username);
+  const [ratings, setRatings] = useState<LichessRatings | null>(null);
+  useEffect(() => {
+    if (!username) return;
+    let alive = true;
+    fetchRatings(username).then(
+      (r) => alive && setRatings(r),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [username]);
+  if (!ratings) return null;
+  const shown = PERF_KEYS.filter((k) => ratings[k]);
+  if (!shown.length) return null;
+  return (
+    <ul className={styles.ratings} aria-label="Your lichess ratings" data-testid="live-ratings">
+      {shown.map((k) => {
+        const p = ratings[k]!;
+        return (
+          <li key={k} data-testid={`live-rating-${k}`} title={`${p.games} games`}>
+            <span className={styles.muted}>{k}</span>{' '}
+            <strong>
+              {p.rating}
+              {p.provisional ? '?' : ''}
+            </strong>{' '}
+            <span className={styles.muted}>({p.games})</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 export function verdict(g: Pick<LiveGame, 'winner' | 'color' | 'reason'>): string {
@@ -268,6 +311,7 @@ function Setup() {
 
   return (
     <div className={styles.panel}>
+      <MyRatings />
       <Challenges list={challenges} />
       <Ongoing list={ongoing} />
       {enginePlaying && (
@@ -437,6 +481,11 @@ function Playing({ game }: { game: LiveGame }) {
     <div className={styles.panel} data-testid="live-game">
       <p className={styles.player}>
         <span>
+          {game.me && (
+            <>
+              <span data-testid="live-me">{playerLabel({ ...game.me, name: 'You' })}</span>{' '}
+            </>
+          )}
           vs <span data-testid="live-opponent">{playerLabel(game.opponent)}</span>{' '}
           <span className={styles.muted}>(you play {game.color})</span>
         </span>
@@ -532,7 +581,10 @@ function Finished({ game }: { game: LiveGame }) {
   const reason = game.reason ? (REASON_TEXT[game.reason] ?? game.reason) : undefined;
   return (
     <div className={styles.panel} data-testid="live-finished">
-      <p className={styles.meta}>vs {playerLabel(game.opponent)}</p>
+      <p className={styles.meta}>
+        {game.me && <span data-testid="live-me">{playerLabel({ ...game.me, name: 'You' })} </span>}
+        vs {playerLabel(game.opponent)}
+      </p>
       <div className={styles.result} role="status" aria-live="polite">
         <span className={styles.score} data-testid="live-result">
           {resultText(game)}

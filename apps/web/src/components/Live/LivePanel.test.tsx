@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLichessAuth } from '../../lichess/auth';
 import type { LiveGame } from '../../live/LiveGameController';
 import { configureLive, resetLive, useLiveStore } from '../../live/liveStore';
+import { resetRatingsCache } from '../../live/ratings';
 import { fakeBoardApi, type FakeBoardApi } from '../../live/testing';
 import { useUiStore } from '../../store/uiStore';
 import { LivePanel } from './LivePanel';
@@ -182,6 +183,57 @@ describe('LivePanel', () => {
     expect(api.seeks[0]!.cancelled).toBe(true);
   });
 
+  it('playing: own rating shows next to the opponent, in the bars and in the panel', () => {
+    login();
+    useLiveStore.setState({
+      status: 'playing',
+      game: game({ me: { name: 'Me', rating: 1500, provisional: true } }),
+    });
+    render(
+      <>
+        <LivePanel />
+        <Bars />
+      </>,
+    );
+    expect(screen.getByTestId('live-me').textContent).toContain('You (1500?)');
+    expect(screen.getByRole('group', { name: /^White: Me · 1500\?/ })).toBeTruthy();
+    expect(screen.getByRole('group', { name: /^Black: FM Opp · 1600/ })).toBeTruthy();
+  });
+
+  it('overview: shows the own ratings from /api/account once', async () => {
+    login();
+    resetRatingsCache();
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            username: 'Me',
+            perfs: {
+              bullet: { games: 3, rating: 1400, prov: true },
+              blitz: { games: 120, rating: 1650 },
+              puzzle: { games: 9, rating: 2000 },
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { unmount } = render(<LivePanel />);
+      await screen.findByTestId('live-ratings');
+      expect(screen.getByTestId('live-rating-bullet').textContent).toContain('1400?');
+      expect(screen.getByTestId('live-rating-blitz').textContent).toContain('1650');
+      expect(screen.queryByTestId('live-rating-rapid')).toBeNull();
+      unmount();
+      render(<LivePanel />);
+      await screen.findByTestId('live-ratings');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      resetRatingsCache();
+    }
+  });
+
   it('playing: opponent, clocks in the board bars (tenths under 10 s), status, abort only before move 2, resign confirm', async () => {
     login();
     useLiveStore.setState({ status: 'playing', game: game() });
@@ -195,7 +247,7 @@ describe('LivePanel', () => {
     // The panel itself shows no clocks any more (they are in the bars beside the board).
     expect(screen.getByTestId('live-game').querySelector('[role="timer"]')).toBeNull();
     expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe(
-      'Black: Opp · FM 1600, 0:08.4',
+      'Black: FM Opp · 1600, 0:08.4',
     );
     const mine = screen.getByTestId('clock-white');
     const theirs = screen.getByTestId('clock-black');

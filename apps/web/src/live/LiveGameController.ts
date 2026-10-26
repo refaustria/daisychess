@@ -18,6 +18,9 @@ const RUNNING = new Set(['created', 'started']);
 export interface LiveOpponent {
   name: string;
   rating?: number;
+  provisional?: boolean;
+  /** Rating change after a rated game (only when lichess sends it). */
+  ratingDiff?: number;
   title?: string;
   aiLevel?: number;
 }
@@ -27,6 +30,8 @@ export interface LiveGame {
   id: string;
   color: Orientation;
   opponent: LiveOpponent;
+  /** The user's own side (rating from gameFull). */
+  me?: LiveOpponent;
   rated: boolean;
   /** ms; null for games without a clock (correspondence/unlimited). */
   clock: { initial: number; increment: number } | null;
@@ -153,6 +158,8 @@ export function replay(fen: string, ucis: readonly string[]): { records: MoveRec
 function opponentOf(p: LichessPlayer): LiveOpponent {
   const o: LiveOpponent = { name: p.name };
   if (p.rating !== undefined) o.rating = p.rating;
+  if (p.provisional) o.provisional = true;
+  if (p.ratingDiff !== undefined) o.ratingDiff = p.ratingDiff;
   if (p.title) o.title = p.title;
   if (p.aiLevel !== undefined) o.aiLevel = p.aiLevel;
   return o;
@@ -335,12 +342,14 @@ export class LiveGameController {
     else if (me && full.black.id === me) color = 'black';
     else color = this.o.colorHint ?? (full.black.aiLevel !== undefined ? 'white' : full.white.aiLevel !== undefined ? 'black' : 'white');
     const opp = color === 'white' ? full.black : full.white;
+    const mine = color === 'white' ? full.white : full.black;
     const first = this.g === null || this.g.id !== full.id;
     this.startFen = startFen;
     this.g = {
       id: full.id,
       color,
       opponent: opponentOf(opp),
+      me: opponentOf(mine),
       rated: full.rated,
       clock: full.clock,
       speed: full.speed,

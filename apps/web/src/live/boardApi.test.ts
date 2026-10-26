@@ -104,6 +104,21 @@ describe('payload parsing', () => {
     });
   });
 
+  it('gameFull players keep rating, provisional flag and ratingDiff', () => {
+    const e = parseGameStreamEvent({
+      type: 'gameFull',
+      id: 'abcd1234',
+      white: { id: 'me', name: 'Me', rating: 1500, provisional: true, ratingDiff: -6 },
+      black: { id: 'bob', name: 'Bob', rating: 1700, title: 'GM' },
+      state: { type: 'gameState', moves: '', status: 'started' },
+    });
+    expect(e).toMatchObject({
+      white: { rating: 1500, provisional: true, ratingDiff: -6 },
+      black: { rating: 1700, title: 'GM' },
+    });
+    expect((e as { black: object }).black).not.toHaveProperty('provisional');
+  });
+
   it('ignores unknown or malformed objects', () => {
     expect(parseGameStreamEvent({ type: 'gameFull' })).toBeNull();
     expect(parseGameStreamEvent({ type: 'whatever' })).toBeNull();

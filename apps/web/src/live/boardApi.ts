@@ -43,6 +43,10 @@ export interface LichessPlayer {
   id?: string;
   name: string;
   rating?: number;
+  /** The rating is provisional (few games). */
+  provisional?: boolean;
+  /** Rating change after a rated game, when lichess reports it. */
+  ratingDiff?: number;
   title?: string;
   /** Stockfish level for the lichess AI. */
   aiLevel?: number;
@@ -150,6 +154,9 @@ function parsePlayer(v: unknown): LichessPlayer {
   if (id) p.id = id;
   const rating = num(o.rating);
   if (rating !== undefined) p.rating = rating;
+  if (o.provisional === true) p.provisional = true;
+  const ratingDiff = num(o.ratingDiff);
+  if (ratingDiff !== undefined) p.ratingDiff = ratingDiff;
   const title = str(o.title);
   if (title) p.title = title;
   if (aiLevel !== undefined) p.aiLevel = aiLevel;

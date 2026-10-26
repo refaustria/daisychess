@@ -132,6 +132,14 @@ async function mockLichess(
       }
       return;
     }
+    if (path === '/api/account') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{"username":"Me","perfs":{"blitz":{"games":42,"rating":1500},"rapid":{"games":5,"rating":1450,"prov":true}}}',
+      });
+      return;
+    }
     if (path === '/api/account/playing') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{"nowPlaying":[]}' });
       return;
@@ -166,6 +174,8 @@ async function startSeek(page: Page) {
   await page.goto('/');
   await expect(page.locator('cg-board')).toBeVisible();
   await page.getByRole('tab', { name: 'Live' }).click();
+  await expect(page.getByTestId('live-rating-blitz')).toContainText('1500');
+  await expect(page.getByTestId('live-rating-rapid')).toContainText('1450?');
   await page.getByRole('radio', { name: '10+0' }).check();
   await page.getByRole('button', { name: 'Find an opponent' }).click();
   await expect(page.getByTestId('live-opponent')).toHaveText('Opp (1600)');

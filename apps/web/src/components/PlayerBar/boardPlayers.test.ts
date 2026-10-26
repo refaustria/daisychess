@@ -7,6 +7,7 @@ import {
   liveClockTicks,
   selectBoardPlayers,
   type BoardPlayersInput,
+  ratingText,
 } from './boardPlayers';
 
 const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -232,10 +233,33 @@ describe('selectBoardPlayers', () => {
       clock: { ms: 310_000, state: 'running', initialMs: 600_000, testId: 'clock-white' },
     });
     expect(p.black).toEqual({
-      name: 'Opp',
-      subtitle: 'FM 1600',
+      name: 'FM Opp',
+      subtitle: '1600',
       clock: { ms: 8_400, state: 'idle', initialMs: 600_000, testId: 'clock-black' },
     });
+  });
+
+  it('live game: own rating, provisional "?", title before the name, rating change', () => {
+    const p = selectBoardPlayers(
+      input({
+        live: {
+          status: 'finished',
+          username: 'Me',
+          game: liveGame({
+            me: { name: 'Me', rating: 1500, provisional: true, ratingDiff: 9 },
+            opponent: { name: 'Opp', rating: 1600, title: 'GM', ratingDiff: -9 },
+          }),
+        },
+      }),
+    );
+    expect(p.white).toMatchObject({ name: 'Me', subtitle: '1500? +9' });
+    expect(p.black).toMatchObject({ name: 'GM Opp', subtitle: '1600 −9' });
+  });
+
+  it('ratingText', () => {
+    expect(ratingText({})).toBeUndefined();
+    expect(ratingText({ rating: 1500 })).toBe('1500');
+    expect(ratingText({ rating: 1500, provisional: true, ratingDiff: 0 })).toBe('1500? ±0');
   });
 
   it('live game as Black against the lichess AI, without a clock and without a username', () => {

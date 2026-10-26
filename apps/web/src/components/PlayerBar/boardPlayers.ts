@@ -1,7 +1,13 @@
 import type { ClockState } from '../../clock/Clock';
 import type { GameClock } from '../../clock/gameClock';
 import { hasClockData, initialTimeOf, remainingAt } from '../../clock/gameTimes';
-import { isRunning, remainingMs, toMove, type LiveGame } from '../../live/LiveGameController';
+import {
+  isRunning,
+  remainingMs,
+  toMove,
+  type LiveGame,
+  type LiveOpponent,
+} from '../../live/LiveGameController';
 import type { LiveStatus } from '../../live/liveStore';
 import type { PlayMode, PlaySetup } from '../../play/playStore';
 import { findStrength } from '../../play/strength';
@@ -88,15 +94,30 @@ export function liveClockTicks(game: LiveGame | undefined): boolean {
   return !!game && game.clock !== null && isRunning(game) && game.moves.length >= 2;
 }
 
+/** "1500", "1500?" (provisional), with the rating change after a rated game: "1500 +7". */
+export function ratingText(
+  p: Pick<LiveOpponent, 'rating' | 'provisional' | 'ratingDiff'>,
+): string | undefined {
+  if (p.rating === undefined) return undefined;
+  const diff =
+    p.ratingDiff === undefined
+      ? ''
+      : ` ${p.ratingDiff > 0 ? '+' : p.ratingDiff < 0 ? '−' : '±'}${Math.abs(p.ratingDiff)}`;
+  return `${p.rating}${p.provisional ? '?' : ''}${diff}`;
+}
+
+/** Bar content of one lichess player: "GM name" + rating, or "Stockfish" + "level N" for the AI. */
+function livePlayerInfo(p: LiveOpponent, fallbackName?: string, fallbackSub?: string): PlayerInfo {
+  if (p.aiLevel !== undefined) return { name: 'Stockfish', subtitle: `level ${p.aiLevel}` };
+  const name = fallbackName ?? p.name;
+  return {
+    name: p.title ? `${p.title} ${name}` : name,
+    subtitle: ratingText(p) ?? fallbackSub,
+  };
+}
+
 function livePlayers(game: LiveGame, username: string | undefined, now: number): BoardPlayers {
   const opp = game.opponent;
-  const oppSub = [
-    opp.title,
-    opp.rating !== undefined ? String(opp.rating) : undefined,
-    opp.aiLevel !== undefined ? `level ${opp.aiLevel}` : undefined,
-  ]
-    .filter(Boolean)
-    .join(' ');
   const clockOf = (side: Orientation): PlayerClockInfo | undefined =>
     game.clock
       ? {
@@ -106,8 +127,10 @@ function livePlayers(game: LiveGame, username: string | undefined, now: number):
           testId: `clock-${side}`,
         }
       : undefined;
-  const me: PlayerInfo = { name: username ?? 'You', subtitle: username ? 'You' : undefined };
-  const them: PlayerInfo = { name: opp.name, subtitle: oppSub || undefined };
+  const me: PlayerInfo = game.me
+    ? livePlayerInfo(game.me, username ?? 'You', username ? 'You' : undefined)
+    : { name: username ?? 'You', subtitle: username ? 'You' : undefined };
+  const them: PlayerInfo = livePlayerInfo(opp);
   const mine = { ...me, clock: clockOf(game.color) };
   const theirs = { ...them, clock: clockOf(other(game.color)) };
   return game.color === 'white' ? { white: mine, black: theirs } : { white: theirs, black: mine };
