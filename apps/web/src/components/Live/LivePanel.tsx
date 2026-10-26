@@ -1,8 +1,15 @@
 import { useEffect, useId, useState } from 'react';
-import { useLichessAuth } from '../../lichess/auth';
+import { LICHESS_TOKEN_CREATE_URL, useLichessAuth } from '../../lichess/auth';
+import { TokenLogin } from '../LichessAccount/LichessAccountSection';
 import { isRunning, toMove, type LiveGame, type LiveOpponent } from '../../live/LiveGameController';
 import { premoveLabels } from '../../live/premoves';
-import { BOARD_SCOPE, useLiveStore, type ColorChoice, type IncomingChallenge, type OngoingGame } from '../../live/liveStore';
+import {
+  BOARD_SCOPE,
+  useLiveStore,
+  type ColorChoice,
+  type IncomingChallenge,
+  type OngoingGame,
+} from '../../live/liveStore';
 import {
   CHALLENGE_TIME_CONTROLS,
   clockLabel,
@@ -48,7 +55,13 @@ export function verdict(g: Pick<LiveGame, 'winner' | 'color' | 'reason'>): strin
 }
 
 const resultText = (g: Pick<LiveGame, 'winner' | 'reason'>): string =>
-  g.reason === 'aborted' || g.reason === 'noStart' ? '*' : g.winner === 'white' ? '1-0' : g.winner === 'black' ? '0-1' : '½-½';
+  g.reason === 'aborted' || g.reason === 'noStart'
+    ? '*'
+    : g.winner === 'white'
+      ? '1-0'
+      : g.winner === 'black'
+        ? '0-1'
+        : '½-½';
 
 function Segmented<T extends string>(props: {
   legend: string;
@@ -78,7 +91,12 @@ function Segmented<T extends string>(props: {
   );
 }
 
-function TimeSelect(props: { label: string; list: readonly TimeControl[]; value: string; onChange(v: string): void }) {
+function TimeSelect(props: {
+  label: string;
+  list: readonly TimeControl[];
+  value: string;
+  onChange(v: string): void;
+}) {
   return (
     <label className={styles.field}>
       <span>{props.label}</span>
@@ -108,30 +126,61 @@ function Messages() {
   );
 }
 
-function LoginPrompt({ rescope }: { rescope: boolean }) {
+function LoginPrompt() {
   const status = useLichessAuth((a) => a.status);
   const authError = useLichessAuth((a) => a.error);
+  const source = useLichessAuth((a) => a.source);
+  const authed = status === 'authenticated';
+  const viaToken = authed && source === 'token';
   return (
     <div className={styles.panel}>
-      <p>
-        {rescope
-          ? 'Your lichess login does not allow playing games yet. Log in again to grant the board:play permission.'
-          : 'Play rated or casual games on lichess.org from this board: quick pairing, the lichess computer or a friend. Log in with your lichess account first.'}
-      </p>
-      {authError && (
-        <p className={styles.errorText} role="alert">
-          {authError}
-        </p>
+      {viaToken ? (
+        <>
+          <p>
+            Your personal token doesn&apos;t include &quot;Play games with the Board API&quot; (
+            <code>{BOARD_SCOPE}</code>).{' '}
+            <a
+              className={styles.link}
+              href={LICHESS_TOKEN_CREATE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Create a new token on lichess
+            </a>{' '}
+            (the permissions are prefilled) and paste it below to replace this one.
+          </p>
+          <TokenLogin open summary="Replace the personal access token" />
+        </>
+      ) : (
+        <>
+          <p>
+            {authed
+              ? 'Your lichess login does not allow playing games yet. Log in again to grant the board:play permission.'
+              : 'Play rated or casual games on lichess.org from this board: quick pairing, the lichess computer or a friend. Log in with your lichess account, or use a personal access token.'}
+          </p>
+          {authError && (
+            <p className={styles.errorText} role="alert">
+              {authError}
+            </p>
+          )}
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={status === 'authorizing'}
+            onClick={() => void useLichessAuth.getState().login()}
+          >
+            {status === 'authorizing'
+              ? 'Logging in…'
+              : authed
+                ? 'Log in again'
+                : 'Log in with lichess'}
+          </button>
+          {!authed && <TokenLogin summary="Use a personal access token" />}
+        </>
       )}
-      <button
-        type="button"
-        className={styles.primary}
-        disabled={status === 'authorizing'}
-        onClick={() => void useLichessAuth.getState().login()}
-      >
-        {status === 'authorizing' ? 'Logging in…' : rescope ? 'Log in again' : 'Log in with lichess'}
-      </button>
-      <p className={styles.note}>Engines and the review are disabled while a live game runs (lichess fair play).</p>
+      <p className={styles.note}>
+        Engines and the review are disabled while a live game runs (lichess fair play).
+      </p>
     </div>
   );
 }
@@ -152,7 +201,8 @@ function Challenges({ list }: { list: IncomingChallenge[] }) {
                 <strong>{playerLabel(c.challenger)}</strong>
                 <span className={styles.muted}>
                   {' · '}
-                  {c.clock ? clockLabel(c.clock) : 'correspondence'} · {c.rated ? 'rated' : 'casual'}
+                  {c.clock ? clockLabel(c.clock) : 'correspondence'} ·{' '}
+                  {c.rated ? 'rated' : 'casual'}
                   {!supported && ` · ${c.variant} (not supported)`}
                 </span>
               </span>
@@ -242,15 +292,29 @@ function Setup() {
           value={seekTc}
           onChange={setSeekTc}
         />
-        <Segmented<ColorChoice> legend="Your colour" name={`${id}-color`} options={COLORS} value={color} onChange={setColor} />
+        <Segmented<ColorChoice>
+          legend="Your colour"
+          name={`${id}-color`}
+          options={COLORS}
+          value={color}
+          onChange={setColor}
+        />
         <label className={styles.check}>
-          <input type="checkbox" checked={rated} onChange={(e) => setRated(e.currentTarget.checked)} />
+          <input
+            type="checkbox"
+            checked={rated}
+            onChange={(e) => setRated(e.currentTarget.checked)}
+          />
           Rated
         </label>
         <button type="submit" className={styles.primary} disabled={enginePlaying}>
           Find an opponent
         </button>
-        <p className={styles.note}>lichess allows rapid and classical pairings from boards like this one.</p>
+        <p className={styles.note}>
+          Board API rule: lichess only allows human opponents in rapid, classical and correspondence
+          games from boards like this one (via seeks); blitz and bullet are possible against the
+          computer or friends.
+        </p>
       </form>
 
       <form
@@ -283,7 +347,11 @@ function Setup() {
         aria-label="Challenge a friend"
         onSubmit={(e) => {
           e.preventDefault();
-          void challengeUser(friend, { clock: toClock(findTimeControl(friendTc)), rated: friendRated, color });
+          void challengeUser(friend, {
+            clock: toClock(findTimeControl(friendTc)),
+            rated: friendRated,
+            color,
+          });
         }}
       >
         <h3 className={styles.heading}>Challenge a friend</h3>
@@ -298,9 +366,18 @@ function Setup() {
             onChange={(e) => setFriend(e.target.value)}
           />
         </label>
-        <TimeSelect label="Clock" list={CHALLENGE_TIME_CONTROLS} value={friendTc} onChange={setFriendTc} />
+        <TimeSelect
+          label="Clock"
+          list={CHALLENGE_TIME_CONTROLS}
+          value={friendTc}
+          onChange={setFriendTc}
+        />
         <label className={styles.check}>
-          <input type="checkbox" checked={friendRated} onChange={(e) => setFriendRated(e.currentTarget.checked)} />
+          <input
+            type="checkbox"
+            checked={friendRated}
+            onChange={(e) => setFriendRated(e.currentTarget.checked)}
+          />
           Rated
         </label>
         <button type="submit" disabled={enginePlaying || !friend.trim()}>
@@ -308,7 +385,8 @@ function Setup() {
         </button>
       </form>
       <p className={styles.note}>
-        Live analysis, the review and the explorer are disabled while a live game runs (lichess fair play).
+        Live analysis, the review and the explorer are disabled while a live game runs (lichess fair
+        play).
       </p>
     </div>
   );
@@ -321,7 +399,9 @@ function Seeking() {
     <div className={styles.panel}>
       <p className={styles.seeking} role="status" aria-live="polite">
         <span className={styles.spinner} aria-hidden="true" />
-        {pending?.kind === 'seek' ? `Looking for an opponent (${pending.label})…` : (pending?.label ?? 'Waiting…')}
+        {pending?.kind === 'seek'
+          ? `Looking for an opponent (${pending.label})…`
+          : (pending?.label ?? 'Waiting…')}
       </p>
       <button type="button" onClick={() => void cancel()}>
         Cancel
@@ -332,7 +412,9 @@ function Seeking() {
 
 function Playing({ game }: { game: LiveGame }) {
   const atTip = useGameStore((s) => s.ply === s.moves.length);
-  const tipFen = useGameStore((s) => currentFen({ startFen: s.startFen, moves: s.moves, ply: s.moves.length }));
+  const tipFen = useGameStore((s) =>
+    currentFen({ startFen: s.startFen, moves: s.moves, ply: s.moves.length }),
+  );
   const live = useLiveStore();
   const premoves = live.premoves.length ? premoveLabels(tipFen, game.color, live.premoves) : [];
   const [confirmResign, setConfirmResign] = useState(false);
@@ -359,7 +441,12 @@ function Playing({ game }: { game: LiveGame }) {
           <span className={styles.muted}>(you play {game.color})</span>
         </span>
       </p>
-      <p className={myTurn ? `${styles.status} ${styles.statusYou}` : styles.status} role="status" aria-live="polite" data-testid="live-status">
+      <p
+        className={myTurn ? `${styles.status} ${styles.statusYou}` : styles.status}
+        role="status"
+        aria-live="polite"
+        data-testid="live-status"
+      >
         {status}
       </p>
       {premoves.length > 0 && (
@@ -372,7 +459,9 @@ function Playing({ game }: { game: LiveGame }) {
       )}
       <p className={styles.meta}>
         {game.rated ? 'Rated' : 'Casual'} · {game.speed}
-        {game.clock ? ` · ${clockLabel({ limit: game.clock.initial / 1000, increment: game.clock.increment / 1000 })}` : ''}
+        {game.clock
+          ? ` · ${clockLabel({ limit: game.clock.initial / 1000, increment: game.clock.increment / 1000 })}`
+          : ''}
       </p>
       {game.drawOffer === 'opponent' && (
         <div className={styles.banner} role="alert">
@@ -406,7 +495,11 @@ function Playing({ game }: { game: LiveGame }) {
         </div>
       ) : (
         <div className={styles.row}>
-          <button type="button" onClick={() => void live.offerDraw()} disabled={game.drawOffer !== undefined}>
+          <button
+            type="button"
+            onClick={() => void live.offerDraw()}
+            disabled={game.drawOffer !== undefined}
+          >
             {game.drawOffer === 'mine' ? 'Draw offered' : 'Offer draw'}
           </button>
           {canAbort ? (
@@ -419,7 +512,11 @@ function Playing({ game }: { game: LiveGame }) {
             </button>
           )}
           {canClaim && (
-            <button type="button" className={styles.primary} onClick={() => void live.claimVictory()}>
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => void live.claimVictory()}
+            >
               Claim victory
             </button>
           )}
@@ -452,7 +549,12 @@ function Finished({ game }: { game: LiveGame }) {
         <button type="button" onClick={() => setTab('review')}>
           Review this game
         </button>
-        <a className={styles.link} href={`https://lichess.org/${game.id}`} target="_blank" rel="noreferrer noopener">
+        <a
+          className={styles.link}
+          href={`https://lichess.org/${game.id}`}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
           Open on lichess
         </a>
       </div>
@@ -462,8 +564,9 @@ function Finished({ game }: { game: LiveGame }) {
 
 /** "Live" tab: lichess games through the Board API (login, setup, running game, result). */
 export function LivePanel() {
-  const authStatus = useLichessAuth((a) => a.status);
-  const scoped = useLichessAuth((a) => a.status === 'authenticated' && a.scopes.includes(BOARD_SCOPE));
+  const scoped = useLichessAuth(
+    (a) => a.status === 'authenticated' && a.scopes.includes(BOARD_SCOPE),
+  );
   const status = useLiveStore((s) => s.status);
   const game = useLiveStore((s) => s.game);
   const setActive = useLiveStore((s) => s.setActive);
@@ -477,7 +580,7 @@ export function LivePanel() {
     return (
       <>
         <Messages />
-        <LoginPrompt rescope={authStatus === 'authenticated'} />
+        <LoginPrompt />
       </>
     );
   }
@@ -486,7 +589,13 @@ export function LivePanel() {
       <Messages />
       {status === 'seeking' && <Seeking />}
       {status === 'playing' &&
-        (game ? <Playing game={game} /> : <p className={styles.status} role="status">Connecting to the game…</p>)}
+        (game ? (
+          <Playing game={game} />
+        ) : (
+          <p className={styles.status} role="status">
+            Connecting to the game…
+          </p>
+        ))}
       {status === 'finished' && game && <Finished game={game} />}
       {(status === 'idle' || status === 'error' || (status === 'finished' && !game)) && <Setup />}
     </div>

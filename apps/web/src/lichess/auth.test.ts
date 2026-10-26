@@ -23,7 +23,11 @@ function setUrl(path: string) {
   history.replaceState(null, '', path);
 }
 
-function setPending(state = 'st4te', verifier = 'v'.repeat(64), redirectUri = 'http://localhost:3000/') {
+function setPending(
+  state = 'st4te',
+  verifier = 'v'.repeat(64),
+  redirectUri = 'http://localhost:3000/',
+) {
   sessionStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify({ verifier, state, redirectUri }));
 }
 
@@ -37,12 +41,18 @@ function lichessApi(opts: { tokenStatus?: number; accountStatus?: number } = {})
   fetchMock.mockImplementation(async (input, init) => {
     if (input === 'https://lichess.org/api/token' && init?.method === 'POST') {
       return opts.tokenStatus && opts.tokenStatus !== 200
-        ? json({ error: 'invalid_grant', error_description: 'hash of code_verifier does not match' }, opts.tokenStatus)
+        ? json(
+            { error: 'invalid_grant', error_description: 'hash of code_verifier does not match' },
+            opts.tokenStatus,
+          )
         : json({ token_type: 'Bearer', access_token: 'lio_new', expires_in: 31536000 });
     }
-    if (input === 'https://lichess.org/api/token' && init?.method === 'DELETE') return new Response(null, { status: 204 });
+    if (input === 'https://lichess.org/api/token' && init?.method === 'DELETE')
+      return new Response(null, { status: 204 });
     if (input === 'https://lichess.org/api/account') {
-      return opts.accountStatus ? json({}, opts.accountStatus) : json({ id: 'alice', username: 'Alice' });
+      return opts.accountStatus
+        ? json({}, opts.accountStatus)
+        : json({ id: 'alice', username: 'Alice' });
     }
     return json({}, 404);
   });
@@ -78,7 +88,10 @@ describe('login', () => {
     expect(p.get('redirect_uri')).toBe('http://localhost:3000/');
     expect(p.get('code_challenge_method')).toBe('S256');
     expect(p.get('scope')).toBe('board:play challenge:read challenge:write');
-    const pending = JSON.parse(sessionStorage.getItem(PENDING_STORAGE_KEY)!) as { verifier: string; state: string };
+    const pending = JSON.parse(sessionStorage.getItem(PENDING_STORAGE_KEY)!) as {
+      verifier: string;
+      state: string;
+    };
     expect(p.get('state')).toBe(pending.state);
     expect(p.get('code_challenge')).toBe(await challengeS256(pending.verifier));
     expect(pending.verifier.length).toBeGreaterThanOrEqual(43);
@@ -119,7 +132,10 @@ describe('handleCallback', () => {
     expect(location.search).toBe('?foo=1');
     expect(location.hash).toBe('#h');
     expect(sessionStorage.getItem(PENDING_STORAGE_KEY)).toBeNull();
-    const stored = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)!) as { token: string; username: string };
+    const stored = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)!) as {
+      token: string;
+      username: string;
+    };
     expect(stored).toMatchObject({ token: 'lio_new', username: 'Alice' });
 
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -146,7 +162,9 @@ describe('handleCallback', () => {
     const b = useLichessAuth.getState().handleCallback();
     expect(await a).toBe(true);
     expect(await b).toBe(true);
-    expect(fetchMock.mock.calls.filter(([u]) => u === 'https://lichess.org/api/token')).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(([u]) => u === 'https://lichess.org/api/token'),
+    ).toHaveLength(1);
   });
 
   it('rejects a state mismatch without contacting lichess', async () => {
@@ -173,7 +191,10 @@ describe('handleCallback', () => {
     setPending();
     setUrl('/?error=access_denied&error_description=user+cancelled&state=st4te');
     expect(await useLichessAuth.getState().handleCallback()).toBe(true);
-    expect(useLichessAuth.getState()).toMatchObject({ status: 'error', error: 'Login cancelled on lichess' });
+    expect(useLichessAuth.getState()).toMatchObject({
+      status: 'error',
+      error: 'Login cancelled on lichess',
+    });
     expect(location.search).toBe('');
   });
 
@@ -198,7 +219,11 @@ describe('handleCallback', () => {
     expect(s.status).toBe('error');
     expect(s.error).not.toContain('lio_new');
     await vi.waitFor(() =>
-      expect(fetchMock.mock.calls.some(([u, i]) => u === 'https://lichess.org/api/token' && i?.method === 'DELETE')).toBe(true),
+      expect(
+        fetchMock.mock.calls.some(
+          ([u, i]) => u === 'https://lichess.org/api/token' && i?.method === 'DELETE',
+        ),
+      ).toBe(true),
     );
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
   });
@@ -215,7 +240,11 @@ describe('handleCallback', () => {
 describe('persistence', () => {
   it('restores a stored login', () => {
     login('lio_x', 'Bob', ['board:play', 'challenge:read']);
-    expect(useLichessAuth.getState()).toMatchObject({ status: 'authenticated', username: 'Bob', token: 'lio_x' });
+    expect(useLichessAuth.getState()).toMatchObject({
+      status: 'authenticated',
+      username: 'Bob',
+      token: 'lio_x',
+    });
     expect(getLichessToken()).toBe('lio_x');
     expect(hasScope('challenge:read')).toBe(true);
     expect(hasScope('challenge:write')).toBe(false);
@@ -225,7 +254,10 @@ describe('persistence', () => {
     localStorage.setItem(AUTH_STORAGE_KEY, '{nope');
     resetLichessAuth();
     expect(useLichessAuth.getState().status).toBe('anonymous');
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 't', username: 'u', scopes: [], expiresAt: Date.now() - 1 }));
+    localStorage.setItem(
+      AUTH_STORAGE_KEY,
+      JSON.stringify({ token: 't', username: 'u', scopes: [], expiresAt: Date.now() - 1 }),
+    );
     resetLichessAuth();
     expect(useLichessAuth.getState().status).toBe('anonymous');
     expect(getLichessToken()).toBeUndefined();
@@ -233,7 +265,10 @@ describe('persistence', () => {
   });
 
   it('follows a login/logout in another tab', () => {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 't2', username: 'Carol', scopes: [] }));
+    localStorage.setItem(
+      AUTH_STORAGE_KEY,
+      JSON.stringify({ token: 't2', username: 'Carol', scopes: [] }),
+    );
     window.dispatchEvent(new StorageEvent('storage', { key: AUTH_STORAGE_KEY }));
     expect(useLichessAuth.getState().username).toBe('Carol');
     localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -308,11 +343,16 @@ describe('loginWithToken', () => {
     fetchMock.mockImplementation(async (input, init) => {
       if (input === 'https://lichess.org/api/token/test') {
         if (opts.testStatus) return json({}, opts.testStatus);
-        const entry = 'entry' in opts ? opts.entry : { userId: 'alice', scopes: 'board:play,challenge:read', expires: 1893456000000 };
+        const entry =
+          'entry' in opts
+            ? opts.entry
+            : { userId: 'alice', scopes: 'board:play,challenge:read', expires: 1893456000000 };
         return json({ [String(init?.body)]: entry });
       }
       if (input === 'https://lichess.org/api/account') {
-        return opts.accountStatus ? json({}, opts.accountStatus) : json({ id: 'alice', username: 'Alice' });
+        return opts.accountStatus
+          ? json({}, opts.accountStatus)
+          : json({ id: 'alice', username: 'Alice' });
       }
       return json({}, 404);
     });
@@ -322,7 +362,12 @@ describe('loginWithToken', () => {
     tokenApi();
     await useLichessAuth.getState().loginWithToken(`  ${TOKEN}\n`);
     const s = useLichessAuth.getState();
-    expect(s).toMatchObject({ status: 'authenticated', source: 'token', username: 'Alice', scopes: ['board:play', 'challenge:read'] });
+    expect(s).toMatchObject({
+      status: 'authenticated',
+      source: 'token',
+      username: 'Alice',
+      scopes: ['board:play', 'challenge:read'],
+    });
     expect(getLichessToken()).toBe(TOKEN);
     expect(hasScope('board:play')).toBe(true);
     expect(hasScope('challenge:write')).toBe(false);
@@ -339,7 +384,9 @@ describe('loginWithToken', () => {
     expect(init?.method).toBe('POST');
     expect(init?.body).toBe(TOKEN);
     expect(fetchMock.mock.calls.every(([u]) => !u.includes(TOKEN))).toBe(true);
-    expect(new Headers(fetchMock.mock.calls[1]![1]?.headers).get('Authorization')).toBe(`Bearer ${TOKEN}`);
+    expect(new Headers(fetchMock.mock.calls[1]![1]?.headers).get('Authorization')).toBe(
+      `Bearer ${TOKEN}`,
+    );
   });
 
   it('rejects empty and multi-line input without a request', async () => {
@@ -352,7 +399,9 @@ describe('loginWithToken', () => {
 
   it('rejects an invalid or expired token', async () => {
     tokenApi({ entry: null });
-    await expect(useLichessAuth.getState().loginWithToken(TOKEN)).rejects.toThrow('Token invalid or expired');
+    await expect(useLichessAuth.getState().loginWithToken(TOKEN)).rejects.toThrow(
+      'Token invalid or expired',
+    );
     const s = useLichessAuth.getState();
     expect(s).toMatchObject({ status: 'error', error: 'Token invalid or expired' });
     expect(JSON.stringify(s)).not.toContain(TOKEN);
@@ -377,7 +426,9 @@ describe('loginWithToken', () => {
 
   it('reports a network failure without the token', async () => {
     fetchMock.mockRejectedValue(new TypeError('offline'));
-    await expect(useLichessAuth.getState().loginWithToken(TOKEN)).rejects.toThrow(/Could not reach/);
+    await expect(useLichessAuth.getState().loginWithToken(TOKEN)).rejects.toThrow(
+      /Could not reach/,
+    );
     expect(useLichessAuth.getState().error).not.toContain(TOKEN);
   });
 
@@ -397,5 +448,23 @@ describe('loginWithToken', () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     await useLichessAuth.getState().logout();
     expect(fetchMock.mock.calls[0]![1]?.method).toBe('DELETE');
+  });
+});
+
+describe('token path scopes', () => {
+  it('restores source and scopes of a pasted token from storage', () => {
+    localStorage.setItem(
+      AUTH_STORAGE_KEY,
+      JSON.stringify({
+        token: 'lip_x',
+        username: 'Al',
+        scopes: ['board:play', 'challenge:read', 'challenge:write'],
+        source: 'token',
+      }),
+    );
+    useLichessAuth.setState(useLichessAuth.getInitialState());
+    window.dispatchEvent(new StorageEvent('storage', { key: AUTH_STORAGE_KEY }));
+    expect(useLichessAuth.getState()).toMatchObject({ status: 'authenticated', source: 'token' });
+    expect(hasScope('board:play')).toBe(true);
   });
 });

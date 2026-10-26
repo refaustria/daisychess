@@ -1,10 +1,21 @@
 import { useId, useState, type FormEvent } from 'react';
-import { LICHESS_SCOPES, LICHESS_TOKEN_CREATE_URL, SCOPE_LABEL, useLichessAuth } from '../../lichess/auth';
+import {
+  LICHESS_SCOPES,
+  LICHESS_TOKEN_CREATE_URL,
+  SCOPE_LABEL,
+  useLichessAuth,
+} from '../../lichess/auth';
 import styles from './LichessAccount.module.css';
 import { LoginButton } from './LoginButton';
 
 /** Collapsible "personal access token" login (alternative to the OAuth redirect). */
-function TokenLogin() {
+export function TokenLogin({
+  open = false,
+  summary = 'Use a personal access token instead',
+}: {
+  open?: boolean;
+  summary?: string;
+}) {
   const id = useId();
   const status = useLichessAuth((s) => s.status);
   const loginWithToken = useLichessAuth((s) => s.loginWithToken);
@@ -22,8 +33,8 @@ function TokenLogin() {
   };
 
   return (
-    <details className={styles.details}>
-      <summary>Use a personal access token instead</summary>
+    <details className={styles.details} open={open || undefined}>
+      <summary>{summary}</summary>
       <form className={styles.tokenForm} onSubmit={submit}>
         <p className={styles.help}>
           <a href={LICHESS_TOKEN_CREATE_URL} target="_blank" rel="noopener noreferrer">
@@ -45,7 +56,12 @@ function TokenLogin() {
             spellCheck={false}
             placeholder="lip_…"
           />
-          <button type="button" className={styles.button} aria-label={shown ? 'Hide lichess token' : 'Show lichess token'} onClick={() => setShown((v) => !v)}>
+          <button
+            type="button"
+            className={styles.button}
+            aria-label={shown ? 'Hide lichess token' : 'Show lichess token'}
+            onClick={() => setShown((v) => !v)}
+          >
             {shown ? 'Hide' : 'Show'}
           </button>
         </div>
@@ -71,7 +87,11 @@ export function LichessAccountSection() {
         <>
           <p className={styles.line}>
             Logged in as{' '}
-            <a href={`https://lichess.org/@/${encodeURIComponent(username ?? '')}`} target="_blank" rel="noopener noreferrer">
+            <a
+              href={`https://lichess.org/@/${encodeURIComponent(username ?? '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <strong>{username}</strong>
             </a>
           </p>
@@ -79,13 +99,17 @@ export function LichessAccountSection() {
           <ul className={styles.scopes} aria-label="Granted permissions">
             {LICHESS_SCOPES.map((sc) => (
               <li key={sc}>
-                <span aria-label={scopes.includes(sc) ? 'granted' : 'missing'}>{scopes.includes(sc) ? '✓' : '✗'}</span>{' '}
+                <span aria-label={scopes.includes(sc) ? 'granted' : 'missing'}>
+                  {scopes.includes(sc) ? '✓' : '✗'}
+                </span>{' '}
                 <code>{sc}</code> {SCOPE_LABEL[sc] ?? ''}
               </li>
             ))}
           </ul>
           {missing.length > 0 && (
-            <p className={styles.error}>Create a new token with the missing permissions: {missing.join(', ')}.</p>
+            <p className={styles.error}>
+              Create a new token with the missing permissions: {missing.join(', ')}.
+            </p>
           )}
           <button type="button" className={styles.button} onClick={() => void logout()}>
             Log out
@@ -103,9 +127,10 @@ export function LichessAccountSection() {
         </>
       )}
       <p className={styles.help}>
-        The login token is stored in this browser only and sent only to lichess. It is used for the opening
-        explorer, for your own games in Import and for live games. Logging out of a lichess login revokes it on
-        lichess; a pasted token is only forgotten here and stays valid on lichess.
+        The login token is stored in this browser only and sent only to lichess. It is used for the
+        opening explorer, for your own games in Import and for live games. Logging out of a lichess
+        login revokes it on lichess; a pasted token is only forgotten here and stays valid on
+        lichess.
       </p>
     </section>
   );

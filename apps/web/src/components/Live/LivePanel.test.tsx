@@ -41,7 +41,14 @@ const game = (over: Partial<LiveGame> = {}): LiveGame => ({
 });
 
 function login(scopes = ['board:play']) {
-  useLichessAuth.setState({ status: 'authenticated', token: 'tok', username: 'Me', scopes, error: undefined });
+  useLichessAuth.setState({
+    status: 'authenticated',
+    token: 'tok',
+    username: 'Me',
+    scopes,
+    error: undefined,
+    source: 'oauth',
+  });
 }
 
 beforeEach(() => {
@@ -53,7 +60,13 @@ afterEach(() => {
   cleanup();
   resetLive();
   useLiveStore.setState({ clearPremoves: realClearPremoves });
-  useLichessAuth.setState({ status: 'anonymous', token: undefined, username: undefined, scopes: [] });
+  useLichessAuth.setState({
+    status: 'anonymous',
+    token: undefined,
+    username: undefined,
+    scopes: [],
+    source: undefined,
+  });
 });
 
 describe('LivePanel', () => {
@@ -64,6 +77,57 @@ describe('LivePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log in with lichess' }));
     expect(login).toHaveBeenCalled();
     expect(api.calls).not.toContain('streamEvents');
+  });
+
+  it('not logged in: also offers the personal token with the prefilled create link', () => {
+    render(<LivePanel />);
+    fireEvent.click(screen.getByText('Use a personal access token'));
+    expect(screen.getByLabelText('Personal access token')).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Create a token on lichess' }).getAttribute('href'),
+    ).toContain('scopes[]=board:play');
+  });
+
+  it('token without board:play: explains the scope, no OAuth button, offers replacing the token', () => {
+    login(['challenge:read']);
+    useLichessAuth.setState({ source: 'token' });
+    render(<LivePanel />);
+    expect(screen.getByText(/personal token doesn't include/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Log in/ })).toBeNull();
+    expect(screen.getByLabelText('Personal access token')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Create a new token/ }).getAttribute('href')).toContain(
+      'scopes[]=board:play',
+    );
+  });
+
+  it('pasted token with board:play: shows the play UI, no login prompt', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/token/test'))
+        return new Response(
+          JSON.stringify({
+            [String(init?.body)]: { scopes: 'board:play,challenge:read,challenge:write' },
+          }),
+          { status: 200 },
+        );
+      return new Response(JSON.stringify({ id: 'me', username: 'Me' }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      render(<LivePanel />);
+      fireEvent.click(screen.getByText('Use a personal access token'));
+      fireEvent.change(screen.getByLabelText('Personal access token'), {
+        target: { value: 'lip_abc' },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Save lichess token' }));
+      });
+      expect(await screen.findByTestId('live-panel')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /Log in/ })).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
+      localStorage.clear();
+    }
   });
 
   it('logged in without board:play: asks to log in again', () => {
@@ -77,9 +141,27 @@ describe('LivePanel', () => {
     login();
     useLiveStore.setState({
       challenges: [
-        { id: 'c1234567', status: 'created', challenger: { id: 'bob', name: 'Bob', rating: 1700 }, rated: true, speed: 'blitz', variant: 'standard', color: 'random', clock: { limit: 300, increment: 3 } },
+        {
+          id: 'c1234567',
+          status: 'created',
+          challenger: { id: 'bob', name: 'Bob', rating: 1700 },
+          rated: true,
+          speed: 'blitz',
+          variant: 'standard',
+          color: 'random',
+          clock: { limit: 300, increment: 3 },
+        },
       ],
-      ongoing: [{ gameId: 'g7654321', color: 'black', opponent: { name: 'Eve' }, rated: false, speed: 'rapid', isMyTurn: true }],
+      ongoing: [
+        {
+          gameId: 'g7654321',
+          color: 'black',
+          opponent: { name: 'Eve' },
+          rated: false,
+          speed: 'rapid',
+          isMyTurn: true,
+        },
+      ],
     });
     render(<LivePanel />);
     expect(api.calls).toContain('streamEvents');
@@ -91,7 +173,9 @@ describe('LivePanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Find an opponent' }));
     });
     expect(api.seeks[0]!.params).toEqual({ rated: true, time: 15, increment: 10, color: 'random' });
-    expect(screen.getByRole('status').textContent).toMatch(/Looking for an opponent \(15\+10 rated\)/);
+    expect(screen.getByRole('status').textContent).toMatch(
+      /Looking for an opponent \(15\+10 rated\)/,
+    );
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     });
@@ -110,7 +194,9 @@ describe('LivePanel', () => {
     expect(screen.getByTestId('live-opponent').textContent).toBe('FM Opp (1600)');
     // The panel itself shows no clocks any more (they are in the bars beside the board).
     expect(screen.getByTestId('live-game').querySelector('[role="timer"]')).toBeNull();
-    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe('Black: Opp · FM 1600, 0:08.4');
+    expect(screen.getByTestId('player-bar-top').getAttribute('aria-label')).toBe(
+      'Black: Opp · FM 1600, 0:08.4',
+    );
     const mine = screen.getByTestId('clock-white');
     const theirs = screen.getByTestId('clock-black');
     expect(mine.getAttribute('aria-live')).toBe('off');
@@ -133,16 +219,26 @@ describe('LivePanel', () => {
   it('playing: shows the premove queue with a Clear button', () => {
     login();
     const clearPremoves = vi.fn();
-    useLiveStore.setState({ status: 'playing', game: game({ moves: [] }), premoves: ['e2e4', 'g1f3'], clearPremoves });
+    useLiveStore.setState({
+      status: 'playing',
+      game: game({ moves: [] }),
+      premoves: ['e2e4', 'g1f3'],
+      clearPremoves,
+    });
     render(<LivePanel />);
-    expect(screen.getByTestId('live-premoves').textContent).toBe('Premoves: e4, Nf3 (Esc to clear)Clear');
+    expect(screen.getByTestId('live-premoves').textContent).toBe(
+      'Premoves: e4, Nf3 (Esc to clear)Clear',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(clearPremoves).toHaveBeenCalled();
   });
 
   it('playing: draw offer banner and claim victory', async () => {
     login();
-    useLiveStore.setState({ status: 'playing', game: game({ drawOffer: 'opponent', opponentGone: { claimAt: Date.now() - 1 } }) });
+    useLiveStore.setState({
+      status: 'playing',
+      game: game({ drawOffer: 'opponent', opponentGone: { claimAt: Date.now() - 1 } }),
+    });
     render(<LivePanel />);
     expect(screen.getByRole('alert').textContent).toContain('offers a draw');
     await act(async () => {
@@ -158,7 +254,10 @@ describe('LivePanel', () => {
 
   it('finished: result, New game and Review this game', () => {
     login();
-    useLiveStore.setState({ status: 'finished', game: game({ status: 'mate', reason: 'mate', winner: 'black' }) });
+    useLiveStore.setState({
+      status: 'finished',
+      game: game({ status: 'mate', reason: 'mate', winner: 'black' }),
+    });
     useUiStore.setState({ activeTab: 'live' });
     render(<LivePanel />);
     expect(screen.getByTestId('live-result').textContent).toBe('0-1');
