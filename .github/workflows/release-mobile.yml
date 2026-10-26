@@ -159,7 +159,8 @@ jobs:
           test "$merged" = "android:versionCode=\"$DAISYCHESS_VERSION_CODE\""
           suffix=''
           if [ "$SIGNED" = true ]; then
-            jarsigner -verify -strict "$aab" > /dev/null
+            # Not -strict: upload keys are self-signed, which -strict reports as exit 4 (chain not validated).
+            jarsigner -verify "$aab" | grep -q '^jar verified'
             # Public upload certificate fingerprint (Play Console → App integrity → Upload key).
             keytool -printcert -jarfile "$aab" | grep -E '^(Owner|[[:space:]]*SHA256):'
           else
