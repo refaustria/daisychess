@@ -238,6 +238,9 @@ export function App() {
   const tabsRef = useRef<HTMLDivElement>(null);
   // Phone portrait: action bar under the board, bottom tab bar, "⋯" menu (M29-6).
   const phone = usePhoneLayout();
+  // Phone + Puzzles tab (puzzles, rush, mistake training): the panel has its own status line, so
+  // the general one is not rendered at all (no duplicate aria-live announcement).
+  const hideStatus = phone && tab === 'puzzles';
   useBoardKeys();
   // The tab row scrolls horizontally on narrow panels: keep the active tab visible (only the row
   // scrolls, never the page, unlike scrollIntoView).
@@ -276,14 +279,16 @@ export function App() {
         )}
         <section className={styles.side} data-testid={phone ? 'phone-panel' : undefined}>
           {!phone && <EngineToggle />}
-          <p
-            className={alert ? `${styles.status} ${styles.statusAlert}` : styles.status}
-            data-testid="status"
-            role="status"
-            aria-live="polite"
-          >
-            {roomStatus ?? statusText(state)}
-          </p>
+          {!hideStatus && (
+            <p
+              className={alert ? `${styles.status} ${styles.statusAlert}` : styles.status}
+              data-testid="status"
+              role="status"
+              aria-live="polite"
+            >
+              {roomStatus ?? statusText(state)}
+            </p>
+          )}
           {!phone && <Controls />}
           <AnalysisPanel />
           {!phone && (

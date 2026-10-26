@@ -81,4 +81,18 @@ describe('App, phone portrait (M29-6)', () => {
     expect(screen.getByLabelText('FEN')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Moves' })).toBeTruthy();
   });
+
+  it('hides the general status line on the puzzles tab only (the puzzle panel has its own)', async () => {
+    render(<App />);
+    await screen.findByTestId('action-bar');
+    expect(screen.getByTestId('status').textContent).toBe('White to move');
+    act(() => {
+      useUiStore.setState({ activeTab: 'puzzles' });
+    });
+    expect(screen.queryByTestId('status')).toBeNull();
+    act(() => {
+      useUiStore.setState({ activeTab: 'moves' });
+    });
+    expect(screen.getByTestId('status')).toBeTruthy();
+  });
 });
