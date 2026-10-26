@@ -11,38 +11,39 @@ Two analysis backends are offered and can be switched at runtime:
 > **Live instance:** <https://play.daisychess.org> · **Community site:** <https://daisychess.org> · **Source:** <https://github.com/refaustria/daisychess>
 > **Run your own:** a single host with nginx and systemd is described in [`deploy/README.md`](./deploy/README.md); a Docker Compose setup (web + engine server) is in [`docker/`](./docker/). Want to contribute? See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
-> **For Claude Code:** this repository is run by an orchestrating Claude Code session that acts as project manager only. It does not implement features itself; it plans, delegates to sub-agents, reviews and integrates. See [`CLAUDE.md`](./CLAUDE.md) and the section *Working Model for Claude Code* below.
+> **For Claude Code:** this repository is run by an orchestrating Claude Code session that acts as project manager only. It does not implement features itself; it plans, delegates to sub-agents, reviews and integrates. See [`CLAUDE.md`](./CLAUDE.md) and the section _Working Model for Claude Code_ below.
 
 ## Status
 
 All milestones M0–M10 are implemented (play, browser and server analysis, game review, play vs engine, online import, theming, hardening); the live app is https://play.daisychess.org (ADR-021). Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
 
-| Area | State |
-|---|---|
-| Play (board, move list, undo, flip, FEN/PGN import, keyboard navigation) | done |
-| Browser engine (Stockfish 19 WASM, MultiPV, eval bar, arrows, line preview) | done |
-| Server engine (native Stockfish 19, WebSocket, limits, Origin check) | done |
-| Game review (accuracy, eval graph, key moments, annotated PGN export) | done |
-| Engine registry and multi-engine comparison | done (Stockfish; other UCI engines are configurable on the server) |
-| Human-like engine: Lc0 + Maia 1100–1900 on the server (`style: human`, 1-node policy move, move probabilities) | server done (ADR-019, M23-1); web (play vs Maia, review hints) in progress (M23-2/3) |
-| Theming (board colours, piece sets Cburnett/Letters, coordinates, highlights, sounds, dark/light) | done |
-| Accessibility / performance pass | done (axe e2e checks, keyboard-operable tabs; the board itself is mouse/touch only) |
-| Play a friend via link (rooms on the server: nickname, time control, colour; reconnect, draw/resign/abort/claim, spectators) | server done (ADR-013); web UI in progress (M16-2) |
-| Opening database, accounts | not built (non-goals for v1) |
+| Area                                                                                                                         | State                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Play (board, move list, undo, flip, FEN/PGN import, keyboard navigation)                                                     | done                                                                                 |
+| Browser engine (Stockfish 19 WASM, MultiPV, eval bar, arrows, line preview)                                                  | done                                                                                 |
+| Server engine (native Stockfish 19, WebSocket, limits, Origin check)                                                         | done                                                                                 |
+| Game review (accuracy, eval graph, key moments, annotated PGN export)                                                        | done                                                                                 |
+| Engine registry and multi-engine comparison                                                                                  | done (Stockfish; other UCI engines are configurable on the server)                   |
+| Human-like engine: Lc0 + Maia 1100–1900 on the server (`style: human`, 1-node policy move, move probabilities)               | server done (ADR-019, M23-1); web (play vs Maia, review hints) in progress (M23-2/3) |
+| Theming (board colours, piece sets Cburnett/Letters, coordinates, highlights, sounds, dark/light)                            | done                                                                                 |
+| Accessibility / performance pass                                                                                             | done (axe e2e checks, keyboard-operable tabs; the board itself is mouse/touch only)  |
+| Play a friend via link (rooms on the server: nickname, time control, colour; reconnect, draw/resign/abort/claim, spectators) | server done (ADR-013); web UI in progress (M16-2)                                    |
+| Puzzles (stage 1: lichess puzzle database, rating, daily, rush, filters, offline starter; ADR-023)                           | done; stage 2 (puzzles from your own mistakes) in progress                           |
+| Accounts                                                                                                                     | not built (non-goal for v1)                                                          |
 
 ---
 
 ## 1. Goals
 
-| Goal | Description |
-|---|---|
-| Play | Drag-and-drop board, legal-move highlighting, undo, flip, move list with SAN notation |
-| Import | Load PGN (file upload or paste), FEN input, navigate with keyboard arrows |
-| Analyze | Live engine evaluation of the current position, top-N lines (MultiPV), best-move arrows |
-| Eval bar | Vertical bar next to the board, centipawn → win-probability mapping, mate display (M3) |
-| Game review | Analyze all moves of a game, classify (best / good / inaccuracy / mistake / blunder), accuracy per side |
-| Engines | Pluggable engine registry; enable/disable engines, run several in parallel for comparison |
-| Backends | Switch between browser (WASM) and server (native) analysis at any time |
+| Goal        | Description                                                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Play        | Drag-and-drop board, legal-move highlighting, undo, flip, move list with SAN notation                                                   |
+| Import      | Load PGN (file upload or paste), FEN input, navigate with keyboard arrows                                                               |
+| Analyze     | Live engine evaluation of the current position, top-N lines (MultiPV), best-move arrows                                                 |
+| Eval bar    | Vertical bar next to the board, centipawn → win-probability mapping, mate display (M3)                                                  |
+| Game review | Analyze all moves of a game, classify (best / good / inaccuracy / mistake / blunder), accuracy per side                                 |
+| Engines     | Pluggable engine registry; enable/disable engines, run several in parallel for comparison                                               |
+| Backends    | Switch between browser (WASM) and server (native) analysis at any time                                                                  |
 | Look & feel | Clean, modern board (Lichess-like default: brown/beige squares, cburnett pieces); themes for colors, pieces, coordinates, dark/light UI |
 
 Non-goals (for v1): online multiplayer, user accounts, opening database, cloud storage.
@@ -79,15 +80,16 @@ daisychess/
 
 Browser engine builds (from the `stockfish` npm package, Stockfish 19; the two lite builds plus the `full` build as an opt-in download):
 
-| Build | Size | Needs COOP/COEP headers | Use |
-|---|---|---|---|
-| `lite-single` | small | no | default, works everywhere |
-| `lite` (multi-thread) | small | yes | if headers available |
-| `full` (multi-thread, big NNUE) | ~75 MB | yes | not shipped (idea: opt-in "maximum strength") |
+| Build                           | Size   | Needs COOP/COEP headers | Use                                           |
+| ------------------------------- | ------ | ----------------------- | --------------------------------------------- |
+| `lite-single`                   | small  | no                      | default, works everywhere                     |
+| `lite` (multi-thread)           | small  | yes                     | if headers available                          |
+| `full` (multi-thread, big NNUE) | ~75 MB | yes                     | not shipped (idea: opt-in "maximum strength") |
 
 The site must set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` in production to unlock `SharedArrayBuffer` for multi-threaded WASM. Detect support at runtime and fall back gracefully.
 
 **Browser engine memory (ADR-015).** Each WASM instance costs ~60 MiB (`lite-single`) to ~155 MiB (`lite`, 4 threads) plus a 128 MiB…2 GiB `WebAssembly.Memory`, so instances are budgeted:
+
 - The game review, the openings drill and Play vs Engine share **one pooled browser engine** (`apps/web/src/engine/wasmPool.ts`): one holder at a time (a drill check waits for a running review), disposed 20 s after the last use. Server reviews/drills (ADR-014) do not touch it.
 - `engine/memoryBudget.ts` detects iOS/iPadOS (also the Mac user agent of iPadOS) and low `deviceMemory` (≤ 2 GiB): there the live analysis runs **one browser engine** at a time (the picker says "Memory budget: one browser engine at a time on this device"), with **at most 2 threads** (labels, the Threads select and the engine itself are capped), the multi-threaded build starts through `engine-shim/stockfish-memory-shim.js` (shared memory maximum 512 MiB instead of 2 GiB), and the live engine is released while a review/drill/game pauses it.
 - An out-of-memory (or other worker) failure restarts the engine once single-threaded for the rest of the session and shows one notice in the engine panel ("Browser engine restarted with 1 thread after running out of memory"); if that fails too, the browser engine is disabled until the user retries, and the review/drill switch to the server when one is configured (except with the "Browser" review setting).
@@ -129,7 +131,7 @@ JSON text frames over WebSocket (`/ws`), one message per frame, discriminated by
 - A **session** (`sessionId`, client-chosen) leases one engine instance; it is created by the first `analyze`, freed by `release`, by an idle timeout or when the socket closes. Several sessions per connection allow multi-engine comparison, bounded by `limits.maxSessionsPerConnection`.
 - Each `analyze` starts a **search** (`searchId`, client-chosen, unique per session). A new `analyze` on a session with a running search stops it first; every accepted search ends with exactly one `bestmove` (or an `error` carrying its `searchId`).
 - `info` scores are side-to-move, like UCI; the client converts with `infoToWhitePov` exactly as the WASM client does.
-- **Access token** (optional, ADR-010/013): a server started with `ACCESS_TOKEN` answers a `hello` without the matching `token` (max 256 chars, compared in constant time) with a *restricted* `welcome` — `engines: []`, `capabilities: { analysis: false, rooms: true }` — and rejects every `analyze` with `error: unauthorized`; rooms work without the token. With the token (or on a public server) `capabilities` is `{ analysis: true, rooms: true }`. Additive: `PROTOCOL_VERSION` stays 1.
+- **Access token** (optional, ADR-010/013): a server started with `ACCESS_TOKEN` answers a `hello` without the matching `token` (max 256 chars, compared in constant time) with a _restricted_ `welcome` — `engines: []`, `capabilities: { analysis: false, rooms: true }` — and rejects every `analyze` with `error: unauthorized`; rooms work without the token. With the token (or on a public server) `capabilities` is `{ analysis: true, rooms: true }`. Additive: `PROTOCOL_VERSION` stays 1.
 - Error codes: `invalid_message`, `protocol_mismatch`, `handshake_required`, `unknown_engine`, `limit_exceeded`, `no_capacity`, `session_not_found`, `engine_crashed`, `rate_limited`, `internal_error`, `unauthorized`, `forbidden` (analysis while playing in a room).
 - `welcome.capabilities` is `{ analysis, rooms, reviewStore? }` — `reviewStore: true` when the server stores reviews (ADR-017, below).
 
@@ -220,40 +222,57 @@ Protocol (additive, `PROTOCOL_VERSION` stays 1):
 ## 3. Features in Detail
 
 ### Evaluation bar
+
 - Vertical bar beside the board, white share from the bottom, animated transitions.
 - Shows numeric eval (`+0.3`, `-1.7`, `M4`), always from White's perspective, flips with the board.
 
 ### Live analysis panel
+
 - Engine selector (per backend), depth/time control, MultiPV 1–5, threads/hash (server mode).
 - Each line: eval, depth, moves in SAN; click a line to preview it on the board; hover shows arrow.
 - Multiple engines can run simultaneously and are shown as separate tabs/columns.
 
 ### PGN import & navigation
+
 - Drop a `.pgn` file or paste text; multi-game files show a picker.
 - Move list (main line, no variations yet); keyboard navigation (←/→/Home/End); FEN copy.
 
 ### Play vs engine
+
 - Play tab: pick colour, strength (Elo presets) and thinking time; promotion dialog, takeback, resign, rematch, "Review this game". Live analysis and Review are paused during a game; loading a position or PGN aborts it.
 
 ### Play a friend via link
+
 - Friend tab: pick a nickname, time control (presets, custom or no clock) and colour, then "Create link" and send the link (`https://play.daisychess.org/#/room/<id>`) to your friend. No account and no server token needed.
 - Your friend opens the link, picks a nickname and joins; the game starts. Anyone opening the link after both seats are taken watches.
 - The server runs the rules and the clocks (shown in the player bars; the first move of each side is untimed). Draw offers, resign, abort before both have moved, and "Claim victory" when the opponent stays disconnected for 60 s. A reload or a lost connection re-attaches to your seat (the seat secret stays in this browser's localStorage).
 - Engines, review and explorer are locked while you play (fair play); the game is reviewed automatically afterwards. "Play again" creates a new link with colours swapped.
 
 ### Openings trainer
+
 - Openings tab: search the ~3,900 named openings and variations by name or ECO code (e.g. "Italian", "B90"); each entry shows how many sub-variations it has.
 - **Browse**: the line move by move (click a move to see the position on the board, with the move list, opening name and review working as for an imported game) and the named branches at that move.
 - **Drill**: choose White, Black or both (alternating) and start. The app plays the book moves of the other side (main lines more often, side lines now and then). Your book moves are confirmed ("Book: <variation>"); a move outside the book is checked by the engine (same engine choice as the review: server when configured, else the browser): within 0.3 pawns of the best move it is "Not book, but fine" and the line ends out of book, otherwise you see the eval loss, the best move and its line on the board and in text, and "Try again". At the end: moves right first try, mistakes, and Repeat / Next variation / Play on vs engine.
 - Spaced repetition (stored only in this browser, localStorage `daisychess.trainer`): a variation drilled without a mistake comes back after 1, 2.5, 6 … days; one with a mistake is due again at once. "Due" filters the due variations, "Train due" starts the earliest. The live analysis is paused during a drill, and no drill runs during live, friend or engine games (starting one ends the drill).
 
+### Puzzles
+
+- Puzzles tab: tactics from the lichess puzzle database (CC0; 302,770 curated puzzles in 171 static shards at `/puzzles/v1/`, plus a 6,000-puzzle starter bundled in the app so it works offline). Solve by moving on the board or by typing the move in SAN; wrong move shows "Try again", with hint, "Show solution" and "Analyse" (opens the position in the analysis board). The first attempt of a puzzle is rated: a Glicko-2 puzzle rating (stored only in this browser, localStorage) picks puzzles near your level.
+- Filters by theme and by opening family/variation; "Puzzles from this opening" in the Openings tab opens the Puzzles tab with that opening filtered.
+- Daily puzzle (same for everyone, rated on the first attempt of the day) with a streak and a 30-day strip; Puzzle Rush (3 or 5 minutes, three strikes, best scores kept).
+- Offline: Filters has "Keep puzzles for offline use" to cache shards around your rating on the device; with `/puzzles/v1/` unreachable the app falls back to the bundled starter.
+- Attribution: puzzles are from the lichess.org puzzle database, CC0 (see `THIRD_PARTY_NOTICES.md`). Requests for the static files carry no identifier (`docs/PRIVACY.md`).
+
 ### Online import
+
 - Import tab: fetch recent games of a user from the lichess and chess.com public APIs.
 
 ### Engine access
+
 - Settings tab: server access token (sent as `hello.token`; the server enforces it with `ACCESS_TOKEN`). The token is stored per device. Without it the UI says "No server access token on this device — enter it in Settings"; with a stored token the server refused it: "Server access token was rejected — check it in Settings"; only real connection failures say "Server unreachable". Those messages carry an "Open Settings" button that focuses the token field. **Setup link:** "Copy link for another device" (enabled when a token is stored) copies `https://<origin>/#setup-token=<token>`; opening it on another device stores the token there, removes the fragment from the address bar and shows "Server access token saved on this device". Anyone with the link can use your engine server: open it once, then delete it from your messages. Opt-in full-strength browser build (`wasm:full`, ~99 MB, one-time download confirmation).
 
 ### Game review
+
 - Batch-analyze every position at configurable depth (server mode recommended).
 - Per-move classification and accuracy %, eval graph over the game, "key moments" list.
 - Export the annotated PGN.
@@ -263,6 +282,7 @@ Protocol (additive, `PROTOCOL_VERSION` stays 1):
 - Clock times (M22-1): games with `[%clk h:mm:ss(.f)]` / `[%emt …]` comments (lichess exports are requested with `clocks=true`; chess.com PGNs carry `%clk`) keep per-move remaining and spent time; the missing value is derived from the `TimeControl` header (`spent = before − after + increment`), daily games (`1/86400`) are treated as having no live clock. Outside live/engine/friend games the player bars show each side's static remaining time at the displayed move. The review shows "Used 0:42 (12% of remaining) · 0:18 left" per move, a clock graph under the eval graph, a per-player time summary (average, longest think, mistakes in time trouble) and a "time trouble" badge on mistakes/blunders made with less than max(10% of the initial time, 30 s) left; the guided tour appends "(in time trouble)". All of it is derived from the loaded game at render time — the engine review and the cached/stored review records are unchanged — and the annotated PGN export writes `%clk` back.
 
 ### Customization
+
 - Board colors (presets + custom picker), piece sets (Cburnett, Letters), coordinates on/off, highlight style, sound on/off, dark/light mode.
 - Stored in `localStorage`.
 
@@ -270,7 +290,7 @@ Protocol (additive, `PROTOCOL_VERSION` stays 1):
 
 ## 3a. Run a community node
 
-A **node** lends the engines of one machine (Stockfish, optionally Lc0 with the Maia nets) to a DaisyChess **hub** (ADR-020). It only connects *out* to the hub over one WebSocket: no open port, no domain, no TLS certificate, works behind NAT.
+A **node** lends the engines of one machine (Stockfish, optionally Lc0 with the Maia nets) to a DaisyChess **hub** (ADR-020). It only connects _out_ to the hub over one WebSocket: no open port, no domain, no TLS certificate, works behind NAT.
 
 - **Private node:** only the people you give a player token (`dc1_…`) in the portal can use it. A token can list several of your nodes and optionally fall back to the pool.
 - **Pool node:** you also donate part of the machine to strangers (`NODE_POOL=on` plus the pool switch in the portal). The hub spot-checks pool results; nodes whose answers disagree are removed from the pool, and a repeat offender is banned from it.
@@ -313,15 +333,15 @@ nginx must proxy `/link` (WebSocket, `limit_req`/`limit_conn`), `/api/portal/` a
 
 ## 4. Milestones
 
-| # | Milestone | Deliverable |
-|---|---|---|
-| M0 | Repo scaffold | pnpm workspace, lint/format/test setup, CI (GitHub Actions), `engine-core` skeleton |
-| M1 | Play | Board, legal moves, move list, flip/undo, FEN/PGN import, keyboard navigation |
-| M2 | Browser engine | WASM Stockfish worker, `WasmEngineClient`, eval bar, MultiPV panel, arrows |
-| M3 | Server engine | `apps/server`, engine pool, WebSocket protocol, `RemoteEngineClient`, backend switch in UI |
-| M4 | Game review | Batch analysis, move classification, accuracy, eval graph, annotated PGN export |
-| M5 | Engines & themes | Engine registry (browser + server), multi-engine comparison, theming UI |
-| M6 | Polish & deploy | COOP/COEP hosting, Docker image, docs, performance pass, accessibility |
+| #   | Milestone        | Deliverable                                                                                |
+| --- | ---------------- | ------------------------------------------------------------------------------------------ |
+| M0  | Repo scaffold    | pnpm workspace, lint/format/test setup, CI (GitHub Actions), `engine-core` skeleton        |
+| M1  | Play             | Board, legal moves, move list, flip/undo, FEN/PGN import, keyboard navigation              |
+| M2  | Browser engine   | WASM Stockfish worker, `WasmEngineClient`, eval bar, MultiPV panel, arrows                 |
+| M3  | Server engine    | `apps/server`, engine pool, WebSocket protocol, `RemoteEngineClient`, backend switch in UI |
+| M4  | Game review      | Batch analysis, move classification, accuracy, eval graph, annotated PGN export            |
+| M5  | Engines & themes | Engine registry (browser + server), multi-engine comparison, theming UI                    |
+| M6  | Polish & deploy  | COOP/COEP hosting, Docker image, docs, performance pass, accessibility                     |
 
 Each milestone is broken into GitHub issues by the orchestrator before any implementation starts.
 
@@ -339,13 +359,14 @@ The Claude Code session in this repo is the **project manager / orchestrator**. 
 
 ### Agent tiers and model routing
 
-| Tier | Model | Use for |
-|---|---|---|
-| `worker` | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Regular tasks: components, tests, styling, docs, small bug fixes, scripts |
-| `senior` | Claude Opus 5.5 (`claude-opus-5-5`) | Hard tasks: engine pool & concurrency, WebSocket protocol, WASM worker integration, performance work, tricky bugs |
-| `architect` | Claude Fable 5.1 (`claude-fable-5-1`) | Architecture, cross-cutting design, protocol decisions, security review, anything the senior tier failed on twice |
+| Tier        | Model                                   | Use for                                                                                                           |
+| ----------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `worker`    | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Regular tasks: components, tests, styling, docs, small bug fixes, scripts                                         |
+| `senior`    | Claude Opus 5.5 (`claude-opus-5-5`)     | Hard tasks: engine pool & concurrency, WebSocket protocol, WASM worker integration, performance work, tricky bugs |
+| `architect` | Claude Fable 5.1 (`claude-fable-5-1`)   | Architecture, cross-cutting design, protocol decisions, security review, anything the senior tier failed on twice |
 
 Routing rules:
+
 - Default to `worker`. Escalate to `senior` when the task touches concurrency, process management, engine protocols, or performance.
 - Use `architect` for any task that changes interfaces in `packages/engine-core`, the WebSocket protocol, or the repo structure — and for unblocking tasks after two failed attempts.
 - One task per agent run; agents receive the task description, acceptance criteria, relevant file paths and the coding conventions below. They return a summary, the diff, and test results.
@@ -353,6 +374,7 @@ Routing rules:
 Sub-agent definitions live in `.claude/agents/` (one file per tier with its model set). See `CLAUDE.md` for the exact prompts and conventions.
 
 ### Definition of Done (every task)
+
 - Code compiles, `pnpm lint` and `pnpm test` pass.
 - New behavior has tests (unit for `engine-core`, component tests for UI, integration for server).
 - No console errors; no new `any` types without justification.
@@ -378,25 +400,25 @@ pnpm build
 
 Server configuration is read from the environment (see `apps/server/.env.example`; no `.env` auto-loading, use `node --env-file`):
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `PORT` / `HOST` | `8580` / `127.0.0.1` | listen address |
-| `ALLOWED_ORIGINS` | same host as the request | comma-separated `scheme://host[:port]` allowed to open `/ws`, or `*` (ADR-008); production sets `https://play.daisychess.org` |
-| `MAX_SESSIONS` | `4` | global cap on leased engine instances |
-| `MAX_SESSIONS_PER_IP` | unset | per-client-address cap, must not exceed `MAX_SESSIONS` |
-| `MAX_SESSIONS_PER_CONNECTION`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_THREADS`, `MAX_HASH_MB`, `MAX_MOVETIME_MS` | see `.env.example` | per-request limits announced in `welcome.limits` |
-| `ENGINE_IDLE_MS`, `SESSION_IDLE_MS` | `300000`, `600000` | idle timeouts |
-| `ENGINES_CONFIG` | `apps/server/engines.json` | engine registry |
-| `LOG_LEVEL` | `info` | pino level |
-| `ACCESS_TOKEN` | unset (public) | shared token for analysis (ADR-010); without it clients are restricted to rooms (ADR-013) |
-| `ROOM_MAX_ROOMS`, `ROOM_MAX_SPECTATORS`, `ROOM_CREATE_PER_IP`, `ROOM_CREATE_WINDOW_MS`, `ROOM_WAITING_TTL_MS`, `ROOM_FINISHED_TTL_MS`, `ROOM_IDLE_TTL_MS`, `ROOM_CLAIM_GRACE_MS` | `200`, `10`, `10`, `600000`, `900000`, `600000`, `7200000`, `60000` | room limits and lifetimes (ADR-013) |
-| `REVIEW_STORE` | `on` | `off` disables the server-side review store (ADR-017); `welcome.capabilities.reviewStore` is then false |
-| `REVIEW_STORE_PATH` | `apps/server/data/reviews.sqlite` | SQLite file of the review store (directory created; needs a writable path — see `deploy/README.md`) |
-| `REVIEW_STORE_MAX_BYTES` | `5000000000` (5 GB) | disk cap of the review store; least recently used positions, then reviews, are evicted down to 90 % |
-| `REVIEW_PUT_PER_IP_PER_DAY` | `500` | review/position writes per client address and UTC day (`reason: quota`) |
-| `MAX_NODES` | `10000` | cap on `analyze.nodes` (ADR-019), announced as `limits.maxNodes` |
-| `MAIA` | `on` | `off` disables the Lc0 + Maia engines (registry group `maia`, ADR-019); they are also off when `engines/lc0/lc0` or a net in `engines/maia/` is missing |
-| `MAIA_MAX_PROCESSES` | `3` | total Lc0 processes of all Maia levels (~16 MB RSS each) |
+| Variable                                                                                                                                                                         | Default                                                             | Meaning                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT` / `HOST`                                                                                                                                                                  | `8580` / `127.0.0.1`                                                | listen address                                                                                                                                          |
+| `ALLOWED_ORIGINS`                                                                                                                                                                | same host as the request                                            | comma-separated `scheme://host[:port]` allowed to open `/ws`, or `*` (ADR-008); production sets `https://play.daisychess.org`                           |
+| `MAX_SESSIONS`                                                                                                                                                                   | `4`                                                                 | global cap on leased engine instances                                                                                                                   |
+| `MAX_SESSIONS_PER_IP`                                                                                                                                                            | unset                                                               | per-client-address cap, must not exceed `MAX_SESSIONS`                                                                                                  |
+| `MAX_SESSIONS_PER_CONNECTION`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_THREADS`, `MAX_HASH_MB`, `MAX_MOVETIME_MS`                                                                       | see `.env.example`                                                  | per-request limits announced in `welcome.limits`                                                                                                        |
+| `ENGINE_IDLE_MS`, `SESSION_IDLE_MS`                                                                                                                                              | `300000`, `600000`                                                  | idle timeouts                                                                                                                                           |
+| `ENGINES_CONFIG`                                                                                                                                                                 | `apps/server/engines.json`                                          | engine registry                                                                                                                                         |
+| `LOG_LEVEL`                                                                                                                                                                      | `info`                                                              | pino level                                                                                                                                              |
+| `ACCESS_TOKEN`                                                                                                                                                                   | unset (public)                                                      | shared token for analysis (ADR-010); without it clients are restricted to rooms (ADR-013)                                                               |
+| `ROOM_MAX_ROOMS`, `ROOM_MAX_SPECTATORS`, `ROOM_CREATE_PER_IP`, `ROOM_CREATE_WINDOW_MS`, `ROOM_WAITING_TTL_MS`, `ROOM_FINISHED_TTL_MS`, `ROOM_IDLE_TTL_MS`, `ROOM_CLAIM_GRACE_MS` | `200`, `10`, `10`, `600000`, `900000`, `600000`, `7200000`, `60000` | room limits and lifetimes (ADR-013)                                                                                                                     |
+| `REVIEW_STORE`                                                                                                                                                                   | `on`                                                                | `off` disables the server-side review store (ADR-017); `welcome.capabilities.reviewStore` is then false                                                 |
+| `REVIEW_STORE_PATH`                                                                                                                                                              | `apps/server/data/reviews.sqlite`                                   | SQLite file of the review store (directory created; needs a writable path — see `deploy/README.md`)                                                     |
+| `REVIEW_STORE_MAX_BYTES`                                                                                                                                                         | `5000000000` (5 GB)                                                 | disk cap of the review store; least recently used positions, then reviews, are evicted down to 90 %                                                     |
+| `REVIEW_PUT_PER_IP_PER_DAY`                                                                                                                                                      | `500`                                                               | review/position writes per client address and UTC day (`reason: quota`)                                                                                 |
+| `MAX_NODES`                                                                                                                                                                      | `10000`                                                             | cap on `analyze.nodes` (ADR-019), announced as `limits.maxNodes`                                                                                        |
+| `MAIA`                                                                                                                                                                           | `on`                                                                | `off` disables the Lc0 + Maia engines (registry group `maia`, ADR-019); they are also off when `engines/lc0/lc0` or a net in `engines/maia/` is missing |
+| `MAIA_MAX_PROCESSES`                                                                                                                                                             | `3`                                                                 | total Lc0 processes of all Maia levels (~16 MB RSS each)                                                                                                |
 
 ### Deployment
 

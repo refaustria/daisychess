@@ -6,7 +6,7 @@ Vite + React 18 + TypeScript frontend. Product overview: [`../../README.md`](../
 
 ```
 src/
-  App.tsx            layout, tabs (Moves / Play / Import / Review / Settings; Review and Settings are lazy)
+  App.tsx            layout, tabs (Moves / Play / Import / Review / Puzzles / Settings; Review and Settings are lazy)
   components/        Board (chessground), Controls (keys, FEN), MoveList, Import, Analysis
                      (engine panel, tabs, compare strip), EvalBar, EngineToggle, ThemeToggle,
                      Review, Settings; each with a CSS module and tests
@@ -47,6 +47,10 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 ## Openings
 
 `src/openings/data/openings.json` (`[eco, name, epd][]`, ~464 kB, 63 kB gzipped) is generated from the lichess `chess-openings` TSVs (CC0) by `scripts/build-openings.mjs`; source commit in `data/SOURCE.md`. It is a separate lazy chunk, loaded by `useOpening()` the first time `MoveList` renders. `openingForGame` returns the deepest named position up to the current ply (so transpositions are recognised) and `null` for custom start positions; `MoveList` shows it as an ECO badge plus name (`aria-live="polite"`, hidden when null).
+
+## Puzzles
+
+`src/puzzles/` is the data layer (index, shards, offline cache, bundled `data/starter.json`; provenance in `data/SOURCE.md`), `src/components/Puzzles/` the UI (solver panel, filters, daily card, rush, offline keep), pure logic in `packages/puzzles` (`@daisychess/puzzles`). Shards are static files under `/puzzles/v1/` (cached by nginx, CORS for the app); if they are unreachable the starter is used. Rating, daily streak and rush bests live in localStorage. Data: lichess puzzle database, CC0 (`THIRD_PARTY_NOTICES.md`). e2e: `e2e/puzzles.spec.ts`, `puzzle-solve.spec.ts`, `puzzle-rush.spec.ts`.
 
 ## Clocks and time controls (Play vs Engine)
 

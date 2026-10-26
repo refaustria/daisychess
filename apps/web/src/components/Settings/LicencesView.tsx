@@ -23,6 +23,10 @@ export function LicencesView() {
             used on engine servers.
           </li>
           <li>chessground (GPL-3.0-or-later): lichess.org, including the Cburnett piece set.</li>
+          <li>
+            Puzzles (CC0-1.0): the lichess.org puzzle database,
+            https://database.lichess.org/#puzzles
+          </li>
         </ul>
       </section>
       <section aria-label="Third-party notices">

@@ -1,9 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { useRushStore } from '../../puzzles/rushStore';
 import { RushPanel } from './RushPanel';
 import styles from './PuzzleModes.module.css';
 
-type Mode = 'puzzles' | 'rush';
+// Lazy: keeps the mistake store and generator out of the main bundle.
+const MistakesPanel = lazy(() =>
+  import('./MistakesPanel').then((m) => ({ default: m.MistakesPanel })),
+);
+
+type Mode = 'puzzles' | 'rush' | 'mistakes';
 
 /** Puzzles | Rush switch of the Puzzles tab; `children` is the regular solver panel. */
 export function PuzzleModes({ children }: { children: ReactNode }) {
@@ -27,8 +32,24 @@ export function PuzzleModes({ children }: { children: ReactNode }) {
         <button type="button" aria-pressed={mode === 'rush'} onClick={() => setMode('rush')}>
           Rush
         </button>
+        <button
+          type="button"
+          aria-pressed={mode === 'mistakes'}
+          disabled={rushActive}
+          onClick={() => setMode('mistakes')}
+        >
+          Your mistakes
+        </button>
       </div>
-      {mode === 'rush' ? <RushPanel /> : children}
+      {mode === 'rush' ? (
+        <RushPanel />
+      ) : mode === 'mistakes' ? (
+        <Suspense fallback={<p role="status">Loading…</p>}>
+          <MistakesPanel />
+        </Suspense>
+      ) : (
+        children
+      )}
     </div>
   );
 }
