@@ -626,3 +626,6 @@ The privacy policy promises that application logs are deleted after 7 days, but 
 3. Rush format: 3 and 5 minutes with three strikes, unrated (decided). Should rush results also show a "best streak" on the daisychess.org site? (No — nothing leaves the device; mentioned only because it is the one place where sharing a score is common.)
 4. Stage 2 trigger: puzzles are generated on demand from "Your mistakes" (battery/engine cost), not after every review. Acceptable, or should it run automatically on server reviews only?
 5. Pipeline cadence: run `deploy-puzzles.sh` by hand after each monthly lichess dump (recommended; the starter commit is a manual step), or a monthly systemd timer on the host (owner-only step)?
+
+### Addendum (2026-10-26) — ADR-023 owner answers
+Hints count as a miss for the rating (lichess rule); the daily puzzle comes from the bundled pool (offline, same per release); stage-2 puzzles are generated on demand from "Your mistakes"; rush 3/5 min, three strikes, unrated, scores on the device only; the puzzle pipeline runs manually after each monthly lichess dump.
