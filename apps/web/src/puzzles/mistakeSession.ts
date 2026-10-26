@@ -11,6 +11,8 @@ export interface MistakeSessionState {
   index: number;
   total: number;
   active: boolean;
+  /** Short note of the panel ("Nothing is due right now."); cleared by the next action. */
+  note?: string | undefined;
 }
 
 const IDLE: MistakeSessionState = { queue: [], index: 0, total: 0, active: false };
@@ -18,3 +20,6 @@ const IDLE: MistakeSessionState = { queue: [], index: 0, total: 0, active: false
 export const useMistakeSession = create<MistakeSessionState>()(() => IDLE);
 
 export const resetMistakeSession = (): void => useMistakeSession.setState(IDLE, true);
+
+export const setMistakeNote = (note: string | undefined): void =>
+  useMistakeSession.setState({ note });

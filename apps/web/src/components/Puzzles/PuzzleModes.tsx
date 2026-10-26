@@ -1,5 +1,6 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useRushStore } from '../../puzzles/rushStore';
+import { useUiStore, type PuzzleMode } from '../../store/uiStore';
 import { RushPanel } from './RushPanel';
 import styles from './PuzzleModes.module.css';
 
@@ -8,7 +9,7 @@ const MistakesPanel = lazy(() =>
   import('./MistakesPanel').then((m) => ({ default: m.MistakesPanel })),
 );
 
-type Mode = 'puzzles' | 'rush' | 'mistakes';
+type Mode = PuzzleMode;
 
 /** Puzzles | Rush switch of the Puzzles tab; `children` is the regular solver panel. */
 export function PuzzleModes({ children }: { children: ReactNode }) {
@@ -18,6 +19,10 @@ export function PuzzleModes({ children }: { children: ReactNode }) {
   );
   // A running rush keeps its panel; the other mode is unavailable until the run ends.
   const mode: Mode = rushActive ? 'rush' : chosen;
+  // The phone action bar shows the controls of the mode on screen (M29-6).
+  useEffect(() => {
+    useUiStore.getState().setPuzzleMode(mode);
+  }, [mode]);
   return (
     <div className={styles.modes}>
       <div className={styles.switch} role="group" aria-label="Puzzle mode">

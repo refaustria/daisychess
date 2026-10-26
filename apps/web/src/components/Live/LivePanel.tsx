@@ -20,6 +20,7 @@ import {
   toClock,
   type TimeControl,
 } from '../../live/timeControls';
+import { setResignConfirm, useResignConfirm } from '../../live/resignConfirm';
 import { usePlayStore } from '../../play/playStore';
 import { currentFen, useGameStore } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
@@ -461,7 +462,10 @@ function Playing({ game }: { game: LiveGame }) {
   );
   const live = useLiveStore();
   const premoves = live.premoves.length ? premoveLabels(tipFen, game.color, live.premoves) : [];
-  const [confirmResign, setConfirmResign] = useState(false);
+  const confirmResign = useResignConfirm((s) => s.open);
+  const setConfirmResign = setResignConfirm;
+  // A new game (or leaving the panel) never starts with the confirmation open.
+  useEffect(() => () => setResignConfirm(false), [game.id]);
   const claimAt = game.opponentGone?.claimAt;
   const now = useTicker(claimAt !== undefined, Date.now, 500);
   const myTurn = isRunning(game) && toMove(game, game.moves.length) === game.color;
@@ -525,8 +529,9 @@ function Playing({ game }: { game: LiveGame }) {
           </span>
         </div>
       )}
+      {/* data-phone-bar: on phones the game controls are in the action bar (M29-6). */}
       {confirmResign ? (
-        <div className={styles.row}>
+        <div className={styles.row} data-phone-bar>
           <span>Resign this game?</span>
           <button
             type="button"
@@ -543,7 +548,7 @@ function Playing({ game }: { game: LiveGame }) {
           </button>
         </div>
       ) : (
-        <div className={styles.row}>
+        <div className={styles.row} data-phone-bar>
           <button
             type="button"
             onClick={() => void live.offerDraw()}
@@ -595,10 +600,11 @@ function Finished({ game }: { game: LiveGame }) {
         </span>
       </div>
       <div className={styles.row}>
-        <button type="button" className={styles.primary} onClick={leave}>
+        {/* data-phone-bar: on phones these are in the action bar (M29-6). */}
+        <button type="button" className={styles.primary} onClick={leave} data-phone-bar>
           New game
         </button>
-        <button type="button" onClick={() => setTab('review')}>
+        <button type="button" onClick={() => setTab('review')} data-phone-bar>
           Review this game
         </button>
         <a

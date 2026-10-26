@@ -1,0 +1,340 @@
+/* Phone portrait chrome (M29-6). Sizes come from App.module.css (--action-h, --tabbar-h). */
+
+/* ---------- Action bar under the board ---------- */
+
+.actionBar {
+  flex: none;
+  height: var(--action-h, 52px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.barBtn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 44px;
+  padding: 0 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.barIcon {
+  flex: 0 0 44px;
+  padding: 0;
+  font-size: 1rem;
+}
+
+.barPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.barBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.barBtn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.barBtn[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.engineDot {
+  width: 0.6rem;
+  height: 0.6rem;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+}
+
+.engineDot[data-on='true'] {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.barText {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.barTimer {
+  flex: none;
+  padding: 0 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.barLow {
+  color: var(--danger);
+}
+
+.strikeOn {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.strikeOff {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* ---------- Bottom tab bar ---------- */
+
+.tabBar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  /* Above the home indicator: the bar's background extends under it. */
+  height: calc(var(--tabbar-h, 56px) + var(--safe-b, 0px));
+  padding: 0 var(--safe-r, 0px) var(--safe-b, 0px) var(--safe-l, 0px);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.tabList {
+  flex: 5 1 0;
+  display: flex;
+  min-width: 0;
+}
+
+.tab,
+.tabActive {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 0 2px;
+  border: 0;
+  border-top: 3px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tabBar > .tab,
+.tabBar > .tabActive {
+  /* "More" is as wide as one tab. */
+  flex: 1 1 0;
+}
+
+.tabActive {
+  border-top-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tabActive .tabIcon {
+  color: var(--accent-ink);
+}
+
+.tab:focus-visible,
+.tabActive:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.tabIcon {
+  flex: none;
+}
+
+.tabLabel {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+/* ---------- Layers: More sheet and options menu ---------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(20, 16, 8, 0.35);
+  animation: fade 0.15s ease-out;
+}
+
+/* The More sheet leaves the tab bar visible (and usable) below it. */
+.scrimAbove {
+  bottom: calc(var(--tabbar-h, 56px) + var(--safe-b, 0px));
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 80%;
+  overflow: auto;
+  padding: 0.75rem calc(1rem + var(--safe-r, 0px)) 0.75rem calc(1rem + var(--safe-l, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.18);
+  border-bottom: 1px solid var(--border);
+  animation: rise 0.18s ease-out;
+}
+
+.sheetTitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.sheetList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sheetItem,
+.sheetItemActive,
+.menuItem {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 0.85rem;
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheetItemActive {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.sheetItem:hover,
+.menuItem:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.menuItem:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sheetItem:focus-visible,
+.sheetItemActive:focus-visible,
+.menuItem:focus-visible,
+.optionsBtn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.menu {
+  position: absolute;
+  top: calc(var(--safe-t, 0px) + var(--header-h, 44px) + 4px);
+  right: calc(var(--safe-r, 0px) + 8px);
+  width: min(320px, calc(100vw - 16px - var(--safe-l, 0px) - var(--safe-r, 0px)));
+  max-height: calc(100% - var(--safe-t, 0px) - var(--header-h, 44px) - 16px);
+  overflow: auto;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+  animation: fade 0.12s ease-out;
+}
+
+.menuGroup {
+  display: flex;
+  flex-direction: column;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.menuNote {
+  margin: 0.25rem 0.85rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.menuEngine {
+  padding: 0.6rem 0.5rem 0.3rem;
+}
+
+.optionsBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.optionsBtn[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .sheet,
+  .menu {
+    animation: none;
+  }
+}

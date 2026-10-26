@@ -173,6 +173,8 @@ export function MoveCommentary({
         <button
           type="button"
           className={styles.btn}
+          // On phones "Next mistake" is in the action bar under the board (M29-6).
+          data-phone-bar
           disabled={next === undefined}
           onClick={() => next !== undefined && goTo(next)}
         >

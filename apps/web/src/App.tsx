@@ -12,7 +12,7 @@ import { AnalysisPanel } from './components/Analysis/AnalysisPanel';
 import { PreviewBanner } from './components/Analysis/PreviewBanner';
 import { analysisShapes, reviewShapes } from './components/Analysis/shapes';
 import { Board } from './components/Board/Board';
-import { Controls } from './components/Controls/Controls';
+import { Controls, useBoardKeys } from './components/Controls/Controls';
 import { EngineToggle } from './components/EngineToggle/EngineToggle';
 import { ConnectedEvalBar } from './components/EvalBar/EvalBar';
 import { ImportPanel } from './components/Import/ImportPanel';
@@ -21,6 +21,8 @@ import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { MoveList } from './components/MoveList/MoveList';
 import { Notice } from './components/Notice/Notice';
 import { PlayIndicator } from './components/Play/PlayIndicator';
+import { BottomTabs, OptionsButton, phoneTabLabelId } from './components/PhoneLayout/PhoneChrome';
+import { usePhoneLayout } from './components/PhoneLayout/usePhoneLayout';
 import { PlayerBar, useBoardPlayers } from './components/PlayerBar/PlayerBar';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
 import { installAutoReview } from './review/autoReview';
@@ -63,6 +65,10 @@ const ReviewPanel = lazy(() =>
 );
 const ExplorerPanel = lazy(() =>
   import('./components/Explorer/ExplorerPanel').then((m) => ({ default: m.ExplorerPanel })),
+);
+// Phone portrait only (M29-6): the bar's store wiring stays out of the desktop bundle.
+const ActionBar = lazy(() =>
+  import('./components/PhoneLayout/ActionBar').then((m) => ({ default: m.ActionBar })),
 );
 const SettingsPanel = lazy(() =>
   import('./components/Settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })),
@@ -230,11 +236,14 @@ export function App() {
   // `#/room/<id>` links open the Friend tab (on load and on hash changes).
   useEffect(() => installRoomRoute(), []);
   const tabsRef = useRef<HTMLDivElement>(null);
+  // Phone portrait: action bar under the board, bottom tab bar, "⋯" menu (M29-6).
+  const phone = usePhoneLayout();
+  useBoardKeys();
   // The tab row scrolls horizontally on narrow panels: keep the active tab visible (only the row
   // scrolls, never the page, unlike scrollIntoView).
   useEffect(() => revealTab(tabsRef.current, tab), [tab]);
   return (
-    <div className={styles.app}>
+    <div className={styles.app} data-layout={phone ? 'phone' : undefined}>
       <header className={styles.header}>
         <h1 className={styles.title}>
           <img className={styles.logo} src="/brand/daisy.svg" alt="" width={28} height={28} />
@@ -243,6 +252,7 @@ export function App() {
         <div className={styles.headerActions}>
           <AccountChip />
           <ThemeToggle />
+          {phone && <OptionsButton />}
         </div>
       </header>
       <Notice />
@@ -259,8 +269,13 @@ export function App() {
             <PlayIndicator />
           </div>
         </BoardColumn>
-        <section className={styles.side}>
-          <EngineToggle />
+        {phone && (
+          <Suspense fallback={<div className={styles.actionPlaceholder} />}>
+            <ActionBar />
+          </Suspense>
+        )}
+        <section className={styles.side} data-testid={phone ? 'phone-panel' : undefined}>
+          {!phone && <EngineToggle />}
           <p
             className={alert ? `${styles.status} ${styles.statusAlert}` : styles.status}
             data-testid="status"
@@ -269,31 +284,33 @@ export function App() {
           >
             {roomStatus ?? statusText(state)}
           </p>
-          <Controls />
+          {!phone && <Controls />}
           <AnalysisPanel />
-          <div ref={tabsRef} className={styles.tabs} role="tablist" aria-label="Game panels">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                id={`tab-${t.id}`}
-                aria-selected={tab === t.id}
-                aria-controls="tabpanel-main"
-                tabIndex={tab === t.id ? 0 : -1}
-                className={tab === t.id ? styles.tabActive : styles.tab}
-                onClick={() => setTab(t.id)}
-                onKeyDown={(e) => onTabKeyDown(e, tab, setTab)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {!phone && (
+            <div ref={tabsRef} className={styles.tabs} role="tablist" aria-label="Game panels">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  id={`tab-${t.id}`}
+                  aria-selected={tab === t.id}
+                  aria-controls="tabpanel-main"
+                  tabIndex={tab === t.id ? 0 : -1}
+                  className={tab === t.id ? styles.tabActive : styles.tab}
+                  onClick={() => setTab(t.id)}
+                  onKeyDown={(e) => onTabKeyDown(e, tab, setTab)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div
             className={styles.content}
             role="tabpanel"
             id="tabpanel-main"
-            aria-labelledby={`tab-${tab}`}
+            aria-labelledby={phone ? phoneTabLabelId(tab) : `tab-${tab}`}
           >
             {tab === 'moves' && <MoveList />}
             {tab === 'import' && (
@@ -317,6 +334,7 @@ export function App() {
           </div>
         </section>
       </main>
+      {phone && <BottomTabs />}
     </div>
   );
 }

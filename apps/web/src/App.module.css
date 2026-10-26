@@ -236,6 +236,98 @@
   }
 }
 
+/*
+ * Phone portrait (M29-6; usePhoneLayout, '(max-width: 600px) and (orientation: portrait)'): the
+ * board and the action bar stay put, the tab panel is the only scrolling region, the tab bar sits
+ * at the bottom above the home indicator. The board is as wide as the screen allows, and shrinks
+ * on short screens so that the action bar and at least --panel-min of the panel stay visible.
+ * Keyed to the data attribute (set from the same media query) so the CSS and the rendered
+ * chrome always agree.
+ */
+.app[data-layout='phone'] {
+  --gap: 8px;
+  --header-h: 48px;
+  --eval-w: 22px;
+  --eval-gap: 5px;
+  --action-h: 52px;
+  --tabbar-h: 56px;
+  --panel-min: 120px;
+  --pad-top: 6px;
+  --notice-offset: var(--tabbar-h);
+  --board-size: max(
+    160px,
+    min(
+      calc(
+        100vw - var(--safe-l) - var(--safe-r) - 2 * var(--gap) - var(--eval-w) - var(--eval-gap)
+      ),
+      calc(
+        var(--vh-full) - var(--header-h) - var(--safe-t) - var(--safe-b) - var(--tabbar-h) -
+          var(--action-h) - var(--panel-min) - 2 * var(--player-bar-h) - 2 * var(--bar-gap) -
+          var(--pad-top)
+      )
+    )
+  );
+  height: 100vh;
+  height: var(--vh-full);
+  min-height: 0;
+  overflow: hidden;
+  /* The tab bar pads itself for the home indicator. */
+  padding-bottom: 0;
+}
+
+.app[data-layout='phone'] .title {
+  font-size: 1.05rem;
+}
+
+.app[data-layout='phone'] .headerActions {
+  gap: 0.4rem;
+}
+
+/* A long lichess name must not push the header wider than the screen. */
+.app[data-layout='phone'] .headerActions > :global([data-testid='account-chip']) {
+  max-width: 8.5rem;
+}
+
+.app[data-layout='phone'] .main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: var(--pad-top) var(--gap) 0;
+}
+
+.app[data-layout='phone'] .boardCol {
+  flex: none;
+  align-self: center;
+  width: calc(var(--board-size) + var(--eval-w) + var(--eval-gap));
+  max-width: 100%;
+}
+
+.app[data-layout='phone'] .side {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  gap: 0.6rem;
+  padding: 2px 0 0.75rem;
+}
+
+.app[data-layout='phone'] .status {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.9rem;
+}
+
+/* Panel buttons that the phone action bar duplicates (data-phone-bar) exist once only. */
+.app[data-layout='phone'] :global([data-phone-bar]) {
+  display: none !important;
+}
+
+.actionPlaceholder {
+  flex: none;
+  height: var(--action-h, 52px);
+}
+
 .srOnly {
   position: absolute;
   width: 1px;

@@ -29,6 +29,7 @@ import {
 } from '../../play/strength';
 import { humanAvailability, humanEngineReason } from '../../maia/opponentAvailability';
 import { useHumanProbe } from '../../maia/opponentHooks';
+import { reviewThisGame } from '../../play/reviewThisGame';
 import { START_FEN, useGameStore, type Orientation } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
 import { isAuthText } from '../../server/tokenMessages';
@@ -57,25 +58,6 @@ function verdict(result: GameResult | undefined, player: Orientation, reason?: E
   if (result === '½-½') return 'Draw';
   const won = (result === '1-0') === (player === 'white');
   return won ? 'You won' : 'You lost';
-}
-
-/**
- * Opens the review of the finished game. The automatic (fast) review of this game, if it is
- * running or done, is kept and just shown; otherwise a deep review starts.
- */
-async function reviewThisGame(setTab: (t: 'review') => void): Promise<void> {
-  const { REVIEW_PRESETS, useReviewStore } = await import('../../review/reviewStore');
-  setTab('review');
-  const review = useReviewStore.getState();
-  if (
-    (review.status === 'running' || review.status === 'done') &&
-    review.reviewed !== undefined &&
-    review.reviewed === useGameStore.getState().moves
-  ) {
-    return;
-  }
-  review.reset();
-  void review.start({ ...REVIEW_PRESETS.deep });
 }
 
 const NO_CLOCK = 'none';
@@ -414,7 +396,8 @@ export function PlayPanel() {
         >
           {status}
         </p>
-        <div className={styles.row}>
+        {/* On phones the game controls are in the action bar under the board (M29-6). */}
+        <div className={styles.row} data-phone-bar>
           <button type="button" onClick={play.takeBack} disabled={play.thinking || plies === 0}>
             Take back
           </button>
@@ -462,10 +445,11 @@ export function PlayPanel() {
         </div>
       )}
       <div className={styles.row}>
-        <button type="button" className={styles.primary} onClick={play.rematch}>
+        {/* data-phone-bar: on phones these are in the action bar under the board (M29-6). */}
+        <button type="button" className={styles.primary} onClick={play.rematch} data-phone-bar>
           Rematch
         </button>
-        <button type="button" onClick={() => void reviewThisGame(setTab)}>
+        <button type="button" onClick={() => void reviewThisGame(setTab)} data-phone-bar>
           Review this game
         </button>
         {hasMoves && (
@@ -473,7 +457,7 @@ export function PlayPanel() {
             Play from here
           </button>
         )}
-        <button type="button" onClick={play.stop}>
+        <button type="button" onClick={play.stop} data-phone-bar>
           New setup
         </button>
       </div>

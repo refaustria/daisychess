@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import { currentFen, useGameStore } from '../../store/gameStore';
 import styles from './Controls.module.css';
 
-export function Controls() {
-  const store = useGameStore();
-  const fen = currentFen(store);
-  const [copied, setCopied] = useState(false);
-  const { first, prev, next, last } = store;
-
+/**
+ * Arrow keys / Home / End step through the game (window-wide). Installed by the App on every
+ * layout (the phone layout has no Controls block, M29-6).
+ */
+export function useBoardKeys(): void {
+  const first = useGameStore((s) => s.first);
+  const prev = useGameStore((s) => s.prev);
+  const next = useGameStore((s) => s.next);
+  const last = useGameStore((s) => s.last);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Widgets that own the arrow keys (tabs, selects, inputs) call preventDefault or are skipped.
@@ -33,6 +36,13 @@ export function Controls() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [first, prev, next, last]);
+}
+
+export function Controls() {
+  const store = useGameStore();
+  const fen = currentFen(store);
+  const [copied, setCopied] = useState(false);
+  const { first, prev, next, last } = store;
 
   const copy = async () => {
     try {

@@ -75,7 +75,8 @@ export function RushPanel() {
       )}
 
       {(running || status === 'over') && (
-        <div className={styles.scoreboard}>
+        // While running, the phone action bar shows the scoreboard (M29-6).
+        <div className={styles.scoreboard} data-phone-bar={running || undefined}>
           <span
             className={`${styles.timer} ${isLowTime(remainingMs, duration * 60_000) ? styles.low : ''}`}
             role="timer"
@@ -134,7 +135,7 @@ export function RushPanel() {
               {inputError}
             </p>
           )}
-          <div className={styles.row}>
+          <div className={styles.row} data-phone-bar>
             <button type="button" onClick={() => useRushStore.getState().end()}>
               End run
             </button>

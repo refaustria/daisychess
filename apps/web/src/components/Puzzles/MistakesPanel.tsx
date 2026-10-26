@@ -14,10 +14,19 @@ import {
   dueMistakes,
   listMistakes,
   onMistakesChange,
-  recordMistakeResult,
   type MistakeRecord,
 } from '../../puzzles/mistakeStore';
-import { resetMistakeSession, useMistakeSession } from '../../puzzles/mistakeSession';
+import {
+  resetMistakeSession,
+  setMistakeNote,
+  useMistakeSession,
+} from '../../puzzles/mistakeSession';
+import {
+  endMistakeTraining,
+  nextDueMistake,
+  playMistake,
+  trainDueMistakes,
+} from '../../puzzles/mistakeTraining';
 import { usePuzzleStore } from '../../puzzles/puzzleStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
@@ -27,6 +36,7 @@ import styles from './MistakesPanel.module.css';
 type Generator = typeof import('../../puzzles/mistakeGenerator');
 
 const endSession = (): void => resetMistakeSession();
+const setNote = setMistakeNote;
 
 const gameLabel = (g: LedgerGame | undefined): string =>
   g ? `${g.headers.White ?? '?'} vs ${g.headers.Black ?? '?'}` : 'Unknown game';
@@ -143,7 +153,11 @@ export function MistakesPanel() {
   const [gen, setGen] = useState<Generator | null>(null);
   const sessionState = useMistakeSession();
   const session = sessionState.active ? sessionState : null;
-  const [note, setNote] = useState<string>();
+  const note = sessionState.note;
+  // The note belongs to this visit of the panel (it used to be component state).
+  useEffect(() => {
+    setMistakeNote(undefined);
+  }, []);
   const lock = useHumanGameLockReason();
   const puzzleStatus = usePuzzleStore((s) => s.status);
   const phase = usePuzzleStore((s) => s.solver?.phase);
@@ -185,38 +199,9 @@ export function MistakesPanel() {
     return gen.useMistakeGenStore.subscribe(sync);
   }, [gen]);
 
-  const play = (m: MistakeRecord) => {
-    setNote(undefined);
-    usePuzzleStore.getState().start(m.puzzle, {
-      rated: false,
-      onResult: (result) => void recordMistakeResult(m.id, result === 'solved'),
-    });
-    if (usePuzzleStore.getState().status !== 'running') {
-      endSession();
-      setNote(lock ? `Training is paused: ${lockText(lock)}.` : 'The puzzle could not be started.');
-    }
-  };
-
-  const startNext = () => {
-    const [next, ...rest] = useMistakeSession.getState().queue;
-    if (!next) {
-      endSession();
-      setNote('No more due puzzles. Well done.');
-      return;
-    }
-    useMistakeSession.setState((st) => ({ queue: rest, index: st.index + 1 }));
-    play(next);
-  };
-
-  const trainDue = async () => {
-    const d = await dueMistakes();
-    if (d.length === 0) {
-      setNote('Nothing is due right now.');
-      return;
-    }
-    useMistakeSession.setState({ queue: d.slice(1), index: 1, total: d.length, active: true });
-    play(d[0]!);
-  };
+  const play = (m: MistakeRecord) => playMistake(m, lock);
+  const startNext = () => nextDueMistake(lock);
+  const trainDue = () => trainDueMistakes(lock);
 
   const openGame = (m: MistakeRecord, g: LedgerGame) => {
     if (lock) return;
@@ -346,7 +331,8 @@ export function MistakesPanel() {
               {inputError}
             </p>
           )}
-          <div className={styles.row}>
+          {/* On phones these are in the action bar under the board (M29-6). */}
+          <div className={styles.row} data-phone-bar>
             <button
               type="button"
               disabled={!userTurn}
@@ -357,13 +343,7 @@ export function MistakesPanel() {
             <button type="button" disabled={puzzleStatus !== 'done'} onClick={startNext}>
               Next due
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                endSession();
-                usePuzzleStore.getState().stop();
-              }}
-            >
+            <button type="button" onClick={endMistakeTraining}>
               End training
             </button>
           </div>

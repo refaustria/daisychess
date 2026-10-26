@@ -5,6 +5,7 @@ import { usePuzzleStore, type PuzzleState } from '../../puzzles/puzzleStore';
 import { PuzzleModes } from './PuzzleModes';
 import { DailyCard } from './DailyCard';
 import { Filters } from './Filters';
+import { usePuzzleActions } from './usePuzzleActions';
 import styles from './PuzzlesPanel.module.css';
 
 const DIFFICULTIES: { id: Difficulty; label: string }[] = [
@@ -12,6 +13,8 @@ const DIFFICULTIES: { id: Difficulty; label: string }[] = [
   { id: 'normal', label: 'Normal' },
   { id: 'harder', label: 'Harder' },
 ];
+
+export const HINT_TITLE = 'Highlights the piece to move. A hint counts as a miss for the rating.';
 
 const sideName = (side: 'white' | 'black'): string => (side === 'white' ? 'White' : 'Black');
 
@@ -62,12 +65,10 @@ function SolverPanel() {
   const sanId = useId();
   const difficultyId = useId();
 
-  const running = status === 'running';
+  const { running, finished, canHint, canShow, wrong, nextDisabled, nextLabel } =
+    usePuzzleActions();
   const phase = solver?.phase;
-  const finished = solver?.phase === 'complete' && (status === 'done' || status === 'idle');
   const userTurn = running && phase === 'user';
-  const canHint = running && (phase === 'user' || phase === 'wrong') && !solver?.hint;
-  const canShow = running && phase !== 'complete' && phase !== 'showing';
   const puzzle = solver?.puzzle;
 
   const onSubmit = (e: FormEvent) => {
@@ -118,24 +119,20 @@ function SolverPanel() {
       )}
       {lock && <p className={styles.note}>Puzzles are paused: {lockText(lock)}.</p>}
 
-      <div className={styles.row}>
+      {/* data-phone-bar: on phones these live in the action bar under the board (M29-6). */}
+      <div className={styles.row} data-phone-bar>
         <button
           type="button"
           className={styles.primary}
-          disabled={lock !== null || status === 'loading'}
+          disabled={nextDisabled}
           onClick={() => void store().next()}
         >
-          {solver ? 'Next puzzle' : 'Start puzzles'}
+          {nextLabel}
         </button>
-        <button
-          type="button"
-          disabled={!canHint}
-          onClick={() => store().hint()}
-          title="Highlights the piece to move. A hint counts as a miss for the rating."
-        >
+        <button type="button" disabled={!canHint} onClick={() => store().hint()} title={HINT_TITLE}>
           Hint
         </button>
-        {phase === 'wrong' && running && (
+        {wrong && (
           <button type="button" onClick={() => store().retry()}>
             Try again
           </button>

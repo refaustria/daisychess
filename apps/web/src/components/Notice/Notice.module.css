@@ -1,7 +1,8 @@
 .notice {
   position: fixed;
   left: 50%;
-  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  /* --notice-offset: the phone tab bar (M29-6). */
+  bottom: calc(1rem + var(--notice-offset, 0px) + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 50;
   display: flex;

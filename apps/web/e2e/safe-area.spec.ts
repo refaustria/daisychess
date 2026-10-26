@@ -23,10 +23,20 @@ test('375 px with simulated insets: no horizontal scroll, header clears the notc
     client: document.documentElement.clientWidth,
     headerTop: document.querySelector('header')!.getBoundingClientRect().height,
     titleTop: document.querySelector('h1')!.getBoundingClientRect().top,
+    // Phone layout (M29-6): the bottom tab bar pads itself above the home indicator.
+    tabsPadBottom: getComputedStyle(document.querySelector('[data-testid="bottom-tabs"]')!)
+      .paddingBottom,
+    tabsBottom: document.querySelector('[data-testid="bottom-tabs"]')!.getBoundingClientRect()
+      .bottom,
+    tabBottom: document.querySelector('#tab-moves')!.getBoundingClientRect().bottom,
   }));
   expect(m.scroll).toBeLessThanOrEqual(m.client);
-  expect(m.headerTop).toBeGreaterThanOrEqual(52 + 47);
+  // Compact 48 px header on phones (M29-6) below the 47 px notch.
+  expect(m.headerTop).toBeGreaterThanOrEqual(48 + 47);
   expect(m.titleTop).toBeGreaterThanOrEqual(47);
+  expect(m.tabsPadBottom).toBe('34px');
+  expect(m.tabsBottom).toBeLessThanOrEqual(812);
+  expect(m.tabBottom).toBeLessThanOrEqual(812 - 34);
   const { violations } = await new AxeBuilder({ page }).analyze();
   expect(violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
 });

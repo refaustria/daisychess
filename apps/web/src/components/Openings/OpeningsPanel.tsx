@@ -609,8 +609,9 @@ function Drill({ opening }: { opening: BookOpening }) {
           </p>
         )}
       </div>
+      {/* data-phone-bar: on phones the drill controls are in the action bar (M29-6). */}
       {s.status === 'running' && (
-        <div className={styles.row}>
+        <div className={styles.row} data-phone-bar>
           {s.phase === 'retry' && (
             <button type="button" className={styles.primary} onClick={s.retry}>
               Try again
@@ -658,7 +659,7 @@ function Summary() {
           {s.message}
         </p>
       )}
-      <div className={styles.row}>
+      <div className={styles.row} data-phone-bar>
         <button
           type="button"
           className={styles.primary}
