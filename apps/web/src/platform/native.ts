@@ -34,6 +34,19 @@ export interface AppStatePort {
   exitApp(): Promise<void>;
 }
 
+export interface FilesPort {
+  /** File size in bytes, or null when the platform cannot tell (content:// URIs). */
+  size(uri: string): Promise<number | null>;
+  /** The raw bytes of a `file://` or `content://` URI. */
+  read(uri: string): Promise<Uint8Array>;
+  /** Best-effort delete of an app-private copy (the iOS Inbox). */
+  remove(uri: string): Promise<void>;
+}
+
+export interface SharePort {
+  share(content: { title?: string; text?: string; url?: string }): Promise<void>;
+}
+
 /** True in the app: the only place the loaders below return anything. */
 function active(): boolean {
   return isNativeApp();
@@ -90,5 +103,43 @@ export async function loadAppState(): Promise<AppStatePort | null> {
       await App.addListener('backButton', () => fn());
     },
     exitApp: () => App.exitApp(),
+  };
+}
+
+function base64Bytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export async function loadFiles(): Promise<FilesPort | null> {
+  if (import.meta.env.MODE !== 'mobile' || !active()) return null;
+  const { Filesystem } = await import('@capacitor/filesystem');
+  return {
+    size: async (uri) => {
+      try {
+        return (await Filesystem.stat({ path: uri })).size;
+      } catch {
+        return null;
+      }
+    },
+    read: async (uri) => {
+      // No `encoding`: the plugin returns base64, so we decide on UTF-8 vs Latin-1 ourselves.
+      const { data } = await Filesystem.readFile({ path: uri });
+      if (typeof data !== 'string') return new Uint8Array(await data.arrayBuffer());
+      return base64Bytes(data);
+    },
+    remove: (uri) => Filesystem.deleteFile({ path: uri }),
+  };
+}
+
+export async function loadShare(): Promise<SharePort | null> {
+  if (import.meta.env.MODE !== 'mobile' || !active()) return null;
+  const { Share } = await import('@capacitor/share');
+  return {
+    share: async (c) => {
+      await Share.share({ ...c, dialogTitle: c.title });
+    },
   };
 }

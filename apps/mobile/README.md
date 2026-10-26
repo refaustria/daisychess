@@ -139,3 +139,20 @@ web bundle contains no plugin code. Plugins (exact pins in `apps/web` and `apps/
 - **Storage**: settings (with the server token), the theme and the lichess login are mirrored to
   Preferences; localStorage remains the synchronous read-through cache. A key purged from
   localStorage is restored from Preferences before the first render.
+
+## Files and sharing (M26-5)
+
+- **Open with / import**: iOS declares the exported type `org.daisychess.pgn` and a document type
+  (Info.plist; `LSSupportsOpeningDocumentsInPlace=false`, so iOS copies the file into the app's Inbox).
+  Android `MainActivity` has VIEW filters for `application/x-chess-pgn`, `application/vnd.chess-pgn`
+  and `content:`/`file:` URIs ending in `.pgn`, and a SEND filter for the two PGN MIME types only
+  (deliberately not `text/plain`); `MainActivity.java` turns SEND+`EXTRA_STREAM` into a VIEW intent
+  so the App plugin reports it. Web side: `apps/web/src/platform/openedPgn.ts` registers on the
+  `appUrlOpen` dispatcher for `file://`/`content://`, reads bytes with `@capacitor/filesystem`
+  (UTF-8, else Windows-1252; 10 MB limit) and hands the text to the Import panel (multi-game picker).
+- **Share**: `apps/web/src/platform/share.ts` (`@capacitor/share`, else `navigator.share`); buttons
+  on the review (annotated PGN), the friend link and the setup link. Plugins are lazy and mobile-only
+  like M26-4 (`@capacitor/filesystem` 8.1.5, `@capacitor/share` 8.0.3).
+- Test on a device: `adb shell am start -a android.intent.action.VIEW -t application/x-chess-pgn -d content://...`
+  (or open a `.pgn` from Files/Drive, and Share a `.pgn` to DaisyChess); iOS: Files → a `.pgn` →
+  Share → DaisyChess, or Mail attachment → Open in. Simulator: `xcrun simctl openurl booted file:///path/x.pgn`.

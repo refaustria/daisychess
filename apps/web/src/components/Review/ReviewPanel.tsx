@@ -1,4 +1,7 @@
 import { MOVE_CLASSES, type ReviewedMove, type ReviewSummary } from '@daisychess/engine-core';
+import { ShareButton } from '../Share/ShareButton';
+import { isNativeApp } from '../../platform';
+import { useUiStore } from '../../store/uiStore';
 import { useEffect, useMemo, useState } from 'react';
 import { annotatePgn } from '../../review/annotatePgn';
 import { reviewHighlights } from '../../review/details';
@@ -179,7 +182,8 @@ function TimeSummary({ summary }: { summary: ReviewSummary }) {
                     onClick={() => goTo(l.ply)}
                     aria-label={`Longest think of ${c === 'white' ? 'White' : 'Black'}: ${formatDuration(l.ms)} on ${moveNumberLabel(startFen, l.ply)} ${moves[l.ply - 1]?.san ?? ''}, go to move`}
                   >
-                    {formatDuration(l.ms)} ({moveNumberLabel(startFen, l.ply)} {moves[l.ply - 1]?.san})
+                    {formatDuration(l.ms)} ({moveNumberLabel(startFen, l.ply)}{' '}
+                    {moves[l.ply - 1]?.san})
                   </button>
                 ) : (
                   '–'
@@ -200,7 +204,6 @@ function TimeSummary({ summary }: { summary: ReviewSummary }) {
     </table>
   );
 }
-
 
 /**
  * Requests the Maia hints (M23-3) once the review of the game on the board is done (computed or
@@ -260,15 +263,19 @@ function MaiaSummary({ summary }: { summary: ReviewSummary }) {
   );
   if (sides.length === 0) return null;
   return (
-    <section className={styles.maiaSummary} data-testid="maia-summary" aria-label="Typical mistakes">
+    <section
+      className={styles.maiaSummary}
+      data-testid="maia-summary"
+      aria-label="Typical mistakes"
+    >
       <h3 className={styles.h3}>Typical mistakes (Maia predicted)</h3>
       <ul>
         {sides.map((c) => {
           const n = counts[c];
           return (
             <li key={c} data-testid={`maia-summary-${c}`} title={levelSource(levels[c])}>
-              {playerName(headers, c)} at {levelText(levels[c])}: {n.typical} typical,{' '}
-              {n.unusual} unusual
+              {playerName(headers, c)} at {levelText(levels[c])}: {n.typical} typical, {n.unusual}{' '}
+              unusual
               {n.pending > 0
                 ? state.status === 'running'
                   ? ' …'
@@ -355,9 +362,20 @@ function Done({ summary }: { summary: ReviewSummary }) {
       <h2 className={styles.h}>Highlights</h2>
       <Highlights summary={summary} />
       <div className={styles.row}>
-        <button type="button" className={styles.btn} onClick={() => download(pgn)}>
-          Export annotated PGN
-        </button>
+        {!isNativeApp() && (
+          <button type="button" className={styles.btn} onClick={() => download(pgn)}>
+            Export annotated PGN
+          </button>
+        )}
+        <ShareButton
+          className={styles.btn}
+          label="Share PGN"
+          testId="review-share"
+          content={{ title: 'DaisyChess game review', text: pgn }}
+          onResult={(r) =>
+            r === 'failed' && useUiStore.getState().showNotice('Could not share the PGN')
+          }
+        />
         <button type="button" className={styles.btn} onClick={() => void copy()}>
           {copied ? 'Copied' : 'Copy'}
         </button>

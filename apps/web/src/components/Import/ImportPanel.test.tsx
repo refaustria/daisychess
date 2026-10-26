@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImportPanel } from './ImportPanel';
 import * as online from '../../import';
 import { AUTH_STORAGE_KEY, lichessFetch, resetLichessAuth } from '../../lichess/auth';
+import { useOpenedPgn } from '../../platform/openedPgn';
+import { MULTI_GAME_PGN } from '../../platform/openedPgn.fixture';
 import { currentFen, useGameStore } from '../../store/gameStore';
 
 vi.mock('../../import', async (orig) => {
@@ -24,6 +26,26 @@ const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe('ImportPanel', () => {
+  it('shows the game picker for a multi-game file opened from another app', () => {
+    render(<ImportPanel />);
+    act(() => useOpenedPgn.getState().offer(MULTI_GAME_PGN, 'rounds.pgn'));
+    expect(screen.getByLabelText('Game')).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Müller – Ding, Liren (0-1)' })).toBeTruthy();
+    expect(useOpenedPgn.getState().text).toBe('');
+    fireEvent.change(screen.getByLabelText('Game'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open game' }));
+    expect(useGameStore.getState().headers['White']).toBe('Carlsen, Magnus');
+  });
+
+  it('picks up a file offered before the panel mounted', () => {
+    useOpenedPgn
+      .getState()
+      .offer(MULTI_GAME_PGN.split('\r\n\r\n[Event "Round 2"]')[0] as string, 'one.pgn');
+    const onLoaded = vi.fn();
+    render(<ImportPanel onLoaded={onLoaded} />);
+    expect(onLoaded).toHaveBeenCalled();
+  });
+
   it('loads a valid FEN', () => {
     const onLoaded = vi.fn();
     render(<ImportPanel onLoaded={onLoaded} />);
@@ -86,20 +108,31 @@ describe('ImportPanel', () => {
       timeControl: '3+2',
       opening: 'Italian Game',
     };
-    const game2: online.OnlineGame = { ...game, id: 'g2', white: { name: 'Cy' }, black: { name: 'alice' } };
+    const game2: online.OnlineGame = {
+      ...game,
+      id: 'g2',
+      white: { name: 'Cy' },
+      black: { name: 'alice' },
+    };
 
     it('has a site radiogroup defaulting to lichess', () => {
       render(<ImportPanel />);
       const group = screen.getByRole('radiogroup', { name: 'Site' });
       expect(group).toBeTruthy();
-      expect((screen.getByRole('radio', { name: 'lichess' }) as HTMLInputElement).checked).toBe(true);
+      expect((screen.getByRole('radio', { name: 'lichess' }) as HTMLInputElement).checked).toBe(
+        true,
+      );
       fireEvent.click(screen.getByRole('radio', { name: 'chess.com' }));
-      expect((screen.getByRole('radio', { name: 'chess.com' }) as HTMLInputElement).checked).toBe(true);
+      expect((screen.getByRole('radio', { name: 'chess.com' }) as HTMLInputElement).checked).toBe(
+        true,
+      );
     });
 
     it('fetches, lists rows, loads the PGN on click and remembers the username', async () => {
       vi.mocked(online.fetchOnlineGames).mockResolvedValue([game, game2]);
-      vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue('[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Nf3 1-0');
+      vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue(
+        '[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Nf3 1-0',
+      );
       const onLoaded = vi.fn();
       render(<ImportPanel onLoaded={onLoaded} />);
       type('Username', 'Alice');
@@ -108,7 +141,9 @@ describe('ImportPanel', () => {
       expect(online.fetchOnlineGames).toHaveBeenCalledWith('lichess', 'Alice');
       expect(screen.getAllByText(/1-0 · 2023-11-14 · 3\+2 · Italian Game/)).toHaveLength(2);
       expect(screen.getAllByText(/\(you, /)).toHaveLength(2);
-      expect(JSON.parse(localStorage.getItem('daisychess.import.online') ?? '{}').users.lichess).toBe('Alice');
+      expect(
+        JSON.parse(localStorage.getItem('daisychess.import.online') ?? '{}').users.lichess,
+      ).toBe('Alice');
 
       fireEvent.click(screen.getAllByRole('button', { name: /Alice \(1800\)/ })[0] as HTMLElement);
       await waitFor(() => expect(onLoaded).toHaveBeenCalled());
@@ -126,7 +161,9 @@ describe('ImportPanel', () => {
       render(<ImportPanel />);
       type('Username', 'ghost');
       fireEvent.keyDown(screen.getByLabelText('Username'), { key: 'Enter' });
-      expect((await screen.findByRole('alert')).textContent).toBe('User "ghost" not found on lichess');
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'User "ghost" not found on lichess',
+      );
     });
 
     it('hides "My games" when not logged in with lichess', () => {
@@ -135,19 +172,33 @@ describe('ImportPanel', () => {
     });
 
     it('"My games" fetches the logged-in user\'s games with the lichess login', async () => {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: 'lio_x', username: 'Alice', scopes: [] }));
-      localStorage.setItem('daisychess.import.online', JSON.stringify({ site: 'chesscom', users: { chesscom: 'cc' } }));
+      localStorage.setItem(
+        AUTH_STORAGE_KEY,
+        JSON.stringify({ token: 'lio_x', username: 'Alice', scopes: [] }),
+      );
+      localStorage.setItem(
+        'daisychess.import.online',
+        JSON.stringify({ site: 'chesscom', users: { chesscom: 'cc' } }),
+      );
       resetLichessAuth();
       vi.mocked(online.fetchOnlineGames).mockResolvedValue([game]);
-      vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue('[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0');
+      vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue(
+        '[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0',
+      );
       render(<ImportPanel />);
       fireEvent.click(screen.getByRole('button', { name: 'My games' }));
-      expect(online.fetchOnlineGames).toHaveBeenCalledWith('lichess', 'Alice', { fetch: lichessFetch });
-      expect((screen.getByRole('radio', { name: 'lichess' }) as HTMLInputElement).checked).toBe(true);
+      expect(online.fetchOnlineGames).toHaveBeenCalledWith('lichess', 'Alice', {
+        fetch: lichessFetch,
+      });
+      expect((screen.getByRole('radio', { name: 'lichess' }) as HTMLInputElement).checked).toBe(
+        true,
+      );
       expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('Alice');
       const row = await screen.findByRole('button', { name: /Alice \(1800\)/ });
       fireEvent.click(row);
-      await waitFor(() => expect(online.fetchOnlineGamePgn).toHaveBeenCalledWith(game, { fetch: lichessFetch }));
+      await waitFor(() =>
+        expect(online.fetchOnlineGamePgn).toHaveBeenCalledWith(game, { fetch: lichessFetch }),
+      );
     });
 
     it('restores the saved username per site', () => {

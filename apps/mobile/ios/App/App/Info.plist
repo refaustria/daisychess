@@ -34,6 +34,50 @@
 			</array>
 		</dict>
 	</array>
+	<!-- PGN files (M26-5): the app owns the type org.daisychess.pgn (exported; also usable by other
+	     apps), registers as a Viewer. In-place opening is off: iOS copies the file into the app's
+	     Inbox, so no security-scoped access is needed and the web side deletes the copy after reading. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Chess game (PGN)</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.daisychess.pgn</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.daisychess.pgn</string>
+			<key>UTTypeDescription</key>
+			<string>Chess game (PGN)</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>pgn</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/x-chess-pgn</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

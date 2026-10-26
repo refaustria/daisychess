@@ -43,7 +43,8 @@ describe('deep link configuration (ADR-022 §4)', () => {
     expect(m).toContain(
       'android:scheme="https" android:host="play.daisychess.org" android:path="/"',
     );
-    expect(m).not.toMatch(/android:pathPrefix|android:pathPattern/);
+    // Only the https App Link must stay path-exact; the PGN filters (M26-5) use content/file URIs.
+    expect(m).not.toMatch(/<data[^>]*android:scheme="https"[^>]*(pathPrefix|pathPattern)/);
     expect(m).toContain('android:scheme="daisychess" android:host="setup"');
     expect(m).toContain('android:scheme="org.daisychess.app" android:host="lichess-callback"');
   });

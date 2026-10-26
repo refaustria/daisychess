@@ -1,4 +1,6 @@
 import { ROOM_BOUNDS, type RoomColorChoice } from '@daisychess/engine-core';
+import { ShareButton } from '../Share/ShareButton';
+import { useUiStore } from '../../store/uiStore';
 import { useEffect, useId, useRef, useState } from 'react';
 import { timeControlLabel } from '../../clock/timeControls';
 import { isLiveLocked, useLiveStore } from '../../live/liveStore';
@@ -16,7 +18,6 @@ import {
   type RoomView,
 } from '../../room/view';
 import { currentFen, useGameStore } from '../../store/gameStore';
-import { useUiStore } from '../../store/uiStore';
 import { useTicker } from '../Live/LiveClock';
 import { TimeControlField } from '../Play/PlayPanel';
 import styles from './FriendPanel.module.css';
@@ -161,7 +162,11 @@ function JoinCard() {
         </p>
       )}
       <div className={styles.row}>
-        <button type="submit" className={styles.primary} disabled={!isValidNick(nick) || blocked !== null}>
+        <button
+          type="submit"
+          className={styles.primary}
+          disabled={!isValidNick(nick) || blocked !== null}
+        >
           Join
         </button>
         <button type="button" onClick={leave}>
@@ -213,6 +218,14 @@ function LinkBox({ roomId }: { roomId: string }) {
       <button type="button" onClick={() => void copy()} data-testid="friend-copy">
         {copied ? 'Copied!' : 'Copy'}
       </button>
+      <ShareButton
+        label="Share"
+        testId="friend-share"
+        content={{ title: 'Play chess with me on DaisyChess', url: link }}
+        onResult={(r) =>
+          r === 'failed' && useUiStore.getState().showNotice('Could not share the link')
+        }
+      />
     </div>
   );
 }
@@ -220,7 +233,9 @@ function LinkBox({ roomId }: { roomId: string }) {
 const vsLine = (r: RoomView): string => `${roomNick(r, 'white')} vs ${roomNick(r, 'black')}`;
 
 const setupLine = (r: RoomView): string =>
-  r.clock ? timeControlLabel({ initialMs: r.clock.initialMs, incrementMs: r.clock.incrementMs }) : 'No clock';
+  r.clock
+    ? timeControlLabel({ initialMs: r.clock.initialMs, incrementMs: r.clock.incrementMs })
+    : 'No clock';
 
 function Waiting({ room }: { room: RoomView }) {
   const abort = useRoomStore((s) => s.abort);
@@ -254,7 +269,9 @@ function Waiting({ room }: { room: RoomView }) {
 
 function Playing({ room }: { room: RoomView }) {
   const store = useRoomStore();
-  const tipFen = useGameStore((s) => currentFen({ startFen: s.startFen, moves: s.moves, ply: s.moves.length }));
+  const tipFen = useGameStore((s) =>
+    currentFen({ startFen: s.startFen, moves: s.moves, ply: s.moves.length }),
+  );
   const atTip = useGameStore((s) => s.ply === s.moves.length);
   const [confirm, setConfirm] = useState<'resign' | 'leave' | null>(null);
   const claimPending = claimRemainingMs(room, Date.now()) !== null;
@@ -263,7 +280,8 @@ function Playing({ room }: { room: RoomView }) {
   const spectator = room.you === 'spectator';
   const me = room.you === 'spectator' ? null : room.you;
   const opp = me === 'white' ? 'black' : me === 'black' ? 'white' : null;
-  const myTurn = me !== null && sideToMoveAt(room.moves.length) === me && store.pendingMove === undefined;
+  const myTurn =
+    me !== null && sideToMoveAt(room.moves.length) === me && store.pendingMove === undefined;
   const premoves = me && store.premoves.length ? premoveLabels(tipFen, me, store.premoves) : [];
   const canAbort = room.moves.length < 2;
   const status = roomStatusLine(room, store.pendingMove !== undefined) ?? '';
@@ -336,7 +354,11 @@ function Playing({ room }: { room: RoomView }) {
       )}
       {confirm ? (
         <div className={styles.row}>
-          <span>{confirm === 'resign' ? 'Resign this game?' : `Leave? ${oppNick} can claim the win if you do not come back.`}</span>
+          <span>
+            {confirm === 'resign'
+              ? 'Resign this game?'
+              : `Leave? ${oppNick} can claim the win if you do not come back.`}
+          </span>
           <button
             type="button"
             className={styles.danger}
@@ -405,7 +427,12 @@ function Finished({ room }: { room: RoomView }) {
       </div>
       <div className={styles.row}>
         {room.you !== 'spectator' && (
-          <button type="button" className={styles.primary} onClick={playAgain} disabled={blocked !== null}>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={playAgain}
+            disabled={blocked !== null}
+          >
             {played ? 'Play again (new link)' : 'Create another link'}
           </button>
         )}
@@ -419,7 +446,9 @@ function Finished({ room }: { room: RoomView }) {
         </button>
       </div>
       {room.you !== 'spectator' && played && (
-        <p className={styles.note}>“Play again” creates a new link with colours swapped – send it to your friend.</p>
+        <p className={styles.note}>
+          “Play again” creates a new link with colours swapped – send it to your friend.
+        </p>
       )}
     </div>
   );
@@ -432,7 +461,9 @@ function Expired() {
       <p className={styles.status} role="status">
         {EXPIRED_TEXT}.
       </p>
-      <p className={styles.note}>Games are kept only for a while after they end, and not across server restarts.</p>
+      <p className={styles.note}>
+        Games are kept only for a while after they end, and not across server restarts.
+      </p>
       <button type="button" className={styles.primary} onClick={leave}>
         Create a new game
       </button>
@@ -445,7 +476,12 @@ export function FriendPanel() {
   const phase = useRoomStore((s) => s.phase);
   const room = useRoomStore((s) => s.room);
   return (
-    <div className={styles.wrap} data-testid="friend-panel" data-phase={phase} data-status={room?.status}>
+    <div
+      className={styles.wrap}
+      data-testid="friend-panel"
+      data-phase={phase}
+      data-status={room?.status}
+    >
       <Messages />
       <Connection />
       {phase === 'idle' && (

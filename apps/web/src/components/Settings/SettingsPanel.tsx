@@ -1,4 +1,5 @@
 import { boardThemes, findBoardTheme } from '@daisychess/ui-theme/boardThemes';
+import { ShareButton } from '../Share/ShareButton';
 import { pieceSets } from '@daisychess/ui-theme/pieceSets';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { SERVER_TOKEN_INPUT_ID } from '../../server/tokenMessages';
@@ -80,7 +81,7 @@ function ServerTokenField() {
   const [draft, setDraft] = useState(token);
   const [shown, setShown] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [linkCopied, setLinkCopied] = useState<'copied' | 'failed' | null>(null);
+  const [linkCopied, setLinkCopied] = useState<'copied' | 'shared' | 'failed' | null>(null);
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const focusRequested = useUiStore((s) => s.focusServerToken);
@@ -149,18 +150,25 @@ function ServerTokenField() {
           : 'Only needed when the engine server requires one. Stored in this browser.'}
       </p>
       <div className={styles.tokenRow}>
-        <button
-          type="button"
-          className={styles.reset}
-          disabled={token === ''}
-          onClick={copyLink}
-        >
+        <button type="button" className={styles.reset} disabled={token === ''} onClick={copyLink}>
           Copy link for another device
         </button>
+        <ShareButton
+          label="Share link"
+          className={styles.reset}
+          disabled={token === ''}
+          testId="setup-link-share"
+          content={() => ({ title: 'DaisyChess server setup', url: setupLink(token) })}
+          onResult={(r) => r === 'shared' && setLinkCopied('shared')}
+        />
       </div>
       {linkCopied !== null && (
         <p className={styles.help} role="status" data-testid="setup-link-warning">
-          {linkCopied === 'copied' ? 'Link copied. ' : 'Could not copy the link. '}
+          {linkCopied === 'copied'
+            ? 'Link copied. '
+            : linkCopied === 'shared'
+              ? 'Link shared. '
+              : 'Could not copy the link. '}
           {SETUP_LINK_WARNING}
         </p>
       )}

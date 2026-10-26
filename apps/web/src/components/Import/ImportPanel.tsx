@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import {
   OnlineImportError,
   SITE_LABEL,
@@ -8,6 +8,7 @@ import {
   type OnlineSite,
 } from '../../import';
 import { lichessFetch, useLichessAuth } from '../../lichess/auth';
+import { useOpenedPgn } from '../../platform/openedPgn';
 import { splitPgnGames } from '../../store/pgn';
 import { useGameStore } from '../../store/gameStore';
 import styles from './ImportPanel.module.css';
@@ -107,7 +108,11 @@ export function ImportPanel({ onLoaded }: Props) {
     writeSaved({ site: next, users });
   };
 
-  const fetchGames = async (forSite: OnlineSite = site, name: string = username.trim(), mine = false) => {
+  const fetchGames = async (
+    forSite: OnlineSite = site,
+    name: string = username.trim(),
+    mine = false,
+  ) => {
     const id = ++seq.current;
     setFetching(true);
     setOnlineError('');
@@ -136,7 +141,9 @@ export function ImportPanel({ onLoaded }: Props) {
     setOnlineError('');
     setOnlineOk('');
     try {
-      const text = await (withLogin ? fetchOnlineGamePgn(game, { fetch: lichessFetch }) : fetchOnlineGamePgn(game));
+      const text = await (withLogin
+        ? fetchOnlineGamePgn(game, { fetch: lichessFetch })
+        : fetchOnlineGamePgn(game));
       if (id !== seq.current) return;
       if (loadPgn(text)) {
         useGameStore.getState().goTo(0);
@@ -177,6 +184,17 @@ export function ImportPanel({ onLoaded }: Props) {
     if (list.length === 1) loadOne(list[0] as string);
     else setPgnError('');
   };
+
+  // A .pgn opened with DaisyChess from another app (platform/openedPgn): same flow as a pasted file.
+  const openedSeq = useOpenedPgn((s) => s.seq);
+  useEffect(() => {
+    const { text, clear } = useOpenedPgn.getState();
+    if (!text) return;
+    clear();
+    setPgn(text);
+    submitText(text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per opened file
+  }, [openedSeq]);
 
   const readFile = async (file: File | undefined) => {
     if (!file) return;

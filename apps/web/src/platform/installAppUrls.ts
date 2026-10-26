@@ -2,6 +2,7 @@
 // stores and starts listening in the native shell. Does nothing on the web.
 import { setupActions } from '../setup/runSetupLink';
 import { consumeSetupLink } from '../setup/setupLink';
+import { registerPgnFileHandler } from './openedPgn';
 import { installAppUrlRouting, registerBuiltinAppUrlHandlers } from './appUrl';
 
 registerBuiltinAppUrlHandlers({
@@ -19,4 +20,5 @@ registerBuiltinAppUrlHandlers({
     globalThis.location.hash = hash;
   },
 });
+registerPgnFileHandler();
 void installAppUrlRouting().catch(() => undefined);

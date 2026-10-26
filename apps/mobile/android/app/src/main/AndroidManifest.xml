@@ -41,6 +41,39 @@
                 <data android:scheme="org.daisychess.app" android:host="lichess-callback" />
             </intent-filter>
 
+            <!-- PGN files from other apps (M26-5). VIEW (Open with): the PGN MIME types, and any
+                 content/file URI whose path ends in .pgn (file managers often report a generic type).
+                 SEND (Share): only the two PGN MIME types. text/plain is deliberately NOT claimed for
+                 SEND: DaisyChess would appear in every text share sheet; pasted text goes through the
+                 Import tab. Content: URIs without a file extension in the path match the MIME filter only. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/x-chess-pgn" />
+                <data android:mimeType="application/vnd.chess-pgn" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.pgn" />
+                <data android:pathPattern=".*\\..*\\.pgn" />
+                <data android:pathPattern=".*\\..*\\..*\\.pgn" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/x-chess-pgn" />
+                <data android:mimeType="application/vnd.chess-pgn" />
+            </intent-filter>
+
         </activity>
 
         <provider
