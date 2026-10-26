@@ -1,0 +1,7 @@
+# Build output and CI smoke artefacts (the platform folders carry their own .gitignore:
+# android/.gitignore, ios/.gitignore — copied web assets, Gradle/Xcode build dirs).
+/smoke/
+*.apk
+*.aab
+*.ipa
+*.xcarchive

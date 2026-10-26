@@ -1,0 +1,98 @@
+# @daisychess/mobile — iOS and Android apps
+
+Capacitor 8 shell around the DaisyChess web app (ADR-022 in `docs/DECISIONS.md`). The app bundles
+the web app's **mobile build** (`apps/web/dist-mobile`); there is no remote-URL mode.
+
+|                           |                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Bundle id / applicationId | `org.daisychess.app`                                                                                         |
+| Display name              | DaisyChess                                                                                                   |
+| WebView origin            | Android `https://app.daisychess.org`, iOS `capacitor://app.daisychess.org` (`server.hostname`; never served) |
+| Engine                    | `wasm:lite-single` only (the WebView is not cross-origin isolated)                                           |
+| Default hub               | `wss://play.daisychess.org/ws` (`VITE_DEFAULT_SERVER_URL`; Settings → server URL overrides it)               |
+| Minimums                  | Android 7.0 (API 24), iOS 15.0; build: Node 22+, JDK 21, Android SDK 36, Xcode 26                            |
+
+## Layout
+
+- `capacitor.config.ts` — app id, name, `webDir: ../web/dist-mobile`, hostname/scheme.
+- `android/` — committed Gradle project (Capacitor template). Generated, git-ignored: copied web
+  assets (`app/src/main/assets/public`), `capacitor.config.json`, `capacitor-cordova-android-plugins/`.
+- `ios/App/` — committed Xcode project using **Swift Package Manager** (`CapApp-SPM/Package.swift`,
+  rewritten by `cap sync`); no CocoaPods/Ruby. Generated, git-ignored: `App/App/public`,
+  `capacitor.config.json`, `config.xml`, `DerivedData`.
+- `scripts/check-dist.mjs` — asserts the mobile web build (lite-single only, CSP meta, no absolute
+  asset URLs, size budget); runs in `build`.
+- `scripts/check-smoke-log.mjs`, `scripts/android-smoke.sh`, `scripts/ios-smoke.sh` — the CI smoke.
+
+## Build
+
+```sh
+pnpm install
+pnpm --filter @daisychess/mobile build   # vite build --mode mobile → check-dist → cap sync (android + ios)
+```
+
+`build` works on Linux for both platforms (`cap sync` only copies files and writes `Package.swift`).
+`cap sync` must leave the committed native files unchanged; CI checks that with `git diff`.
+
+### Android (Linux/macOS)
+
+Needs JDK 21 and the Android SDK (`ANDROID_HOME`, platform 36, build-tools 36).
+
+```sh
+cd apps/mobile/android
+./gradlew assembleDebug                      # → app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n org.daisychess.app/.MainActivity
+```
+
+The Gradle distribution is pinned by `distributionSha256Sum` in `gradle/wrapper/gradle-wrapper.properties`.
+Debug builds allow `chrome://inspect` for the WebView.
+
+### iOS (macOS with Xcode 26)
+
+```sh
+open apps/mobile/ios/App/App.xcodeproj       # or:
+cd apps/mobile/ios/App
+xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' -derivedDataPath ../DerivedData CODE_SIGNING_ALLOWED=NO build
+```
+
+Safari → Develop → Simulator inspects the WebView. Signing and store uploads are not part of this
+package's build (release pipeline: M26-8).
+
+## Mobile build mode of `apps/web`
+
+`pnpm --filter @daisychess/web build:mobile` (`vite build --mode mobile` → `dist-mobile`) differs from
+the web build in three ways (`apps/web/vite.config.ts`):
+
+1. only `stockfish-19-lite-single.{js,wasm}` is emitted (no multi-threaded builds, no memory shim);
+2. `VITE_DEFAULT_SERVER_URL` is defined (`wss://play.daisychess.org/ws`, overridable from the
+   environment); `defaultServerUrl()` uses it inside the app (non-http(s) origin or native shell);
+3. the production CSP from `apps/web/csp.config.mjs` is injected as `<meta http-equiv>`
+   (`metaCsp()`: the header policy without `frame-ancestors`/`report-uri`/`sandbox`).
+
+App code asks `isNativeApp()` / `nativePlatform()` from `apps/web/src/platform/` — constant `false` /
+`null` in the web build.
+
+## CI smoke
+
+The `mobile` job in `.github/workflows/ci.yml` runs when `apps/mobile/**`, `apps/web/**`, the shared
+packages, the lockfile or the workflow change. It builds with `VITE_MOBILE_SMOKE=1`, which compiles
+`apps/web/src/platform/smoke.ts` into the bundle: on start the app logs one line
+
+```
+DAISYCHESS_SMOKE {"platform":"android","origin":"https://app.daisychess.org","isSecureContext":true,"crossOriginIsolated":false,"engine":"wasm:lite-single","bestmove":"e2e4","ms":…}
+```
+
+Capacitor forwards it to logcat (`Capacitor/Console`) on Android and to the app's stdout on iOS
+(read with `simctl launch --console-pty`). `check-smoke-log.mjs` asserts a secure context, no
+cross-origin isolation and a UCI `bestmove`. Logs, screenshots and the iOS unified log are uploaded
+as the `mobile-smoke-<platform>` artefact. Store builds are never built with `VITE_MOBILE_SMOKE`.
+
+Run the smoke locally against a running emulator:
+
+```sh
+VITE_MOBILE_SMOKE=1 pnpm --filter @daisychess/mobile build
+(cd apps/mobile/android && ./gradlew assembleDebug)
+bash apps/mobile/scripts/android-smoke.sh apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk apps/mobile/smoke/android
+```

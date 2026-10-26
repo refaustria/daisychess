@@ -27,6 +27,18 @@ DaisyChess itself is licensed under **GPL-3.0-or-later** (see `LICENSE`), except
 | Lenis                                | 1.3.27  | MIT                                                                     | https://github.com/darkroomengineering/lenis |
 | Inter (`@fontsource-variable/inter`) | 5.3.0   | OFL-1.1 (font)                                                          | https://github.com/rsms/inter                |
 
+## Distributed in the mobile apps (`apps/mobile`, iOS and Android)
+
+The apps bundle the web app's mobile build (`apps/web/dist-mobile`: everything in the web-app table above, but only the single-threaded `lite-single` Stockfish build) inside a Capacitor shell (ADR-022). Additionally shipped in the app binaries:
+
+| Component                                                                                                        | Version                                    | Licence    | Source                                         |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------- | ---------------------------------------------- |
+| Capacitor runtime (`@capacitor/core`, `@capacitor/android`, `@capacitor/ios` / `capacitor-swift-pm`; Drifty Co.) | 8.5.3                                      | MIT        | https://github.com/ionic-team/capacitor        |
+| Apache Cordova Android framework (compatibility layer pulled in by `@capacitor/android`)                         | 14.0.1                                     | Apache-2.0 | https://github.com/apache/cordova-android      |
+| AndroidX libraries (appcompat, core, activity, fragment, coordinatorlayout, webkit, core-splashscreen)           | see `apps/mobile/android/variables.gradle` | Apache-2.0 | https://developer.android.com/jetpack/androidx |
+
+The Capacitor CLI (`@capacitor/cli`, MIT) is build tooling and not shipped.
+
 ## Distributed or used on the engine server (not shipped to browsers)
 
 | Component                                                                                                                               | Version                                  | Licence                                                                                       | Source                                          |
@@ -56,4 +68,4 @@ Build and test tooling (Vite, Vitest, Playwright, ESLint, TypeScript, Testing Li
 
 ## Compatibility check
 
-Every runtime dependency is MIT, BSD-2-Clause, GPL-3.0 or GPL-3.0-or-later and therefore compatible with distributing the combined work under GPL-3.0-or-later. Because chessground is GPL-3.0-or-later and Stockfish is GPL-3.0 (source headers: "version 3 or, at your option, any later version"), choosing "-or-later" for this project is compatible. No runtime dependency with an incompatible licence (for example GPL-2.0-only, proprietary, or a licence with an advertising clause) was found. Fairy-Stockfish (GPL-3.0) is supported by the engine registry but not bundled.
+Every runtime dependency is MIT, BSD-2-Clause, Apache-2.0 (Android app only), GPL-3.0 or GPL-3.0-or-later and therefore compatible with distributing the combined work under GPL-3.0-or-later. Because chessground is GPL-3.0-or-later and Stockfish is GPL-3.0 (source headers: "version 3 or, at your option, any later version"), choosing "-or-later" for this project is compatible. No runtime dependency with an incompatible licence (for example GPL-2.0-only, proprietary, or a licence with an advertising clause) was found. Fairy-Stockfish (GPL-3.0) is supported by the engine registry but not bundled.

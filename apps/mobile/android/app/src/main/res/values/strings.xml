@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DaisyChess</string>
+    <string name="title_activity_main">DaisyChess</string>
+    <string name="package_name">org.daisychess.app</string>
+    <string name="custom_url_scheme">org.daisychess.app</string>
+</resources>

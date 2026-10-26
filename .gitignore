@@ -16,3 +16,5 @@ apps/portal/test-results
 apps/portal/dist-e2e
 apps/site/test-results
 apps/site/dist-e2e
+# mobile build of apps/web (ADR-022), input of apps/mobile (cap sync)
+apps/web/dist-mobile

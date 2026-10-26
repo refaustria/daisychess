@@ -5,3 +5,6 @@ engines
 pnpm-lock.yaml
 playwright-report
 test-results
+dist-mobile
+apps/mobile/android
+apps/mobile/ios

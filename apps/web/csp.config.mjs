@@ -50,6 +50,25 @@ export function buildCsp(extraConnect = []) {
 
 export const PRODUCTION_CSP = buildCsp();
 
+/**
+ * Directives a `<meta http-equiv="Content-Security-Policy">` cannot carry (CSP3 §3.3: they are
+ * ignored there and the browser logs an error for each).
+ */
+const META_UNSUPPORTED = ['frame-ancestors', 'report-uri', 'sandbox'];
+
+/**
+ * The policy for a `<meta http-equiv>` (the mobile build, ADR-022, has no server to send the
+ * header): `policy` minus the directives a meta element cannot carry. Defaults to PRODUCTION_CSP,
+ * so the app enforces the same sources as play.daisychess.org.
+ */
+export function metaCsp(policy = PRODUCTION_CSP) {
+  return policy
+    .split(';')
+    .map((d) => d.trim())
+    .filter((d) => d && !META_UNSUPPORTED.includes(d.split(/\s+/)[0] ?? ''))
+    .join('; ');
+}
+
 /** hub.daisychess.org serves no documents, only /link (WebSocket) and /health (JSON). */
 export const HUB_CSP = "default-src 'none'; frame-ancestors 'none'";
 

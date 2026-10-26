@@ -16,3 +16,4 @@ playwright-report
 apps/server/data
 **/*.sqlite
 **/*.sqlite-*
+**/dist-mobile

@@ -41,7 +41,19 @@ const ISOLATION_HEADERS = {
   'Cross-Origin-Resource-Policy': 'same-origin',
 } as const;
 
-export function stockfishEngines(): Plugin {
+type StockfishBuild = keyof StockfishEngineManifest['builds'];
+
+export interface StockfishEnginesOptions {
+  /**
+   * Builds whose files are emitted (and served in dev); default all three. The mobile build
+   * (ADR-022) ships `lite-single` only: the app's WebView is never cross-origin isolated, so the
+   * multi-threaded builds could not run, and the memory shim (multi-threaded only) is left out too.
+   * The manifest still names every build, so the registry code is the same in both builds.
+   */
+  builds?: readonly StockfishBuild[];
+}
+
+export function stockfishEngines(options: StockfishEnginesOptions = {}): Plugin {
   const require = createRequire(import.meta.url);
   const pkgDir = dirname(require.resolve('stockfish/package.json'));
   const binDir = join(pkgDir, 'bin');
@@ -55,8 +67,10 @@ export function stockfishEngines(): Plugin {
     full: `stockfish-${major}.js`,
   };
   const filesOf = (js: string) => [js, js.replace(/\.js$/, '.wasm')];
-  const files = Object.values(builds).flatMap(filesOf);
-  for (const f of files) {
+  const emitted = options.builds ?? (Object.keys(builds) as StockfishBuild[]);
+  const files = emitted.map((b) => builds[b]).flatMap(filesOf);
+  const withShim = emitted.some((b) => b !== 'lite-single');
+  for (const f of Object.values(builds).flatMap(filesOf)) {
     if (!existsSync(join(binDir, f))) {
       throw new Error(`[stockfish-engines] missing ${f} in ${binDir} (stockfish ${version})`);
     }
@@ -87,7 +101,7 @@ export function stockfishEngines(): Plugin {
         const path = req.url?.split(/[?#]/)[0];
         if (!path?.startsWith(prefix)) return next();
         const name = path.slice(prefix.length);
-        if (!files.includes(name) && name !== MEMORY_SHIM) return next();
+        if (!files.includes(name) && !(withShim && name === MEMORY_SHIM)) return next();
         res.setHeader(
           'Content-Type',
           name.endsWith('.wasm') ? 'application/wasm' : 'text/javascript; charset=utf-8',
@@ -101,6 +115,7 @@ export function stockfishEngines(): Plugin {
       for (const f of files) {
         this.emitFile({ type: 'asset', fileName: manifest.dir + f, source: readFileSync(join(binDir, f)) });
       }
+      if (!withShim) return;
       this.emitFile({
         type: 'asset',
         fileName: manifest.dir + MEMORY_SHIM,
