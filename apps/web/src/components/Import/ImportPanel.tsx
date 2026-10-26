@@ -3,7 +3,7 @@ import {
   OnlineImportError,
   SITE_LABEL,
   fetchOnlineGamePgn,
-  fetchOnlineGames,
+  fetchOnlinePage,
   type OnlineGame,
   type OnlineSite,
 } from '../../import';
@@ -87,6 +87,7 @@ export function ImportPanel({ onLoaded }: Props) {
   const [users, setUsers] = useState(saved.users);
   const [online, setOnline] = useState<OnlineGame[] | null>(null);
   const [fetchedFor, setFetchedFor] = useState('');
+  const [next, setNext] = useState<string | undefined>();
   const [fetching, setFetching] = useState(false);
   const [loadingId, setLoadingId] = useState('');
   const [onlineError, setOnlineError] = useState('');
@@ -101,6 +102,7 @@ export function ImportPanel({ onLoaded }: Props) {
     seq.current++;
     setSite(next);
     setOnline(null);
+    setNext(undefined);
     setOnlineError('');
     setOnlineOk('');
     setFetching(false);
@@ -118,16 +120,40 @@ export function ImportPanel({ onLoaded }: Props) {
     setOnlineError('');
     setOnlineOk('');
     setOnline(null);
+    setNext(undefined);
     setLoadingId('');
     setWithLogin(mine);
     try {
-      const list = await (mine
-        ? fetchOnlineGames(forSite, name, { fetch: lichessFetch })
-        : fetchOnlineGames(forSite, name));
+      const page = await (mine
+        ? fetchOnlinePage(forSite, name, { fetch: lichessFetch })
+        : fetchOnlinePage(forSite, name));
       if (id !== seq.current) return;
-      setOnline(list);
+      setOnline(page.games);
+      setNext(page.next);
       setFetchedFor(name);
       writeSaved({ site: forSite, users: { ...users, [forSite]: name } });
+    } catch (e) {
+      if (id === seq.current) setOnlineError(errorText(e));
+    } finally {
+      if (id === seq.current) setFetching(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (!next || !online) return;
+    const id = ++seq.current;
+    setFetching(true);
+    setOnlineError('');
+    setOnlineOk('');
+    try {
+      const cursor = next;
+      const page = await (withLogin
+        ? fetchOnlinePage(site, fetchedFor, { cursor, fetch: lichessFetch })
+        : fetchOnlinePage(site, fetchedFor, { cursor }));
+      if (id !== seq.current) return;
+      const seen = new Set(online.map((g) => g.id));
+      setOnline([...online, ...page.games.filter((g) => !seen.has(g.id))]);
+      setNext(page.next);
     } catch (e) {
       if (id === seq.current) setOnlineError(errorText(e));
     } finally {
@@ -396,6 +422,17 @@ export function ImportPanel({ onLoaded }: Props) {
               );
             })}
           </ul>
+        )}
+        {online && next && (
+          <div className={styles.row}>
+            <button
+              type="button"
+              disabled={fetching || loadingId !== ''}
+              onClick={() => void loadMore()}
+            >
+              Load more
+            </button>
+          </div>
         )}
       </section>
     </div>

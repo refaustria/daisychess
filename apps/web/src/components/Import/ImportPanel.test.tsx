@@ -10,7 +10,7 @@ import { currentFen, useGameStore } from '../../store/gameStore';
 
 vi.mock('../../import', async (orig) => {
   const actual = await orig<typeof import('../../import')>();
-  return { ...actual, fetchOnlineGames: vi.fn(), fetchOnlineGamePgn: vi.fn() };
+  return { ...actual, fetchOnlinePage: vi.fn(), fetchOnlineGamePgn: vi.fn() };
 });
 
 afterEach(cleanup);
@@ -18,7 +18,7 @@ beforeEach(() => {
   useGameStore.getState().reset();
   localStorage.clear();
   resetLichessAuth();
-  vi.mocked(online.fetchOnlineGames).mockReset();
+  vi.mocked(online.fetchOnlinePage).mockReset();
   vi.mocked(online.fetchOnlineGamePgn).mockReset();
 });
 
@@ -129,7 +129,7 @@ describe('ImportPanel', () => {
     });
 
     it('fetches, lists rows, loads the PGN on click and remembers the username', async () => {
-      vi.mocked(online.fetchOnlineGames).mockResolvedValue([game, game2]);
+      vi.mocked(online.fetchOnlinePage).mockResolvedValue({ games: [game, game2] });
       vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue(
         '[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Nf3 1-0',
       );
@@ -138,7 +138,7 @@ describe('ImportPanel', () => {
       type('Username', 'Alice');
       fireEvent.click(screen.getByRole('button', { name: 'Fetch games' }));
       await screen.findByText(/Alice \(1800\)/);
-      expect(online.fetchOnlineGames).toHaveBeenCalledWith('lichess', 'Alice');
+      expect(online.fetchOnlinePage).toHaveBeenCalledWith('lichess', 'Alice');
       expect(screen.getAllByText(/1-0 · 2023-11-14 · 3\+2 · Italian Game/)).toHaveLength(2);
       expect(screen.getAllByText(/\(you, /)).toHaveLength(2);
       expect(
@@ -154,8 +154,24 @@ describe('ImportPanel', () => {
       expect(screen.getByText('Loaded: Alice – Bob')).toBeTruthy();
     });
 
+    it('"Load more" appends the next older page using the cursor', async () => {
+      const older: online.OnlineGame = { ...game, id: 'g3', white: { name: 'Eve' } };
+      vi.mocked(online.fetchOnlinePage)
+        .mockResolvedValueOnce({ games: [game, game2], next: 'c1' })
+        .mockResolvedValueOnce({ games: [game2, older] });
+      render(<ImportPanel />);
+      type('Username', 'Alice');
+      fireEvent.click(screen.getByRole('button', { name: 'Fetch games' }));
+      await screen.findByText(/Alice \(1800\)/);
+      fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+      await screen.findByText(/Eve/);
+      expect(online.fetchOnlinePage).toHaveBeenLastCalledWith('lichess', 'Alice', { cursor: 'c1' });
+      expect(screen.getAllByRole('listitem')).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+    });
+
     it('submits on Enter and shows the specific error', async () => {
-      vi.mocked(online.fetchOnlineGames).mockRejectedValue(
+      vi.mocked(online.fetchOnlinePage).mockRejectedValue(
         new online.OnlineImportError('not-found', 'User "ghost" not found on lichess'),
       );
       render(<ImportPanel />);
@@ -181,13 +197,13 @@ describe('ImportPanel', () => {
         JSON.stringify({ site: 'chesscom', users: { chesscom: 'cc' } }),
       );
       resetLichessAuth();
-      vi.mocked(online.fetchOnlineGames).mockResolvedValue([game]);
+      vi.mocked(online.fetchOnlinePage).mockResolvedValue({ games: [game] });
       vi.mocked(online.fetchOnlineGamePgn).mockResolvedValue(
         '[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0',
       );
       render(<ImportPanel />);
       fireEvent.click(screen.getByRole('button', { name: 'My games' }));
-      expect(online.fetchOnlineGames).toHaveBeenCalledWith('lichess', 'Alice', {
+      expect(online.fetchOnlinePage).toHaveBeenCalledWith('lichess', 'Alice', {
         fetch: lichessFetch,
       });
       expect((screen.getByRole('radio', { name: 'lichess' }) as HTMLInputElement).checked).toBe(
