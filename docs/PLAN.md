@@ -226,6 +226,7 @@ Deployment target: **https://c.referee.at** (this host, nginx + certbot). Chess 
 | M28-3 | Raise `engines.node` to `>=22.13` in all package.json files (CI already on 22/24) | worker | todo |
 | M28-4 | Operator account deletion: portal API `DELETE /api/portal/me` (revokes nodes/tokens, closes links/connections, deletes operator row, sessions, usage rows) + portal UI; PRIVACY.md already promises it | senior | todo (after M27-2) |
 | M28-5 | Hub store backup timer (daily `.backup`, 7 copies) as promised in PRIVACY.md | worker | todo |
+| M28-6 | Application logs expire after 7 days: journald namespace `daisychess` (`LogNamespace=` + `deploy/journald@daisychess.conf`), host-wide journald untouched | worker | done (host activation by orchestrator) |
 
 ## M29 — UI polish (2026-10-26)
 | ID | Task | Tier | Status |

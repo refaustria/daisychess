@@ -196,7 +196,7 @@ pnpm e2e                                     # all specs under the enforced CSP;
 | Portal CSRF / session theft | `__Host-dc_portal` cookie, `HttpOnly`, `Secure`, `SameSite=Strict`; `X-Requested-With` header required on mutations; same-origin REST only; static SPA under the site's CSP; sessions 30 days, revocable; no HTML rendered by the hub (§5) |
 | Privilege escalation | Administrator = the lichess username in `HUB_ADMIN_LICHESS` (first login) only; operators and tokens per operator are capped (`PORTAL_MAX_NODES`, `PORTAL_MAX_TOKENS`, `POOL_TOKENS_PER_OPERATOR`); operators query rows filtered by `operator_id` in every statement; secrets are never readable after creation, not even by the administrator (§2, §6) |
 | lichess token handling | PKCE in the portal SPA; the hub receives the lichess token once, verifies `GET /api/account` through the loopback nginx egress proxy (`127.0.0.1:8581`, the unit keeps `IPAddressDeny=any`), discards it; the SPA revokes it (§2) |
-| Logs / PII | `tokenId` and `nodeId` only (never secrets), client IP as a daily-salted hash at `info` (raw at `debug`; closes M10-2), FENs at `debug`; journald retention is a host setting (ADR-020 §5 asks for 7 days; not part of the repo, to be confirmed on the host); nginx access log with raw IPs: stock logrotate, 14 days (`deploy/README.md`); `usage_daily` holds aggregates per token/node without IPs, kept 90 days; operators' lichess id/username deleted with the account (§5, §6) |
+| Logs / PII | `tokenId` and `nodeId` only (never secrets), client IP as a daily-salted hash at `info` (raw at `debug`; closes M10-2), FENs at `debug`; journald namespace `daisychess` with `MaxRetentionSec=7day` (M28-6, `deploy/journald@daisychess.conf`; host-wide journald untouched); nginx access log with raw IPs: stock logrotate, 14 days (`deploy/README.md`); `usage_daily` holds aggregates per token/node without IPs, kept 90 days; operators' lichess id/username deleted with the account (§5, §6) |
 | Hub store loss | Not reproducible (unlike `reviews.sqlite`): nightly `.backup`, 7 copies, in the runbook (§6) |
 
 ### 6.3 Residual risks accepted
@@ -215,7 +215,7 @@ scripts/node-image-smoke.sh                  # node image against a fake hub: on
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
   -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' https://hub.daisychess.org/link   # 101, then 1008 without a valid node.hello
 curl -s -X POST https://play.daisychess.org/api/portal/tokens                                                        # 401 without the cookie + header
-sudo journalctl -u daisychess-server -n 200 --no-pager | grep -Ec '"ip":"|remoteAddress'                         # 0: no raw IPs at info (only "ipHash")
+sudo journalctl --namespace=daisychess -u daisychess-server -n 200 --no-pager | grep -Ec '"ip":"|remoteAddress'                         # 0: no raw IPs at info (only "ipHash")
 ```
 
 ### 6.5 Open items

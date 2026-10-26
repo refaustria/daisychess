@@ -5,6 +5,9 @@ Description=DaisyChess engine server
 After=network.target
 
 [Service]
+# Own journal namespace with 7-day retention (deploy/journald@daisychess.conf). Read with:
+# journalctl --namespace=daisychess -u daisychess-server
+LogNamespace=daisychess
 Type=simple
 User=bojan
 Group=bojan

@@ -190,9 +190,14 @@ the server requires a token).
 `systemd-journal`, otherwise use `sudo`):
 
 ```bash
-sudo journalctl -u daisychess-server -n 50 --no-pager
-sudo journalctl -u daisychess-server -f
+sudo journalctl --namespace=daisychess -u daisychess-server -n 50 --no-pager
+sudo journalctl --namespace=daisychess -u daisychess-server -f
 ```
+
+The unit logs into its own journal namespace `daisychess` (`LogNamespace=`), configured by
+`deploy/journald@daisychess.conf` (`MaxRetentionSec=7day`, `SystemMaxUse=200M`, installed to
+`/etc/systemd/journald@daisychess.conf` by `deploy/deploy-server.sh`). Without `--namespace`
+`journalctl` shows only the default journal, which no longer holds the server's lines.
 
 `/health` requests are not logged by the server, so polling it adds no noise.
 
@@ -348,7 +353,7 @@ Set `ROLE=standalone` (or remove the line) in `.env.production` and `sudo system
 
 | What                                                    | Where                                                 | Retention                                                                                                                                                                                                                                                     |
 | ------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Application log                                         | journald (`journalctl -u daisychess-server`)          | at `info` no raw IPs (daily-salted `ipHash`), no tokens or FENs. Retention is the host's journald setting; ADR-020 asks for 7 days (`MaxRetentionSec=7day`), **not configured by the repo: check `journalctl --disk-usage` and `/etc/systemd/journald.conf`** |
+| Application log                                         | journald namespace `daisychess` (`journalctl --namespace=daisychess -u daisychess-server`) | at `info` no raw IPs (daily-salted `ipHash`), no tokens or FENs. Retention 7 days: `MaxRetentionSec=7day` in `/etc/systemd/journald@daisychess.conf` (from `deploy/journald@daisychess.conf`, M28-6); check with `journalctl --namespace=daisychess --disk-usage` |
 | nginx access log (raw IPs, no query strings, no bodies) | `/var/log/nginx/{play,hub}.daisychess.org.access.log` | stock `/etc/logrotate.d/nginx`: daily, 14 days (see "Abuse logging")                                                                                                                                                                                          |
 | `usage_daily` (per token and node and day, no IPs)      | `hub.sqlite`                                          | `USAGE_RETENTION_DAYS`, default 90                                                                                                                                                                                                                            |
 | Spot-check rows                                         | `hub.sqlite`                                          | 24 hours                                                                                                                                                                                                                                                      |
@@ -358,7 +363,7 @@ Set `ROLE=standalone` (or remove the line) in `.env.production` and `sudo system
 
 - Portal login fails with a network error: check the egress proxy (`curl` above) and `PORTAL_LICHESS_PROXY`.
 - Node shows `replaced` or exits: the same token runs twice; rotate it.
-- Everything is `node_offline`: `journalctl -u daisychess-server | grep link`, check `limit_conn`/`limit_req` for `/link` in nginx and `fail2ban-client status daisychess-link`.
+- Everything is `node_offline`: `journalctl --namespace=daisychess -u daisychess-server | grep link`, check `limit_conn`/`limit_req` for `/link` in nginx and `fail2ban-client status daisychess-link`.
 
 ## Run a community node
 

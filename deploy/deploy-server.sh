@@ -35,6 +35,9 @@ fi
 
 # ReadWritePaths needs the directory to exist before the unit's namespace is set up (ADR-017).
 install -d -m 700 apps/server/data
+# Journal namespace with 7-day retention (the host-wide journald.conf stays untouched). Must exist
+# before the unit starts; the namespace's journald instance is socket-activated on first use.
+sudo install -m 0644 deploy/journald@daisychess.conf /etc/systemd/journald@daisychess.conf
 sudo install -m 644 deploy/daisychess-server.service "/etc/systemd/system/${UNIT}.service"
 sudo systemctl daemon-reload
 sudo systemctl enable "$UNIT"
@@ -50,5 +53,5 @@ for _ in $(seq 1 20); do
 done
 
 echo "error: ${HEALTH_URL} not healthy after 10 s" >&2
-sudo journalctl -u "$UNIT" -n 30 --no-pager >&2 || true
+sudo journalctl --namespace=daisychess -u "$UNIT" -n 30 --no-pager >&2 || true
 exit 1
