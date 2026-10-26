@@ -5,6 +5,8 @@ import {
   AscError,
   ascJwt,
   ensureAppStoreProfile,
+  entitlementKeys,
+  profileEntitlementKeys,
   explainAscError,
   parsePemBundle,
   createAscApi,
@@ -100,6 +102,19 @@ function fakeAsc(opts: {
   return { api, calls };
 }
 
+/** CMS-like blob: binary junk around the clear-text plist, as in a .mobileprovision. */
+const signedProfile = (keys: string[]) =>
+  Buffer.concat([
+    Buffer.from([0x30, 0x82, 0x0a, 0xff, 0x00]),
+    Buffer.from(
+      `<?xml version="1.0"?><plist version="1.0"><dict><key>Name</key><string>x</string>` +
+        `<key>Entitlements</key><dict><key>application-identifier</key><string>T.org</string>` +
+        keys.map((k) => `<key>${k}</key><array><string>*</string></array>`).join('') +
+        `</dict><key>UUID</key><string>u</string></dict></plist>`,
+    ),
+    Buffer.from([0x00, 0xff, 0x30]),
+  ]).toString('base64');
+
 const NOW = Date.UTC(2026, 9, 26);
 const profile = (
   over: Record<string, unknown> = {},
@@ -112,7 +127,7 @@ const profile = (
     uuid: 'uuid-old',
     profileState: 'ACTIVE',
     expirationDate: '2027-06-01T00:00:00.000+00:00',
-    profileContent: Buffer.from('old-profile').toString('base64'),
+    profileContent: signedProfile(['com.apple.developer.associated-domains']),
     ...over,
   },
   relationships: {
@@ -136,7 +151,9 @@ describe('ensureAppStoreProfile', () => {
     const r = await ensureAppStoreProfile({ api, ...base });
     expect(r.action).toBe('reused');
     expect(r.uuid).toBe('uuid-old');
-    expect(r.content.toString()).toBe('old-profile');
+    expect(r.content.toString('base64')).toBe(
+      signedProfile(['com.apple.developer.associated-domains']),
+    );
     expect(r.identitySha1).toBe(cert.fingerprint.replace(/:/g, ''));
     expect(calls.some((c) => c.method !== 'GET')).toBe(false);
   });
@@ -169,6 +186,34 @@ describe('ensureAppStoreProfile', () => {
       });
     },
   );
+
+  it('recreates an otherwise valid profile that lacks a required entitlement', async () => {
+    const { api, calls } = fakeAsc({
+      certDerB64,
+      profiles: [profile({ profileContent: signedProfile([]) })],
+    });
+    const r = await ensureAppStoreProfile({ api, ...base });
+    expect(r).toMatchObject({
+      action: 'recreated',
+      reason: 'missing-entitlements',
+      missingEntitlements: ['com.apple.developer.associated-domains'],
+      deleted: ['P1'],
+      uuid: 'uuid-new',
+    });
+    expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.path}`)).toEqual([
+      'DELETE /v1/profiles/P1',
+      'POST /v1/profiles',
+    ]);
+  });
+
+  it('reads the required entitlements from App.entitlements by default', async () => {
+    const { api } = fakeAsc({
+      certDerB64,
+      profiles: [profile({ profileContent: Buffer.from('no plist').toString('base64') })],
+    });
+    const r = await ensureAppStoreProfile({ api, ...base });
+    expect(r.action).toBe('recreated');
+  });
 
   it('creates a profile when none exists', async () => {
     const { api } = fakeAsc({ certDerB64 });
@@ -209,6 +254,22 @@ describe('ensureAppStoreProfile', () => {
     await expect(ensureAppStoreProfile({ api, ...base, certs: [] })).rejects.toThrow(
       /no certificate/,
     );
+  });
+});
+
+describe('entitlementKeys / profileEntitlementKeys', () => {
+  it('lists top-level keys of an entitlements plist only', () => {
+    const xml = `<?xml version="1.0"?><plist version="1.0"><dict>
+      <key>a</key><array><string>x</string></array><key>b</key><true/></dict></plist>`;
+    expect(entitlementKeys(xml)).toEqual(['a', 'b']);
+    expect(entitlementKeys('')).toEqual([]);
+  });
+
+  it('extracts entitlements from a CMS-wrapped profile', () => {
+    const keys = profileEntitlementKeys(Buffer.from(signedProfile(['k1']), 'base64'));
+    expect(keys).toContain('k1');
+    expect(keys).toContain('application-identifier');
+    expect(profileEntitlementKeys(Buffer.from('garbage'))).toEqual([]);
   });
 });
 

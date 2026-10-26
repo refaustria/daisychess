@@ -3,7 +3,8 @@
 // active IOS_APP_STORE profile for the bundle id that contains the distribution certificate the
 // workflow imported from IOS_DIST_CERT_P12_B64, through the App Store Connect API (ES256 JWT from
 // the team API key). An existing profile with the same name is reused while it is ACTIVE, contains
-// that certificate and is valid for at least `minValidDays`; stale ones (expired, INVALID after a
+// that certificate, carries every entitlement of App.entitlements (a capability enabled on the App
+// ID after the profile was created is not in it) and is valid for at least `minValidDays`; stale ones (expired, INVALID after a
 // capability change, other certificate) are deleted and replaced.
 //
 // Usage: node scripts/asc-profile.mjs --bundle-id org.daisychess.app --cert <pem file>
@@ -13,6 +14,10 @@
 import { X509Certificate, createHash, sign } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+const DEFAULT_ENTITLEMENTS = fileURLToPath(
+  new URL('../ios/App/App/App.entitlements', import.meta.url),
+);
 
 export const ASC_BASE = 'https://api.appstoreconnect.apple.com';
 
@@ -104,17 +109,48 @@ export function parsePemBundle(pem) {
   return blocks.map((b) => new X509Certificate(b));
 }
 
+/**
+ * Top-level keys of an entitlements plist (App.entitlements).
+ * @param {string} xml
+ * @returns {string[]}
+ */
+export function entitlementKeys(xml) {
+  const body = xml.match(/<dict>([\s\S]*)<\/dict>\s*<\/plist>/)?.[1] ?? '';
+  // Drop nested containers so only top-level keys remain.
+  const flat = body.replace(/<(array|dict)>[\s\S]*?<\/\1>/g, '<x/>');
+  return [...flat.matchAll(/<key>([^<]+)<\/key>/g)].map((m) => m[1] ?? '');
+}
+
+/**
+ * Entitlement keys inside a .mobileprovision (CMS-signed, the plist is embedded in clear text).
+ * @param {Buffer} content
+ * @returns {string[]}
+ */
+export function profileEntitlementKeys(content) {
+  const text = content.toString('latin1');
+  const start = text.indexOf('<?xml');
+  const end = text.lastIndexOf('</plist>');
+  if (start < 0 || end < 0) return [];
+  const plist = text.slice(start, end + '</plist>'.length);
+  const at = plist.indexOf('<key>Entitlements</key>');
+  if (at < 0) return [];
+  // Nested dicts/arrays are scanned too: this can only over-match, and no other profile key
+  // equals an entitlement name.
+  return [...plist.slice(at).matchAll(/<key>([^<]+)<\/key>/g)].map((m) => m[1] ?? '');
+}
+
 /** @param {Buffer} der */
 const sha256 = (der) => createHash('sha256').update(der).digest('hex');
 
 /**
- * @typedef {{ uuid: string, name: string, action: 'reused' | 'created', expirationDate: string,
+ * @typedef {{ uuid: string, name: string, action: 'reused' | 'created' | 'recreated',
+ *   reason?: string, missingEntitlements?: string[], expirationDate: string,
  *   identitySha1: string, content: Buffer, deleted: string[] }} ProfileResult
  */
 
 /**
  * @param {{ api: AscRequest, bundleIdentifier: string, certs: X509Certificate[],
- *   profileName: string, minValidDays?: number, now?: number }} p
+ *   profileName: string, minValidDays?: number, now?: number, requiredEntitlements?: string[] }} p
  * @returns {Promise<ProfileResult>}
  */
 export async function ensureAppStoreProfile({
@@ -124,6 +160,7 @@ export async function ensureAppStoreProfile({
   profileName,
   minValidDays = 7,
   now = Date.now(),
+  requiredEntitlements = entitlementKeys(readFileSync(DEFAULT_ENTITLEMENTS, 'utf8')),
 }) {
   if (certs.length === 0) throw new Error('no certificate given (empty PEM)');
 
@@ -182,7 +219,12 @@ export async function ensureAppStoreProfile({
   ).filter((p) => attr(p, 'name') === profileName);
 
   const minExpiry = now + minValidDays * 86_400_000;
-  const usable = profiles.find(
+  /** @param {AscResource} p */
+  const missingOf = (p) => {
+    const have = new Set(profileEntitlementKeys(Buffer.from(attr(p, 'profileContent'), 'base64')));
+    return requiredEntitlements.filter((k) => !have.has(k));
+  };
+  const valid = profiles.find(
     (p) =>
       attr(p, 'profileState') === 'ACTIVE' &&
       Date.parse(attr(p, 'expirationDate')) > minExpiry &&
@@ -190,6 +232,8 @@ export async function ensureAppStoreProfile({
       relIds(p, 'certificates').includes(ascCert.id) &&
       attr(p, 'profileContent') !== '',
   );
+  const missing = valid ? missingOf(valid) : [];
+  const usable = valid && missing.length === 0 ? valid : undefined;
   if (usable) {
     return {
       uuid: attr(usable, 'uuid'),
@@ -227,7 +271,8 @@ export async function ensureAppStoreProfile({
   return {
     uuid: attr(created, 'uuid'),
     name: profileName,
-    action: 'created',
+    action: valid ? 'recreated' : 'created',
+    ...(valid ? { reason: 'missing-entitlements', missingEntitlements: missing } : {}),
     expirationDate: attr(created, 'expirationDate'),
     identitySha1,
     content: Buffer.from(attr(created, 'profileContent'), 'base64'),
@@ -295,6 +340,7 @@ async function main() {
       expirationDate: r.expirationDate,
       identitySha1: r.identitySha1,
       deleted: r.deleted,
+      ...(r.reason ? { reason: r.reason, missingEntitlements: r.missingEntitlements } : {}),
     }),
   );
 }

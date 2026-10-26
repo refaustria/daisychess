@@ -363,8 +363,11 @@ jobs:
           set -euo pipefail
           node apps/mobile/scripts/ios-signing.mjs export-options "$SIGNING_DIR/ExportOptions.plist" \
             --team "$TEAM_ID" --bundle-id "$APP_ID" --profile "$PROFILE_UUID" --identity "$IDENTITY"
-          xcodebuild -quiet -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            -exportOptionsPlist "$SIGNING_DIR/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export"
+          if ! xcodebuild -quiet -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$SIGNING_DIR/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export"; then
+            echo "::error::Export failed. If the log mentions entitlements (e.g. com.apple.developer.associated-domains), enable that capability on the App ID $APP_ID (Certificates, Identifiers & Profiles) and rerun: asc-profile.mjs recreates a profile that lacks it. With IOS_PROVISIONING_PROFILE_B64 set, regenerate that profile by hand."
+            exit 1
+          fi
           ipa="$RUNNER_TEMP/export/daisychess-$VERSION-$BUILD_NUMBER.ipa"
           mv "$RUNNER_TEMP/export/App.ipa" "$ipa"
           echo "IPA=$ipa" >> "$GITHUB_ENV"
@@ -375,7 +378,10 @@ jobs:
           codesign --verify --strict --deep "$x/Payload/App.app"
           codesign -dvv "$x/Payload/App.app" 2>&1 | grep -E '^(Authority|TeamIdentifier)=' | head -2
           codesign -d --entitlements - --xml "$x/Payload/App.app" 2> /dev/null > "$x/ent.plist"
-          plutil -extract com.apple.developer.associated-domains json -o - "$x/ent.plist"
+          if ! plutil -extract com.apple.developer.associated-domains json -o - "$x/ent.plist"; then
+            echo "::error::The exported app has no com.apple.developer.associated-domains entitlement: enable the Associated Domains capability on App ID $APP_ID and rerun so the provisioning profile \"$IOS_PROFILE_NAME\" is recreated (or regenerate the profile in IOS_PROVISIONING_PROFILE_B64)."
+            exit 1
+          fi
           test "$(plutil -extract get-task-allow raw "$x/ent.plist")" = false
           ls -l "$ipa"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
