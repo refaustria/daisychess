@@ -40,20 +40,30 @@ describe('portal auth helpers', () => {
   });
 
   it('origin rule: required; PUBLIC_ORIGIN / explicit list; else same host; never *', () => {
-    const pub = 'https://c.referee.at';
-    expect(portalOriginAllowed(undefined, 'c.referee.at', pub, null)).toBe(false);
-    expect(portalOriginAllowed('null', 'c.referee.at', pub, null)).toBe(false);
-    expect(portalOriginAllowed('https://c.referee.at', 'c.referee.at', pub, null)).toBe(true);
-    expect(portalOriginAllowed('https://C.referee.at', 'x', pub, null)).toBe(true);
-    expect(portalOriginAllowed('https://evil.example', 'c.referee.at', pub, null)).toBe(false);
-    expect(portalOriginAllowed('http://c.referee.at', 'c.referee.at', pub, null)).toBe(false);
+    const pub = 'https://play.daisychess.org';
+    expect(portalOriginAllowed(undefined, 'play.daisychess.org', pub, null)).toBe(false);
+    expect(portalOriginAllowed('null', 'play.daisychess.org', pub, null)).toBe(false);
+    expect(
+      portalOriginAllowed('https://play.daisychess.org', 'play.daisychess.org', pub, null),
+    ).toBe(true);
+    expect(portalOriginAllowed('https://Play.DaisyChess.org', 'x', pub, null)).toBe(true);
+    expect(portalOriginAllowed('https://evil.example', 'play.daisychess.org', pub, null)).toBe(
+      false,
+    );
+    expect(
+      portalOriginAllowed('http://play.daisychess.org', 'play.daisychess.org', pub, null),
+    ).toBe(false);
     expect(portalOriginAllowed('https://other.example', 'h', null, ['https://other.example'])).toBe(
       true,
     );
     // Same host without configuration; `*` does not open the portal.
     expect(portalOriginAllowed('http://localhost:5173', 'localhost:8580', null, null)).toBe(true);
-    expect(portalOriginAllowed('https://evil.example', 'c.referee.at', null, '*')).toBe(false);
-    expect(portalOriginAllowed('https://c.referee.at', 'c.referee.at', null, '*')).toBe(true);
+    expect(portalOriginAllowed('https://evil.example', 'play.daisychess.org', null, '*')).toBe(
+      false,
+    );
+    expect(
+      portalOriginAllowed('https://play.daisychess.org', 'play.daisychess.org', null, '*'),
+    ).toBe(true);
   });
 
   it('WindowLimiter counts per key and window, with a bounded key set', () => {

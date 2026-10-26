@@ -8,7 +8,7 @@ import { expect, test, type Page } from '@playwright/test';
  * The server is started by this spec on its own port (the shared playwright.config is untouched);
  * the page on the preview origin connects cross-origin (COEP does not apply to WebSockets).
  */
-const PORT = 8581;
+const PORT = 8591;
 const WS_URL = `ws://127.0.0.1:${PORT}/ws`;
 const REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const SERVER_ENTRY = `${REPO}apps/server/dist/index.js`;

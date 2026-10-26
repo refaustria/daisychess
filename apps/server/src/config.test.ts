@@ -63,9 +63,10 @@ describe('loadConfig', () => {
     expect(loadConfig({ ALLOWED_ORIGINS: '' }).allowedOrigins).toBeNull();
     expect(loadConfig({ ALLOWED_ORIGINS: '*' }).allowedOrigins).toBe('*');
     expect(
-      loadConfig({ ALLOWED_ORIGINS: 'https://c.referee.at, http://localhost:8080' }).allowedOrigins,
-    ).toEqual(['https://c.referee.at', 'http://localhost:8080']);
-    expect(() => loadConfig({ ALLOWED_ORIGINS: 'c.referee.at' })).toThrow(/ALLOWED_ORIGINS/);
+      loadConfig({ ALLOWED_ORIGINS: 'https://play.daisychess.org, http://localhost:8080' })
+        .allowedOrigins,
+    ).toEqual(['https://play.daisychess.org', 'http://localhost:8080']);
+    expect(() => loadConfig({ ALLOWED_ORIGINS: 'play.daisychess.org' })).toThrow(/ALLOWED_ORIGINS/);
   });
 
   it('per-IP cap (default 2, never above MAX_SESSIONS), crash backoff, trusted proxies', () => {
@@ -174,14 +175,21 @@ describe('loadConfig', () => {
     });
     expect(path.isAbsolute(def.storePath)).toBe(true);
     expect(
-      loadConfig({ HUB_STORE_PATH: 'x/hub.db', POOL_DAILY_BUDGET_MIN: '0', USAGE_RETENTION_DAYS: '7' })
-        .hub,
-    ).toEqual({ storePath: path.resolve('x/hub.db'), poolDailyBudgetMin: 0, usageRetentionDays: 7 });
+      loadConfig({
+        HUB_STORE_PATH: 'x/hub.db',
+        POOL_DAILY_BUDGET_MIN: '0',
+        USAGE_RETENTION_DAYS: '7',
+      }).hub,
+    ).toEqual({
+      storePath: path.resolve('x/hub.db'),
+      poolDailyBudgetMin: 0,
+      usageRetentionDays: 7,
+    });
     // HUB_DB_PATH is an alias; both set must agree.
     expect(loadConfig({ HUB_DB_PATH: 'y/hub.db' }).hub.storePath).toBe(path.resolve('y/hub.db'));
-    expect(loadConfig({ HUB_DB_PATH: 'y/hub.db', HUB_STORE_PATH: './y/hub.db' }).hub.storePath).toBe(
-      path.resolve('y/hub.db'),
-    );
+    expect(
+      loadConfig({ HUB_DB_PATH: 'y/hub.db', HUB_STORE_PATH: './y/hub.db' }).hub.storePath,
+    ).toBe(path.resolve('y/hub.db'));
     expect(() => loadConfig({ HUB_DB_PATH: 'a.db', HUB_STORE_PATH: 'b.db' })).toThrow(
       /HUB_STORE_PATH and HUB_DB_PATH/,
     );

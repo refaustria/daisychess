@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build apps/web and publish it to the nginx web root for https://play.daisychess.org
-# (ADR-021; the legacy c.referee.at serves only the "moved" page, see deploy/deploy-legacy.sh).
+# (ADR-021).
 # Usage: deploy/deploy-web.sh   (from anywhere inside the repo)
 set -euo pipefail
 

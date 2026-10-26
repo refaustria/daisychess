@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Verifies that the nginx configs serve exactly the Content-Security-Policies built by
 // apps/web/csp.config.mjs (app, which hashes the inline theme script in apps/web/index.html;
-// legacy "moved" page; hub) and apps/portal/csp.config.mjs (portal).
+// hub) and apps/portal/csp.config.mjs (portal).
 //
 // Production (ADR-021): the policies live once in deploy/nginx/daisychess-common.conf
 // (conf.d); the vhosts only reference the variables. The check makes sure that
@@ -15,13 +15,12 @@
 // `default "...";` line on mismatch, ready to paste.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { HUB_CSP, LEGACY_CSP, PRODUCTION_CSP } from '../apps/web/csp.config.mjs';
+import { HUB_CSP, PRODUCTION_CSP } from '../apps/web/csp.config.mjs';
 import { PORTAL_CSP } from '../apps/portal/csp.config.mjs';
 
 export const EXPECTED = {
   daisychess_csp: PRODUCTION_CSP,
   daisychess_portal_csp: PORTAL_CSP,
-  daisychess_legacy_csp: LEGACY_CSP,
   daisychess_hub_csp: HUB_CSP,
 };
 
@@ -39,11 +38,6 @@ export const REPO_FILES = [
     uses: ['daisychess_csp', 'daisychess_portal_csp'],
   },
   { file: 'deploy/nginx/hub.daisychess.org.conf', maps: [], uses: ['daisychess_hub_csp'] },
-  {
-    file: 'deploy/nginx/c.referee.at.conf',
-    maps: [],
-    uses: ['daisychess_legacy_csp', 'daisychess_csp'],
-  },
   { file: 'docker/nginx.web.conf', maps: ['daisychess_csp'], uses: ['daisychess_csp'] },
 ];
 

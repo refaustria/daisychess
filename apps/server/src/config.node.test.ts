@@ -69,7 +69,7 @@ describe('loadConfig: roles (ADR-020 §7)', () => {
 
 describe('checkHubUrl', () => {
   it('accepts wss:// and loopback ws://', () => {
-    expect(checkHubUrl('wss://c.referee.at/link', false)).toBeNull();
+    expect(checkHubUrl('wss://play.daisychess.org/link', false)).toBeNull();
     expect(checkHubUrl('ws://127.0.0.1:8580/link', false)).toBeNull();
     expect(checkHubUrl('ws://localhost:8580/link', false)).toBeNull();
     expect(checkHubUrl('ws://[::1]:8580/link', false)).toBeNull();

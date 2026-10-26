@@ -11,22 +11,26 @@ describe('parseAllowedOrigins', () => {
     expect(parseAllowedOrigins('*')).toBe('*');
   });
   it('normalises a comma-separated list', () => {
-    expect(parseAllowedOrigins(' https://C.referee.at , http://localhost:8080/ ')).toEqual([
-      'https://c.referee.at',
+    expect(parseAllowedOrigins(' https://Play.DaisyChess.org , http://localhost:8080/ ')).toEqual([
+      'https://play.daisychess.org',
       'http://localhost:8080',
     ]);
-    expect(parseAllowedOrigins('https://c.referee.at:443')).toEqual(['https://c.referee.at']);
+    expect(parseAllowedOrigins('https://play.daisychess.org:443')).toEqual([
+      'https://play.daisychess.org',
+    ]);
   });
   it('rejects entries that are not http(s) origins instead of silently allowing nothing', () => {
-    expect(() => parseAllowedOrigins('c.referee.at')).toThrow(/not an http\(s\) origin/);
-    expect(() => parseAllowedOrigins('wss://c.referee.at')).toThrow();
+    expect(() => parseAllowedOrigins('play.daisychess.org')).toThrow(/not an http\(s\) origin/);
+    expect(() => parseAllowedOrigins('wss://play.daisychess.org')).toThrow();
     expect(() => parseAllowedOrigins('https://a.example,,')).toThrow();
   });
 });
 
 describe('normalizeOrigin', () => {
   it('lower-cases and strips paths and default ports', () => {
-    expect(normalizeOrigin('HTTPS://C.Referee.AT/ws?x=1')).toBe('https://c.referee.at');
+    expect(normalizeOrigin('HTTPS://Play.DaisyChess.ORG/ws?x=1')).toBe(
+      'https://play.daisychess.org',
+    );
     expect(normalizeOrigin('http://localhost:5180')).toBe('http://localhost:5180');
     expect(normalizeOrigin('http://[::1]:5180')).toBe('http://[::1]:5180');
   });
@@ -34,45 +38,47 @@ describe('normalizeOrigin', () => {
     expect(normalizeOrigin('null')).toBeNull();
     expect(normalizeOrigin('file:///etc/passwd')).toBeNull();
     expect(normalizeOrigin('chrome-extension://abc')).toBeNull();
-    expect(normalizeOrigin('https://user:pw@c.referee.at')).toBeNull();
+    expect(normalizeOrigin('https://user:pw@play.daisychess.org')).toBeNull();
     expect(normalizeOrigin('')).toBeNull();
   });
 });
 
 describe('isOriginAllowed', () => {
   it('allows requests without an Origin header (non-browser clients)', () => {
-    expect(isOriginAllowed(undefined, 'c.referee.at', null)).toBe(true);
-    expect(isOriginAllowed(undefined, 'c.referee.at', ['https://other.example'])).toBe(true);
+    expect(isOriginAllowed(undefined, 'play.daisychess.org', null)).toBe(true);
+    expect(isOriginAllowed(undefined, 'play.daisychess.org', ['https://other.example'])).toBe(true);
   });
   it('default policy: origin host must equal the request host, ports ignored', () => {
-    expect(isOriginAllowed('https://c.referee.at', 'c.referee.at', null)).toBe(true);
-    expect(isOriginAllowed('https://C.REFEREE.AT', 'c.referee.at', null)).toBe(true);
+    expect(isOriginAllowed('https://play.daisychess.org', 'play.daisychess.org', null)).toBe(true);
+    expect(isOriginAllowed('https://PLAY.DAISYCHESS.ORG', 'play.daisychess.org', null)).toBe(true);
     expect(isOriginAllowed('http://localhost:8080', 'localhost', null)).toBe(true); // docker compose
     expect(isOriginAllowed('http://example.com:8080', 'example.com:8080', null)).toBe(true);
-    expect(isOriginAllowed('https://evil.example', 'c.referee.at', null)).toBe(false);
-    expect(isOriginAllowed('https://c.referee.at.evil.example', 'c.referee.at', null)).toBe(false);
-    expect(isOriginAllowed('null', 'c.referee.at', null)).toBe(false); // sandboxed iframe / file://
-    expect(isOriginAllowed('https://c.referee.at', undefined, null)).toBe(false);
-    expect(isOriginAllowed('garbage', 'c.referee.at', null)).toBe(false);
+    expect(isOriginAllowed('https://evil.example', 'play.daisychess.org', null)).toBe(false);
+    expect(
+      isOriginAllowed('https://play.daisychess.org.evil.example', 'play.daisychess.org', null),
+    ).toBe(false);
+    expect(isOriginAllowed('null', 'play.daisychess.org', null)).toBe(false); // sandboxed iframe / file://
+    expect(isOriginAllowed('https://play.daisychess.org', undefined, null)).toBe(false);
+    expect(isOriginAllowed('garbage', 'play.daisychess.org', null)).toBe(false);
   });
   it('default policy: loopback origins may talk to loopback hosts on any port (dev server)', () => {
     expect(isOriginAllowed('http://localhost:5180', '127.0.0.1:8580', null)).toBe(true);
     expect(isOriginAllowed('http://127.0.0.1:5180', 'localhost:8580', null)).toBe(true);
     expect(isOriginAllowed('http://[::1]:5180', '127.0.0.1:8580', null)).toBe(true);
-    expect(isOriginAllowed('http://localhost:5180', 'c.referee.at', null)).toBe(false);
-    expect(isOriginAllowed('https://c.referee.at', '127.0.0.1:8580', null)).toBe(false);
+    expect(isOriginAllowed('http://localhost:5180', 'play.daisychess.org', null)).toBe(false);
+    expect(isOriginAllowed('https://play.daisychess.org', '127.0.0.1:8580', null)).toBe(false);
   });
   it('explicit list: exact normalised match only', () => {
-    const list = ['https://c.referee.at', 'http://localhost:8080'];
-    expect(isOriginAllowed('https://c.referee.at', 'anything', list)).toBe(true);
-    expect(isOriginAllowed('https://c.referee.at:443', 'anything', list)).toBe(true);
+    const list = ['https://play.daisychess.org', 'http://localhost:8080'];
+    expect(isOriginAllowed('https://play.daisychess.org', 'anything', list)).toBe(true);
+    expect(isOriginAllowed('https://play.daisychess.org:443', 'anything', list)).toBe(true);
     expect(isOriginAllowed('http://localhost:8080', 'anything', list)).toBe(true);
     expect(isOriginAllowed('http://localhost:8081', 'anything', list)).toBe(false);
-    expect(isOriginAllowed('http://c.referee.at', 'c.referee.at', list)).toBe(false); // scheme matters
-    expect(isOriginAllowed('https://evil.example', 'c.referee.at', list)).toBe(false);
+    expect(isOriginAllowed('http://play.daisychess.org', 'play.daisychess.org', list)).toBe(false); // scheme matters
+    expect(isOriginAllowed('https://evil.example', 'play.daisychess.org', list)).toBe(false);
   });
   it('wildcard allows everything', () => {
-    expect(isOriginAllowed('https://evil.example', 'c.referee.at', '*')).toBe(true);
-    expect(isOriginAllowed('null', 'c.referee.at', '*')).toBe(true);
+    expect(isOriginAllowed('https://evil.example', 'play.daisychess.org', '*')).toBe(true);
+    expect(isOriginAllowed('null', 'play.daisychess.org', '*')).toBe(true);
   });
 });

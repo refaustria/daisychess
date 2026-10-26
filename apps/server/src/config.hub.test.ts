@@ -65,7 +65,7 @@ describe('config: portal settings (M24-9)', () => {
   it('reads PUBLIC_ORIGIN, HUB_ADMIN_LICHESS, PORTAL_* and POOL_TOKENS_PER_OPERATOR', () => {
     expect(
       loadConfig({
-        PUBLIC_ORIGIN: 'https://C.Referee.at/',
+        PUBLIC_ORIGIN: 'https://Play.DaisyChess.org/',
         HUB_ADMIN_LICHESS: ' Bojan, other ,bojan,',
         PORTAL_LICHESS_PROXY: 'http://127.0.0.1:9999/egress?x=1',
         PORTAL_LICHESS_TIMEOUT_MS: '2000',
@@ -74,7 +74,7 @@ describe('config: portal settings (M24-9)', () => {
         POOL_TOKENS_PER_OPERATOR: '0',
       }).portal,
     ).toEqual({
-      publicOrigin: 'https://c.referee.at',
+      publicOrigin: 'https://play.daisychess.org',
       adminLichessIds: ['bojan', 'other'],
       lichessProxy: 'http://127.0.0.1:9999/egress/',
       lichessTimeoutMs: 2_000,
@@ -85,7 +85,7 @@ describe('config: portal settings (M24-9)', () => {
   });
 
   it('rejects malformed values', () => {
-    expect(() => loadConfig({ PUBLIC_ORIGIN: 'c.referee.at' })).toThrow(/PUBLIC_ORIGIN/);
+    expect(() => loadConfig({ PUBLIC_ORIGIN: 'play.daisychess.org' })).toThrow(/PUBLIC_ORIGIN/);
     expect(() => loadConfig({ PORTAL_LICHESS_PROXY: 'ftp://x/' })).toThrow(/PORTAL_LICHESS_PROXY/);
     expect(() => loadConfig({ PORTAL_LICHESS_PROXY: 'http://u:p@x/' })).toThrow(
       /PORTAL_LICHESS_PROXY/,

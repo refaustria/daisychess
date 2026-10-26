@@ -21,10 +21,14 @@ export const LICHESS_AUTHORIZE_URL = `${LICHESS_ORIGIN}/oauth`;
 export const LICHESS_TOKEN_URL = `${LICHESS_ORIGIN}/api/token`;
 export const LICHESS_ACCOUNT_URL = `${LICHESS_ORIGIN}/api/account`;
 export const LICHESS_TOKEN_TEST_URL = `${LICHESS_ORIGIN}/api/token/test`;
-/** Shown by lichess on the consent page (ADR-021; was `daisychess.c.referee.at`). */
+/** Shown by lichess on the consent page. */
 export const LICHESS_CLIENT_ID = 'play.daisychess.org';
 /** Requested at login so live games can use the same token (the explorer needs no scope). */
-export const LICHESS_SCOPES: readonly string[] = ['board:play', 'challenge:read', 'challenge:write'];
+export const LICHESS_SCOPES: readonly string[] = [
+  'board:play',
+  'challenge:read',
+  'challenge:write',
+];
 /** Where to create a personal access token; lichess prefills the scopes and description from the query. */
 export const LICHESS_TOKEN_CREATE_URL = `${LICHESS_ORIGIN}/account/oauth/token/create?${LICHESS_SCOPES.map((x) => `scopes[]=${x}`).join('&')}&description=DaisyChess`;
 export const AUTH_STORAGE_KEY = 'daisychess.lichess';
@@ -86,9 +90,17 @@ function readStored(): StoredAuth | null {
     const raw = globalThis.localStorage?.getItem(AUTH_STORAGE_KEY);
     if (!raw) return null;
     const v = JSON.parse(raw) as Partial<Record<keyof StoredAuth, unknown>>;
-    if (typeof v.token !== 'string' || !v.token || typeof v.username !== 'string' || !v.username) return null;
-    const scopes = Array.isArray(v.scopes) ? v.scopes.filter((s): s is string => typeof s === 'string') : [];
-    const out: StoredAuth = { token: v.token, username: v.username, scopes, source: v.source === 'token' ? 'token' : 'oauth' };
+    if (typeof v.token !== 'string' || !v.token || typeof v.username !== 'string' || !v.username)
+      return null;
+    const scopes = Array.isArray(v.scopes)
+      ? v.scopes.filter((s): s is string => typeof s === 'string')
+      : [];
+    const out: StoredAuth = {
+      token: v.token,
+      username: v.username,
+      scopes,
+      source: v.source === 'token' ? 'token' : 'oauth',
+    };
     if (typeof v.expiresAt === 'number') {
       if (v.expiresAt <= Date.now()) return null;
       out.expiresAt = v.expiresAt;
@@ -113,7 +125,12 @@ function readPending(): PendingLogin | null {
     const raw = globalThis.sessionStorage?.getItem(PENDING_STORAGE_KEY);
     if (!raw) return null;
     const v = JSON.parse(raw) as Partial<Record<keyof PendingLogin, unknown>>;
-    if (typeof v.verifier !== 'string' || typeof v.state !== 'string' || typeof v.redirectUri !== 'string') return null;
+    if (
+      typeof v.verifier !== 'string' ||
+      typeof v.state !== 'string' ||
+      typeof v.redirectUri !== 'string'
+    )
+      return null;
     return { verifier: v.verifier, state: v.state, redirectUri: v.redirectUri };
   } catch {
     return null;
@@ -131,8 +148,22 @@ function clearPending(): void {
 function stateFromStored(a: StoredAuth | null): LichessAuthState {
   // Every field explicitly (setState merges): a stale username/token/error must not survive.
   return a
-    ? { status: 'authenticated', source: a.source, token: a.token, username: a.username, scopes: [...a.scopes], error: undefined }
-    : { status: 'anonymous', source: undefined, token: undefined, username: undefined, scopes: [], error: undefined };
+    ? {
+        status: 'authenticated',
+        source: a.source,
+        token: a.token,
+        username: a.username,
+        scopes: [...a.scopes],
+        error: undefined,
+      }
+    : {
+        status: 'anonymous',
+        source: undefined,
+        token: undefined,
+        username: undefined,
+        scopes: [],
+        error: undefined,
+      };
 }
 
 // --- test hooks ---------------------------------------------------------------------------------
@@ -161,7 +192,11 @@ export function redirectUri(): string {
   return `${globalThis.location.origin}${globalThis.location.pathname}`;
 }
 
-export function buildAuthorizeUrl(p: { challenge: string; state: string; redirectUri: string }): string {
+export function buildAuthorizeUrl(p: {
+  challenge: string;
+  state: string;
+  redirectUri: string;
+}): string {
   const q = new URLSearchParams({
     response_type: 'code',
     client_id: LICHESS_CLIENT_ID,
@@ -182,7 +217,11 @@ function cleanUrl(): void {
     const url = new URL(globalThis.location.href);
     for (const p of CALLBACK_PARAMS) url.searchParams.delete(p);
     const search = url.searchParams.toString();
-    globalThis.history.replaceState(globalThis.history.state, '', `${url.pathname}${search ? `?${search}` : ''}${url.hash}`);
+    globalThis.history.replaceState(
+      globalThis.history.state,
+      '',
+      `${url.pathname}${search ? `?${search}` : ''}${url.hash}`,
+    );
   } catch {
     /* history unavailable */
   }
@@ -195,7 +234,10 @@ function clip(s: string): string {
 
 class LoginError extends Error {}
 
-async function exchangeCode(code: string, pending: PendingLogin): Promise<{ token: string; scopes: string[]; expiresAt?: number }> {
+async function exchangeCode(
+  code: string,
+  pending: PendingLogin,
+): Promise<{ token: string; scopes: string[]; expiresAt?: number }> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -221,14 +263,28 @@ async function exchangeCode(code: string, pending: PendingLogin): Promise<{ toke
   }
   const o = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : {};
   if (!res.ok) {
-    const desc = typeof o.error_description === 'string' ? o.error_description : typeof o.error === 'string' ? o.error : '';
-    throw new LoginError(`lichess refused the login (HTTP ${res.status})${desc ? `: ${clip(desc)}` : ''}`);
+    const desc =
+      typeof o.error_description === 'string'
+        ? o.error_description
+        : typeof o.error === 'string'
+          ? o.error
+          : '';
+    throw new LoginError(
+      `lichess refused the login (HTTP ${res.status})${desc ? `: ${clip(desc)}` : ''}`,
+    );
   }
-  if (typeof o.access_token !== 'string' || !o.access_token) throw new LoginError('Unexpected response from lichess');
+  if (typeof o.access_token !== 'string' || !o.access_token)
+    throw new LoginError('Unexpected response from lichess');
   const scopes =
-    typeof o.scope === 'string' && o.scope.trim() ? o.scope.split(/[\s,]+/).filter(Boolean) : [...LICHESS_SCOPES];
-  const out: { token: string; scopes: string[]; expiresAt?: number } = { token: o.access_token, scopes };
-  if (typeof o.expires_in === 'number' && o.expires_in > 0) out.expiresAt = Date.now() + o.expires_in * 1000;
+    typeof o.scope === 'string' && o.scope.trim()
+      ? o.scope.split(/[\s,]+/).filter(Boolean)
+      : [...LICHESS_SCOPES];
+  const out: { token: string; scopes: string[]; expiresAt?: number } = {
+    token: o.access_token,
+    scopes,
+  };
+  if (typeof o.expires_in === 'number' && o.expires_in > 0)
+    out.expiresAt = Date.now() + o.expires_in * 1000;
   return out;
 }
 
@@ -266,7 +322,8 @@ async function testToken(token: string): Promise<{ scopes: string[]; expiresAt?:
   } catch {
     throw new LoginError('Could not reach lichess – check your connection and try again');
   }
-  if (res.status === 429) throw new LoginError('lichess is rate limiting token checks – try again in a minute');
+  if (res.status === 429)
+    throw new LoginError('lichess is rate limiting token checks – try again in a minute');
   if (!res.ok) throw new LoginError(`lichess could not check the token (HTTP ${res.status})`);
   let json: unknown;
   try {
@@ -278,7 +335,13 @@ async function testToken(token: string): Promise<{ scopes: string[]; expiresAt?:
   const entry = map[token];
   if (typeof entry !== 'object' || entry === null) throw new LoginError('Token invalid or expired');
   const o = entry as Record<string, unknown>;
-  const scopes = typeof o.scopes === 'string' ? o.scopes.split(',').map((x) => x.trim()).filter(Boolean) : [];
+  const scopes =
+    typeof o.scopes === 'string'
+      ? o.scopes
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : [];
   const out: { scopes: string[]; expiresAt?: number } = { scopes };
   if (typeof o.expires === 'number' && o.expires > 0) out.expiresAt = o.expires;
   return out;
@@ -287,7 +350,10 @@ async function testToken(token: string): Promise<{ scopes: string[]; expiresAt?:
 /** Best effort: revoke a token on lichess (logout, or a login that failed half-way). */
 async function revoke(token: string): Promise<void> {
   try {
-    await globalThis.fetch(LICHESS_TOKEN_URL, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await globalThis.fetch(LICHESS_TOKEN_URL, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
   } catch {
     /* offline or blocked: the token expires on its own; it is gone from this browser anyway */
   }
@@ -300,117 +366,133 @@ function errorText(error: string, description: string | null): string {
 
 // --- store --------------------------------------------------------------------------------------
 
-export const useLichessAuth: UseBoundStore<StoreApi<LichessAuthStore>> = create<LichessAuthStore>()((set, get) => {
-  const fail = (error: string): void => set({ status: 'error', error, token: undefined, username: undefined, scopes: [] });
+export const useLichessAuth: UseBoundStore<StoreApi<LichessAuthStore>> = create<LichessAuthStore>()(
+  (set, get) => {
+    const fail = (error: string): void =>
+      set({ status: 'error', error, token: undefined, username: undefined, scopes: [] });
 
-  const processCallback = async (): Promise<boolean> => {
-    let params: URLSearchParams;
-    try {
-      params = new URLSearchParams(globalThis.location.search);
-    } catch {
-      return false;
-    }
-    const code = params.get('code');
-    const state = params.get('state');
-    const error = params.get('error');
-    const pending = readPending();
-    // Only our own round trip: the redirect carries `state`, or we have a pending login.
-    if (error !== null && (state !== null || pending !== null)) {
+    const processCallback = async (): Promise<boolean> => {
+      let params: URLSearchParams;
+      try {
+        params = new URLSearchParams(globalThis.location.search);
+      } catch {
+        return false;
+      }
+      const code = params.get('code');
+      const state = params.get('state');
+      const error = params.get('error');
+      const pending = readPending();
+      // Only our own round trip: the redirect carries `state`, or we have a pending login.
+      if (error !== null && (state !== null || pending !== null)) {
+        clearPending();
+        cleanUrl();
+        fail(errorText(error, params.get('error_description')));
+        return true;
+      }
+      if (code === null || state === null) return false;
       clearPending();
       cleanUrl();
-      fail(errorText(error, params.get('error_description')));
-      return true;
-    }
-    if (code === null || state === null) return false;
-    clearPending();
-    cleanUrl();
-    if (!pending || pending.state !== state) {
-      fail('Login failed: the response from lichess did not match this login attempt. Please try again.');
-      return true;
-    }
-    set({ status: 'authorizing', error: undefined });
-    let token: string | undefined;
-    try {
-      const t = await exchangeCode(code, pending);
-      token = t.token;
-      const username = await fetchUsername(t.token);
-      const stored: StoredAuth = { token: t.token, username, scopes: t.scopes, source: 'oauth' };
-      if (t.expiresAt !== undefined) stored.expiresAt = t.expiresAt;
-      writeStored(stored);
-      set(stateFromStored(stored));
-    } catch (e) {
-      if (token) void revoke(token);
-      writeStored(null);
-      fail(e instanceof LoginError ? e.message : 'lichess login failed');
-    }
-    return true;
-  };
-
-  return {
-    ...stateFromStored(readStored()),
-
-    login: async () => {
+      if (!pending || pending.state !== state) {
+        fail(
+          'Login failed: the response from lichess did not match this login attempt. Please try again.',
+        );
+        return true;
+      }
       set({ status: 'authorizing', error: undefined });
-      const verifier = createVerifier();
-      const state = createState();
-      const uri = redirectUri();
+      let token: string | undefined;
       try {
-        globalThis.sessionStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify({ verifier, state, redirectUri: uri }));
-      } catch {
-        fail('Logging in needs session storage, which this browser blocks for the site');
-        return;
-      }
-      let challenge: string;
-      try {
-        challenge = await challengeS256(verifier);
-      } catch {
-        clearPending();
-        fail('Logging in needs a secure connection (https)');
-        return;
-      }
-      navigateImpl(buildAuthorizeUrl({ challenge, state, redirectUri: uri }));
-    },
-
-    loginWithToken: async (raw) => {
-      const token = raw.trim();
-      if (!token || /\s/.test(token)) {
-        const msg = 'Paste a single token without spaces or line breaks';
-        set({ status: 'error', error: msg });
-        throw new LoginError(msg);
-      }
-      const prev = get();
-      set({ status: 'authorizing', error: undefined });
-      try {
-        const info = await testToken(token);
-        const username = await fetchUsername(token);
-        const stored: StoredAuth = { token, username, scopes: info.scopes, source: 'token' };
-        if (info.expiresAt !== undefined) stored.expiresAt = info.expiresAt;
+        const t = await exchangeCode(code, pending);
+        token = t.token;
+        const username = await fetchUsername(t.token);
+        const stored: StoredAuth = { token: t.token, username, scopes: t.scopes, source: 'oauth' };
+        if (t.expiresAt !== undefined) stored.expiresAt = t.expiresAt;
         writeStored(stored);
         set(stateFromStored(stored));
       } catch (e) {
-        const msg = e instanceof LoginError ? e.message : 'Token login failed';
-        // A failed attempt leaves an existing login untouched.
-        if (prev.status === 'authenticated') set({ ...prev, error: undefined });
-        else set({ status: 'error', error: msg, token: undefined, username: undefined, scopes: [], source: undefined });
-        throw new LoginError(msg);
+        if (token) void revoke(token);
+        writeStored(null);
+        fail(e instanceof LoginError ? e.message : 'lichess login failed');
       }
-    },
+      return true;
+    };
 
-    logout: async () => {
-      const { token, source } = get();
-      writeStored(null);
-      clearPending();
-      set(stateFromStored(null));
-      // A pasted token was created by the user and may be in use elsewhere: only forget it here.
-      if (token && source !== 'token') await revoke(token);
-    },
+    return {
+      ...stateFromStored(readStored()),
 
-    handleCallback: () => {
-      callbackRun ??= processCallback();
-      return callbackRun;
-    },
-  };
-});
+      login: async () => {
+        set({ status: 'authorizing', error: undefined });
+        const verifier = createVerifier();
+        const state = createState();
+        const uri = redirectUri();
+        try {
+          globalThis.sessionStorage.setItem(
+            PENDING_STORAGE_KEY,
+            JSON.stringify({ verifier, state, redirectUri: uri }),
+          );
+        } catch {
+          fail('Logging in needs session storage, which this browser blocks for the site');
+          return;
+        }
+        let challenge: string;
+        try {
+          challenge = await challengeS256(verifier);
+        } catch {
+          clearPending();
+          fail('Logging in needs a secure connection (https)');
+          return;
+        }
+        navigateImpl(buildAuthorizeUrl({ challenge, state, redirectUri: uri }));
+      },
+
+      loginWithToken: async (raw) => {
+        const token = raw.trim();
+        if (!token || /\s/.test(token)) {
+          const msg = 'Paste a single token without spaces or line breaks';
+          set({ status: 'error', error: msg });
+          throw new LoginError(msg);
+        }
+        const prev = get();
+        set({ status: 'authorizing', error: undefined });
+        try {
+          const info = await testToken(token);
+          const username = await fetchUsername(token);
+          const stored: StoredAuth = { token, username, scopes: info.scopes, source: 'token' };
+          if (info.expiresAt !== undefined) stored.expiresAt = info.expiresAt;
+          writeStored(stored);
+          set(stateFromStored(stored));
+        } catch (e) {
+          const msg = e instanceof LoginError ? e.message : 'Token login failed';
+          // A failed attempt leaves an existing login untouched.
+          if (prev.status === 'authenticated') set({ ...prev, error: undefined });
+          else
+            set({
+              status: 'error',
+              error: msg,
+              token: undefined,
+              username: undefined,
+              scopes: [],
+              source: undefined,
+            });
+          throw new LoginError(msg);
+        }
+      },
+
+      logout: async () => {
+        const { token, source } = get();
+        writeStored(null);
+        clearPending();
+        set(stateFromStored(null));
+        // A pasted token was created by the user and may be in use elsewhere: only forget it here.
+        if (token && source !== 'token') await revoke(token);
+      },
+
+      handleCallback: () => {
+        callbackRun ??= processCallback();
+        return callbackRun;
+      },
+    };
+  },
+);
 
 // Another tab logged in or out: follow it.
 if (typeof window !== 'undefined') {

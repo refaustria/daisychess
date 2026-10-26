@@ -539,8 +539,8 @@ describe('WebSocket /ws', () => {
     });
 
     it('explicit list: only listed origins may connect', async () => {
-      const { url } = await start({ allowedOrigins: ['https://c.referee.at'] });
-      const listed = new WebSocket(url, { origin: 'https://c.referee.at' });
+      const { url } = await start({ allowedOrigins: ['https://play.daisychess.org'] });
+      const listed = new WebSocket(url, { origin: 'https://play.daisychess.org' });
       await new Promise<void>((resolve, reject) => {
         listed.once('open', resolve);
         listed.once('error', reject);

@@ -7,15 +7,15 @@ Two analysis backends are offered and can be switched at runtime:
 - **Browser mode** — Stockfish compiled to WebAssembly runs in a Web Worker on the user's machine. No server required.
 - **Server mode** — native Stockfish (and optionally other engines) runs on a dedicated machine and streams results over WebSocket. Stronger, faster, multi-threaded.
 
-> **License:** GPL-3.0-or-later (see [`LICENSE`](./LICENSE), third-party components in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)).
-> **Live instance:** <https://play.daisychess.org> (formerly c.referee.at, which now redirects) · **Community site:** <https://daisychess.org> · **Source:** <https://github.com/refaustria/daisychess>
+> **License:** GPL-3.0-or-later (see [`LICENSE`](./LICENSE), third-party components in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)), **except `apps/site`** (the community website), which is **MIT** (see [`apps/site/LICENSE`](./apps/site/LICENSE)) because the GSAP animation library it uses has a licence that is not GPL-compatible.
+> **Live instance:** <https://play.daisychess.org> · **Community site:** <https://daisychess.org> · **Source:** <https://github.com/refaustria/daisychess>
 > **Run your own:** a single host with nginx and systemd is described in [`deploy/README.md`](./deploy/README.md); a Docker Compose setup (web + engine server) is in [`docker/`](./docker/). Want to contribute? See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 > **For Claude Code:** this repository is run by an orchestrating Claude Code session that acts as project manager only. It does not implement features itself; it plans, delegates to sub-agents, reviews and integrates. See [`CLAUDE.md`](./CLAUDE.md) and the section *Working Model for Claude Code* below.
 
 ## Status
 
-All milestones M0–M10 are implemented (play, browser and server analysis, game review, play vs engine, online import, theming, hardening); the live app is https://play.daisychess.org (moved from c.referee.at in ADR-021; the old address hands browser settings over once and redirects). Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
+All milestones M0–M10 are implemented (play, browser and server analysis, game review, play vs engine, online import, theming, hardening); the live app is https://play.daisychess.org (ADR-021). Task-level status is in [`docs/PLAN.md`](./docs/PLAN.md), design decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (ADR-001..), the threat model in [`docs/SECURITY.md`](./docs/SECURITY.md), deployment in [`deploy/README.md`](./deploy/README.md) and `docker/`.
 
 | Area | State |
 |---|---|
@@ -295,7 +295,7 @@ docker compose -f docker/docker-compose.node.yml logs -f node    # "link: regist
 
 The hub is `apps/server` with `ROLE=hub`: everything the standalone server does, plus the `/link` endpoint for nodes, token routing, the shared pool, spot-checks, a SQLite store for operators, nodes and tokens, and the operator portal API. The portal itself is the static SPA `apps/portal`, served under `/portal/`.
 
-The public hub (ADR-021) runs the app and portal on **play.daisychess.org** (`PUBLIC_ORIGIN`) and takes node links on **wss://hub.daisychess.org/link** (`/link` on play.daisychess.org is an alias; the old `wss://c.referee.at/link` keeps working until its sunset date). Every URL is configurable (`PUBLIC_ORIGIN`, `ALLOWED_ORIGINS`, the nodes' `HUB_URL`), so a self-hosted hub uses its own names.
+The public hub (ADR-021) runs the app and portal on **play.daisychess.org** (`PUBLIC_ORIGIN`) and takes node links on **wss://hub.daisychess.org/link** (`/link` on play.daisychess.org is an alias). Every URL is configurable (`PUBLIC_ORIGIN`, `ALLOWED_ORIGINS`, the nodes' `HUB_URL`), so a self-hosted hub uses its own names.
 
 Required environment (all variables with defaults: [`apps/server/.env.example`](./apps/server/.env.example), section "ROLE=hub"):
 
@@ -381,7 +381,7 @@ Server configuration is read from the environment (see `apps/server/.env.example
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` / `HOST` | `8580` / `127.0.0.1` | listen address |
-| `ALLOWED_ORIGINS` | same host as the request | comma-separated `scheme://host[:port]` allowed to open `/ws`, or `*` (ADR-008); production sets `https://play.daisychess.org,https://c.referee.at` (the legacy origin until its sunset, ADR-021) |
+| `ALLOWED_ORIGINS` | same host as the request | comma-separated `scheme://host[:port]` allowed to open `/ws`, or `*` (ADR-008); production sets `https://play.daisychess.org` |
 | `MAX_SESSIONS` | `4` | global cap on leased engine instances |
 | `MAX_SESSIONS_PER_IP` | unset | per-client-address cap, must not exceed `MAX_SESSIONS` |
 | `MAX_SESSIONS_PER_CONNECTION`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_THREADS`, `MAX_HASH_MB`, `MAX_MOVETIME_MS` | see `.env.example` | per-request limits announced in `welcome.limits` |

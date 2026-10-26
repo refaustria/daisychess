@@ -1,20 +1,19 @@
 # Deployment: https://play.daisychess.org
 
 Single host (Debian 13), nginx + Let's Encrypt. See `docs/DECISIONS.md` ADR-001 (ports), ADR-002
-(hosting model), ADR-008 (security policies) and ADR-021 (move from c.referee.at to
+(hosting model), ADR-008 (security policies) and ADR-021 (move to
 daisychess.org); the threat model and hardening checklist are in `docs/SECURITY.md`.
 
-| What | Where |
-|---|---|
-| Web app build | `/var/www/play.daisychess.org` (owner `bojan:bojan`), `deploy/deploy-web.sh` |
-| Operator portal build | `/var/www/play.daisychess.org/portal/`, `deploy/deploy-portal.sh` |
+| What                      | Where                                                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Web app build             | `/var/www/play.daisychess.org` (owner `bojan:bojan`), `deploy/deploy-web.sh`                                                             |
+| Operator portal build     | `/var/www/play.daisychess.org/portal/`, `deploy/deploy-portal.sh`                                                                        |
 | Shared nginx declarations | `deploy/nginx/daisychess-common.conf` → `/etc/nginx/conf.d/daisychess-common.conf` (CSP maps, `log_format daisychess`, rate-limit zones) |
-| App vhost | `deploy/nginx/play.daisychess.org.conf` → `/etc/nginx/sites-available/play.daisychess.org` |
-| Hub link vhost | `deploy/nginx/hub.daisychess.org.conf` → `/etc/nginx/sites-available/hub.daisychess.org` (`/link`, `/health` only) |
-| Legacy vhost | `deploy/nginx/c.referee.at.conf` → `/etc/nginx/sites-available/c.referee.at` ("moved" page from `/var/www/c.referee.at-legacy`, `deploy/deploy-legacy.sh`) |
-| TLS cert | `/etc/letsencrypt/live/daisychess.org/` (daisychess.org, www, play, hub); legacy: `/etc/letsencrypt/live/c.referee.at/` |
-| Engine server | `127.0.0.1:8580`, proxied at `/ws`, `/link`, `/api/portal/` and `/health` (`/health/detail` is loopback-only) |
-| Server unit | `deploy/daisychess-server.service` (installed by `deploy/deploy-server.sh`) |
+| App vhost                 | `deploy/nginx/play.daisychess.org.conf` → `/etc/nginx/sites-available/play.daisychess.org`                                               |
+| Hub link vhost            | `deploy/nginx/hub.daisychess.org.conf` → `/etc/nginx/sites-available/hub.daisychess.org` (`/link`, `/health` only)                       |
+| TLS cert                  | `/etc/letsencrypt/live/daisychess.org/` (daisychess.org, www, play, hub)                                                                 |
+| Engine server             | `127.0.0.1:8580`, proxied at `/ws`, `/link`, `/api/portal/` and `/health` (`/health/detail` is loopback-only)                            |
+| Server unit               | `deploy/daisychess-server.service` (installed by `deploy/deploy-server.sh`)                                                              |
 
 The app sends `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` (multi-threaded WASM), plus CORP,
@@ -28,107 +27,6 @@ lineage exists). They declare no `map`, `log_format` or zone themselves: nginx r
 and a `log_format` must come before its first use, which `conf.d/` guarantees (Debian includes it
 before `sites-enabled/`). `node scripts/check-csp.mjs [live files…]` verifies all CSP copies.
 Always `sudo nginx -t` before `sudo systemctl reload nginx`.
-
-## Legacy c.referee.at (ADR-021)
-
-The app lived at https://c.referee.at until 2026-10. Browsers keep localStorage per origin, so the
-old name now serves a tiny "moved" page (`apps/web/legacy/`) whose script packs this origin's
-`daisychess.*` keys (settings incl. server token, lichess login, theme, trainer schedule, room
-seats, …; not the PKCE round trip) into the URL **fragment** and replaces the location with
-`https://play.daisychess.org/#migrate=<payload>`. The app imports them once on start
-(`apps/web/src/migrate/`): only from a `https://c.referee.at` referrer, only allow-listed keys with
-size caps, never over an existing key, fragment stripped with `replaceState`, one-time notice "Your
-settings were moved from c.referee.at". Above ~16 kB the page drops the largest non-essential keys
-(trainer schedule last) and the notice names what was not moved. Reviews cached in IndexedDB are
-not moved (token holders get them back from the server review store; others re-run them).
-
-```bash
-deploy/deploy-legacy.sh          # rsync apps/web/legacy/{index.html,moved.js,migrate-core.js,moved.css}
-                                 # to /var/www/c.referee.at-legacy/
-```
-
-Transition (until the **sunset date, to be set by the owner**; placeholder in
-`deploy/nginx/c.referee.at.conf`): `/ws`, `/link` and `/health` on c.referee.at are still
-proxied (open tabs, nodes with the old `HUB_URL`), `/assets/` is served from the last app build in
-`/var/www/c.referee.at/assets/` (do not delete it before the sunset), everything else is a 301 to
-the same path on play.daisychess.org. `ALLOWED_ORIGINS` keeps `https://c.referee.at` as its second
-entry until then.
-
-## Cut-over c.referee.at → play.daisychess.org (ADR-021, one-time)
-
-Preconditions: DNS for play.daisychess.org and hub.daisychess.org points at this host; the lineage
-`/etc/letsencrypt/live/daisychess.org/` covers daisychess.org, www, play and hub
-(`sudo certbot certificates`). Nothing below touches the running app until step 5.
-
-```bash
-cd /home/bojan/gitchess && git pull && pnpm install --frozen-lockfile && pnpm build
-pnpm lint && pnpm test && node scripts/check-csp.mjs
-
-# 1. web roots (the old /var/www/c.referee.at stays: its assets/ serve open tabs until the sunset)
-sudo install -d -o bojan -g bojan /var/www/play.daisychess.org /var/www/c.referee.at-legacy
-deploy/deploy-web.sh && deploy/deploy-portal.sh && deploy/deploy-legacy.sh
-
-# 2. back up the live nginx files
-sudo cp -a /etc/nginx/sites-available/c.referee.at /etc/nginx/sites-available/c.referee.at.bak-$(date +%Y%m%d-%H%M%S)
-
-# 3. nginx: shared declarations, the three vhosts, the lichess egress proxy (if not yet installed).
-#    Install them together: the old c.referee.at file declares the same maps/zones/log format.
-sudo cp deploy/nginx/daisychess-common.conf /etc/nginx/conf.d/daisychess-common.conf
-sudo cp deploy/nginx/lichess-egress.conf.snippet /etc/nginx/conf.d/daisychess-lichess-egress.conf
-sudo cp deploy/nginx/play.daisychess.org.conf /etc/nginx/sites-available/play.daisychess.org
-sudo cp deploy/nginx/hub.daisychess.org.conf /etc/nginx/sites-available/hub.daisychess.org
-sudo cp deploy/nginx/c.referee.at.conf /etc/nginx/sites-available/c.referee.at
-sudo ln -s /etc/nginx/sites-available/play.daisychess.org /etc/nginx/sites-enabled/play.daisychess.org
-sudo ln -s /etc/nginx/sites-available/hub.daisychess.org /etc/nginx/sites-enabled/hub.daisychess.org
-node scripts/check-csp.mjs /etc/nginx/conf.d/daisychess-common.conf \
-  /etc/nginx/sites-available/play.daisychess.org /etc/nginx/sites-available/hub.daisychess.org \
-  /etc/nginx/sites-available/c.referee.at
-sudo nginx -t      # must pass before the reload; on failure restore the .bak and remove the new files
-
-# 4. server environment: edit apps/server/.env.production (keys only, values below)
-#    ALLOWED_ORIGINS=https://play.daisychess.org,https://c.referee.at
-#    PUBLIC_ORIGIN=https://play.daisychess.org
-#    ROLE=hub, HUB_ADMIN_LICHESS=<lichess name>   (unchanged if already set)
-#    TRUSTED_PROXIES stays unset (nginx connects from loopback)
-
-# 5. switch: reload nginx and restart the server (deploy-server.sh also installs the unit with
-#    the new ALLOWED_ORIGINS default; .env.production wins anyway)
-sudo systemctl reload nginx
-deploy/deploy-server.sh            # or: sudo systemctl restart daisychess-server
-```
-
-Verify:
-
-```bash
-curl -s https://play.daisychess.org/health                       # {"status":"ok",...}
-curl -s https://hub.daisychess.org/health                        # same
-curl -s https://c.referee.at/health                              # same (transition proxy)
-curl -sI https://play.daisychess.org/ | grep -iE 'content-security|strict-transport|cross-origin'
-curl -sI https://play.daisychess.org/portal/ | grep -i content-security   # portal policy
-curl -sI https://c.referee.at/ | grep -iE 'content-security|referrer-policy'   # legacy policy, strict-origin
-curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://c.referee.at/portal/   # 301 → play
-curl -s -o /dev/null -w '%{http_code}\n' https://hub.daisychess.org/    # 404
-curl -s -o /dev/null -w '%{http_code}\n' -H 'Origin: https://evil.example' -H 'Connection: Upgrade' \
-  -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-  https://play.daisychess.org/ws                                 # 403
-curl -s -o /dev/null -w '%{http_code}\n' -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
-  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-  https://hub.daisychess.org/link                                # 101 (then 1008 without node.hello)
-curl -s -o /dev/null -w '%{http_code}\n' -X POST https://play.daisychess.org/api/portal/tokens   # 401
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8581/lichess/api/account            # 401
-node deploy/ws-smoke.mjs                                         # wss://play.daisychess.org/ws
-node deploy/ws-smoke.mjs wss://c.referee.at/ws                   # transition proxy
-```
-
-Then in a browser that used c.referee.at: open `https://c.referee.at/` → lands on
-play.daisychess.org with the notice "Your settings were moved from c.referee.at"; Settings shows
-the server token. Portal: log in again at `https://play.daisychess.org/portal/` (the session
-cookie is per host). Tell node operators to set `HUB_URL=wss://hub.daisychess.org/link`; once
-fail2ban is installed, copy the updated jails (they read all three access logs).
-
-Rollback: restore `sites-available/c.referee.at` from the `.bak`, remove the two `sites-enabled`
-links and `conf.d/daisychess-common.conf`, `sudo nginx -t && sudo systemctl reload nginx`; the old
-build in `/var/www/c.referee.at` was never touched. Revert the two env keys and restart.
 
 ## Operator portal (`/portal/`)
 
@@ -196,7 +94,7 @@ DAISYCHESS_TOKEN="$(sed -n 's/^ACCESS_TOKEN=//p' apps/server/.env.production)" n
 `apps/server/.env.production` via `EnvironmentFile=-` (optional file, not
 created by the script; copy from `apps/server/.env.example`; currently
 `MAX_SESSIONS=4`, `MAX_THREADS=4`, `LOG_LEVEL=info`). The unit itself sets
-`ALLOWED_ORIGINS=https://play.daisychess.org,https://c.referee.at` (ADR-008: browser origins allowed on `/ws`; ADR-021: the legacy origin until its sunset;
+`ALLOWED_ORIGINS=https://play.daisychess.org` (ADR-008: browser origins allowed on `/ws`;
 other origins get 403 at the upgrade). Edit it, then
 `sudo systemctl restart daisychess-server`. Per-engine defaults and
 `maxInstances` live in `apps/server/engines.json`. Resource caps (`MemoryMax`,
@@ -266,21 +164,21 @@ open connections stay until they reconnect).
 Abuse-relevant limits (production values; all env vars are documented in
 `apps/server/.env.example`, the rationale in `docs/SECURITY.md`):
 
-| Limit | Value | Where | Over the limit |
-|---|---|---|---|
-| WebSocket connections per IP | 10 | nginx `limit_conn` | 429 |
-| Handshakes per IP | 5/s, burst 20 | nginx `limit_req` | 429 |
-| Engine sessions, global | 4 | `MAX_SESSIONS` | `no_capacity` |
-| Review reads / writes per connection | 20/s / 20 per 4 s | connection rate limits | `rate_limited` |
-| Review writes per IP and day | 500 | `REVIEW_PUT_PER_IP_PER_DAY` | `review.stored … quota` |
-| Review store on disk | 5 GB | `REVIEW_STORE_MAX_BYTES` | LRU eviction to 90 % |
-| Engine sessions per IP (all connections) | 2 | `MAX_SESSIONS_PER_IP` (client IP = `X-Real-IP` from loopback nginx) | `no_capacity` "too many sessions from your address" |
-| Sessions per connection | 2 | `MAX_SESSIONS_PER_CONNECTION` | `limit_exceeded` |
-| Instances per engine | 3 | `engines.json` `maxInstances` | `no_capacity` |
-| Lc0 processes, all Maia levels together | 3 | `MAIA_MAX_PROCESSES` (idle ones are replaced first) | `no_capacity` "all 3 process(es) of engine group "maia" are busy" |
-| Nodes per `analyze` | 10 000 (Maia entries: 1) | `MAX_NODES`, `engines.json` `maxNodes` | `limit_exceeded` |
-| Respawn after a crash | 0.5 s doubling to 30 s (±20 %), reset after 60 s up or a completed search; `degraded` after 10 | `ENGINE_CRASH_RESET_MS`, `ENGINE_MAX_CONSECUTIVE_CRASHES` | `no_capacity` "restarting after a crash" |
-| `analyze` / all messages | 20/s / 100/s per connection | server | `rate_limited` / close 1008 |
+| Limit                                    | Value                                                                                          | Where                                                               | Over the limit                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| WebSocket connections per IP             | 10                                                                                             | nginx `limit_conn`                                                  | 429                                                               |
+| Handshakes per IP                        | 5/s, burst 20                                                                                  | nginx `limit_req`                                                   | 429                                                               |
+| Engine sessions, global                  | 4                                                                                              | `MAX_SESSIONS`                                                      | `no_capacity`                                                     |
+| Review reads / writes per connection     | 20/s / 20 per 4 s                                                                              | connection rate limits                                              | `rate_limited`                                                    |
+| Review writes per IP and day             | 500                                                                                            | `REVIEW_PUT_PER_IP_PER_DAY`                                         | `review.stored … quota`                                           |
+| Review store on disk                     | 5 GB                                                                                           | `REVIEW_STORE_MAX_BYTES`                                            | LRU eviction to 90 %                                              |
+| Engine sessions per IP (all connections) | 2                                                                                              | `MAX_SESSIONS_PER_IP` (client IP = `X-Real-IP` from loopback nginx) | `no_capacity` "too many sessions from your address"               |
+| Sessions per connection                  | 2                                                                                              | `MAX_SESSIONS_PER_CONNECTION`                                       | `limit_exceeded`                                                  |
+| Instances per engine                     | 3                                                                                              | `engines.json` `maxInstances`                                       | `no_capacity`                                                     |
+| Lc0 processes, all Maia levels together  | 3                                                                                              | `MAIA_MAX_PROCESSES` (idle ones are replaced first)                 | `no_capacity` "all 3 process(es) of engine group "maia" are busy" |
+| Nodes per `analyze`                      | 10 000 (Maia entries: 1)                                                                       | `MAX_NODES`, `engines.json` `maxNodes`                              | `limit_exceeded`                                                  |
+| Respawn after a crash                    | 0.5 s doubling to 30 s (±20 %), reset after 60 s up or a completed search; `degraded` after 10 | `ENGINE_CRASH_RESET_MS`, `ENGINE_MAX_CONSECUTIVE_CRASHES`           | `no_capacity` "restarting after a crash"                          |
+| `analyze` / all messages                 | 20/s / 100/s per connection                                                                    | server                                                              | `rate_limited` / close 1008                                       |
 
 `/health/detail` shows per engine `crashes`, `backoffUntil` and `degraded`, and
 `clientAddresses` (addresses currently holding engine sessions).
@@ -324,8 +222,7 @@ browser blocks it until nginx is updated. Check repo and live file with
 
 ```bash
 node scripts/check-csp.mjs /etc/nginx/conf.d/daisychess-common.conf \
-  /etc/nginx/sites-available/play.daisychess.org /etc/nginx/sites-available/hub.daisychess.org \
-  /etc/nginx/sites-available/c.referee.at
+  /etc/nginx/sites-available/play.daisychess.org /etc/nginx/sites-available/hub.daisychess.org
 ```
 
 which prints the expected `default "…";` line on a mismatch (CI runs it for
@@ -336,13 +233,13 @@ show in the browser console) and keep `add_header Content-Security-Policy
 "frame-ancestors 'none'" always;` next to it, since `frame-ancestors` is
 ignored in report-only mode.
 
-**HSTS.** One year, per host (play, hub, c.referee.at), no `includeSubDomains`. Browsers cache it: going back to plain
+**HSTS.** One year, per host (play, hub), no `includeSubDomains`. Browsers cache it: going back to plain
 HTTP needs `max-age=0` served over HTTPS for a while first.
 
 ## Abuse logging and fail2ban
 
 nginx writes `/var/log/nginx/play.daisychess.org.access.log`,
-`hub.daisychess.org.access.log` and (legacy) `c.referee.at.access.log` (and `.error.log`) in the
+`hub.daisychess.org.access.log` (and `.error.log`) in the
 `daisychess` format: address, time, method, path **without query string**,
 status, bytes, `rt=` request time, `urt=` upstream time, `Origin`, User-Agent.
 No bodies. The stock `/etc/logrotate.d/nginx` rotates it (daily, 14 days).
@@ -385,12 +282,11 @@ Handled automatically by certbot's systemd timer (`certbot.timer`). Check with:
 systemctl list-timers certbot.timer
 sudo certbot certificates
 sudo certbot renew --dry-run --cert-name daisychess.org
-sudo certbot renew --dry-run --cert-name c.referee.at     # legacy, until the sunset
 ```
 
 ## Hub runbook (`ROLE=hub`)
 
-Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/DECISIONS.md` ADR-020 §9 and its addenda, `docs/SECURITY.md` §6, all variables in `apps/server/.env.example` (section 4). Public names (ADR-021): app and portal on `https://play.daisychess.org` (`PUBLIC_ORIGIN`), node link on `wss://hub.daisychess.org/link` (alias `/link` on play; legacy `wss://c.referee.at/link` until the sunset). Use `PUBLIC_ORIGIN` and nodes' `HUB_URL`, never hard-code them.
+Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/DECISIONS.md` ADR-020 §9 and its addenda, `docs/SECURITY.md` §6, all variables in `apps/server/.env.example` (section 4). Public names (ADR-021): app and portal on `https://play.daisychess.org` (`PUBLIC_ORIGIN`), node link on `wss://hub.daisychess.org/link` (alias `/link` on play). Use `PUBLIC_ORIGIN` and nodes' `HUB_URL`, never hard-code them.
 
 ### Deploy order
 
@@ -402,11 +298,12 @@ Operations for the hub of ADR-020 (server + `/link` + portal). Reference: `docs/
    ```bash
    ROLE=hub
    PUBLIC_ORIGIN=https://play.daisychess.org
-   ALLOWED_ORIGINS=https://play.daisychess.org,https://c.referee.at
+   ALLOWED_ORIGINS=https://play.daisychess.org
    HUB_ADMIN_LICHESS=<your lichess username>
    ```
 
    `hub.sqlite` is created in `apps/server/data/` (already in the unit's `ReadWritePaths`, mode 700). The unit needs no other change: the only outbound call (lichess login) goes through the loopback proxy. Needs Node >= 22.13 (`node:sqlite`).
+
 5. **Verify**: `curl -s http://127.0.0.1:8580/health/detail` shows `role: hub`; `node deploy/ws-smoke.mjs` (with the legacy token) still works; `node scripts/node-smoke-hub.mjs` is the fake hub used by the node image smoke test; register a real node from the portal to test `/link`.
 
 ### Minting the first tokens and retiring `ACCESS_TOKEN`
@@ -449,13 +346,13 @@ Set `ROLE=standalone` (or remove the line) in `.env.production` and `sudo system
 
 ### Retention and logs
 
-| What | Where | Retention |
-|---|---|---|
-| Application log | journald (`journalctl -u daisychess-server`) | at `info` no raw IPs (daily-salted `ipHash`), no tokens or FENs. Retention is the host's journald setting; ADR-020 asks for 7 days (`MaxRetentionSec=7day`), **not configured by the repo: check `journalctl --disk-usage` and `/etc/systemd/journald.conf`** |
-| nginx access log (raw IPs, no query strings, no bodies) | `/var/log/nginx/{play,hub}.daisychess.org.access.log` (+ legacy `c.referee.at.access.log`) | stock `/etc/logrotate.d/nginx`: daily, 14 days (see "Abuse logging") |
-| `usage_daily` (per token and node and day, no IPs) | `hub.sqlite` | `USAGE_RETENTION_DAYS`, default 90 |
-| Spot-check rows | `hub.sqlite` | 24 hours |
-| Portal sessions | `hub.sqlite` | 30 days or until logout |
+| What                                                    | Where                                                 | Retention                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application log                                         | journald (`journalctl -u daisychess-server`)          | at `info` no raw IPs (daily-salted `ipHash`), no tokens or FENs. Retention is the host's journald setting; ADR-020 asks for 7 days (`MaxRetentionSec=7day`), **not configured by the repo: check `journalctl --disk-usage` and `/etc/systemd/journald.conf`** |
+| nginx access log (raw IPs, no query strings, no bodies) | `/var/log/nginx/{play,hub}.daisychess.org.access.log` | stock `/etc/logrotate.d/nginx`: daily, 14 days (see "Abuse logging")                                                                                                                                                                                          |
+| `usage_daily` (per token and node and day, no IPs)      | `hub.sqlite`                                          | `USAGE_RETENTION_DAYS`, default 90                                                                                                                                                                                                                            |
+| Spot-check rows                                         | `hub.sqlite`                                          | 24 hours                                                                                                                                                                                                                                                      |
+| Portal sessions                                         | `hub.sqlite`                                          | 30 days or until logout                                                                                                                                                                                                                                       |
 
 ### Troubleshooting
 
@@ -466,7 +363,7 @@ Set `ROLE=standalone` (or remove the line) in `.env.production` and `sudo system
 ## Run a community node
 
 A **node** lends the engines of one machine (Stockfish, and Lc0 with the Maia nets) to a DaisyChess
-**hub** (ADR-020). It only connects *out* to the hub over one WebSocket (`HUB_URL`); it opens no
+**hub** (ADR-020). It only connects _out_ to the hub over one WebSocket (`HUB_URL`); it opens no
 port, needs no TLS certificate and no domain, and works behind NAT. Players reach it through the
 hub with the tokens you issue in the operator portal (private node) or through the shared pool.
 
@@ -509,17 +406,17 @@ docker compose -f docker/docker-compose.node.yml exec node \
 
 ### Configuration (`docker/.env.node`)
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `HUB_URL` | `wss://hub.daisychess.org/link` | Hub link endpoint: the public hub (ADR-021; the image's entrypoint applies this default when unset). Nodes still on `wss://c.referee.at/link` keep working until its sunset date. `wss://` only; `ws://` to a non-loopback host needs `DAISYCHESS_INSECURE=1` (test setups). |
-| `NODE_TOKEN` | – (required) | `dcn_<id>_<secret>` from the portal, shown once. Or `NODE_TOKEN_FILE=/run/secrets/…` (compose secret) so the token is not in the container env. |
-| `NODE_NAME` | – | Local name in logs and `/health/detail` (players see the portal name). |
-| `NODE_POOL` | `off` | `on` offers the node to the shared pool (the portal switch must allow it too). |
-| `MAX_SESSIONS` / `NODE_MAX_SESSIONS` | `2` | Engine processes running at once; the hub never routes more. |
-| `MAX_THREADS`, `MAX_HASH_MB`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_MOVETIME_MS` | see example | Per-search caps announced to the hub and enforced again by the node. |
-| `MAIA`, `MAIA_MAX_PROCESSES` | `on`, `2` | Human-like engines; `off` on tiny machines. Automatically `off` in a `WITH_MAIA=0` image. |
-| `NODE_CPUS`, `NODE_MEMORY` | `2`, `1g` | Compose resource limits (`cpus`, `mem_limit`). |
-| `NODE_IMAGE` | `ghcr.io/refaustria/daisychess-node:latest` | Image to run; pin a version or digest on unattended hosts. |
+| Variable                                                                    | Default                                     | Meaning                                                                                                                                                                                         |
+| --------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HUB_URL`                                                                   | `wss://hub.daisychess.org/link`             | Hub link endpoint: the public hub (ADR-021; the image's entrypoint applies this default when unset). `wss://` only; `ws://` to a non-loopback host needs `DAISYCHESS_INSECURE=1` (test setups). |
+| `NODE_TOKEN`                                                                | – (required)                                | `dcn_<id>_<secret>` from the portal, shown once. Or `NODE_TOKEN_FILE=/run/secrets/…` (compose secret) so the token is not in the container env.                                                 |
+| `NODE_NAME`                                                                 | –                                           | Local name in logs and `/health/detail` (players see the portal name).                                                                                                                          |
+| `NODE_POOL`                                                                 | `off`                                       | `on` offers the node to the shared pool (the portal switch must allow it too).                                                                                                                  |
+| `MAX_SESSIONS` / `NODE_MAX_SESSIONS`                                        | `2`                                         | Engine processes running at once; the hub never routes more.                                                                                                                                    |
+| `MAX_THREADS`, `MAX_HASH_MB`, `MAX_DEPTH`, `MAX_MULTIPV`, `MAX_MOVETIME_MS` | see example                                 | Per-search caps announced to the hub and enforced again by the node.                                                                                                                            |
+| `MAIA`, `MAIA_MAX_PROCESSES`                                                | `on`, `2`                                   | Human-like engines; `off` on tiny machines. Automatically `off` in a `WITH_MAIA=0` image.                                                                                                       |
+| `NODE_CPUS`, `NODE_MEMORY`                                                  | `2`, `1g`                                   | Compose resource limits (`cpus`, `mem_limit`).                                                                                                                                                  |
+| `NODE_IMAGE`                                                                | `ghcr.io/refaustria/daisychess-node:latest` | Image to run; pin a version or digest on unattended hosts.                                                                                                                                      |
 
 Sizing: Stockfish uses up to `MAX_THREADS` cores per search and `MAX_SESSIONS` searches run at
 once, so keep `MAX_SESSIONS × MAX_THREADS ≤ NODE_CPUS`; memory needs about
@@ -528,7 +425,7 @@ machine you also use: leave a core free and lower `NODE_CPUS`; the container can
 
 ### CPU notes
 
-- **amd64:** the image ships the official Stockfish 19 *universal* binary (sha256-verified
+- **amd64:** the image ships the official Stockfish 19 _universal_ binary (sha256-verified
   release asset), which picks the fastest instruction set at start — x86-64, SSE4.1/POPCNT,
   AVX2, BMI2, AVX-VNNI, AVX-512, VNNI-512, AVX-512 ICL. CPUs **without AVX2** (older or
   virtualised ones, like this project's own host, ADR-003) work, just slower. The container

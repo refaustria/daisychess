@@ -8,7 +8,7 @@ import { challengeS256, createState, createVerifier } from './pkce';
  * (public client, no secret). The portal needs no scope: the hub only asks lichess who the token
  * belongs to (`GET /api/account` works without scopes).
  *
- * Client id: its own (`portal.daisychess.org`; was `daisychess-portal.c.referee.at` before ADR-021),
+ * Client id: its own (`portal.daisychess.org`),
  * not the app's (`play.daisychess.org`). lichess shows the id on the
  * consent page, so operators see that they log in to the portal and not to the chess app, and a
  * leaked portal id cannot be mistaken for the app's. lichess needs no client registration.
@@ -40,7 +40,11 @@ export function redirectUri(): string {
   return `${globalThis.location.origin}${globalThis.location.pathname}`;
 }
 
-export function buildAuthorizeUrl(p: { challenge: string; state: string; redirectUri: string }): string {
+export function buildAuthorizeUrl(p: {
+  challenge: string;
+  state: string;
+  redirectUri: string;
+}): string {
   const q = new URLSearchParams({
     response_type: 'code',
     client_id: PORTAL_CLIENT_ID,
@@ -59,7 +63,10 @@ export async function startLogin(deps: LichessDeps = {}): Promise<void> {
   const state = createState();
   const uri = redirectUri();
   try {
-    globalThis.sessionStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify({ verifier, state, redirectUri: uri }));
+    globalThis.sessionStorage.setItem(
+      PENDING_STORAGE_KEY,
+      JSON.stringify({ verifier, state, redirectUri: uri }),
+    );
   } catch {
     throw new Error('Logging in needs session storage, which this browser blocks for the site.');
   }
@@ -78,7 +85,12 @@ function readPending(): Pending | null {
     const raw = globalThis.sessionStorage.getItem(PENDING_STORAGE_KEY);
     if (!raw) return null;
     const v = JSON.parse(raw) as Partial<Record<keyof Pending, unknown>>;
-    if (typeof v.verifier !== 'string' || typeof v.state !== 'string' || typeof v.redirectUri !== 'string') return null;
+    if (
+      typeof v.verifier !== 'string' ||
+      typeof v.state !== 'string' ||
+      typeof v.redirectUri !== 'string'
+    )
+      return null;
     return { verifier: v.verifier, state: v.state, redirectUri: v.redirectUri };
   } catch {
     return null;
@@ -100,7 +112,11 @@ function cleanUrl(): void {
     const url = new URL(globalThis.location.href);
     for (const p of CALLBACK_PARAMS) url.searchParams.delete(p);
     const search = url.searchParams.toString();
-    globalThis.history.replaceState(globalThis.history.state, '', `${url.pathname}${search ? `?${search}` : ''}`);
+    globalThis.history.replaceState(
+      globalThis.history.state,
+      '',
+      `${url.pathname}${search ? `?${search}` : ''}`,
+    );
   } catch {
     /* history unavailable */
   }
@@ -110,7 +126,11 @@ function clip(s: string): string {
   return s.replace(/\s+/g, ' ').trim().slice(0, 160);
 }
 
-async function exchangeCode(doFetch: typeof fetch, code: string, pending: Pending): Promise<string> {
+async function exchangeCode(
+  doFetch: typeof fetch,
+  code: string,
+  pending: Pending,
+): Promise<string> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -136,26 +156,35 @@ async function exchangeCode(doFetch: typeof fetch, code: string, pending: Pendin
   }
   const o = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : {};
   if (!res.ok) {
-    const desc = typeof o.error_description === 'string' ? o.error_description : typeof o.error === 'string' ? o.error : '';
-    throw new Error(`lichess refused the login (HTTP ${res.status})${desc ? `: ${clip(desc)}` : ''}`);
+    const desc =
+      typeof o.error_description === 'string'
+        ? o.error_description
+        : typeof o.error === 'string'
+          ? o.error
+          : '';
+    throw new Error(
+      `lichess refused the login (HTTP ${res.status})${desc ? `: ${clip(desc)}` : ''}`,
+    );
   }
-  if (typeof o.access_token !== 'string' || !o.access_token) throw new Error('Unexpected response from lichess.');
+  if (typeof o.access_token !== 'string' || !o.access_token)
+    throw new Error('Unexpected response from lichess.');
   return o.access_token;
 }
 
 /** Best effort: the hub needed the token once; lichess forgets it now. */
 async function revoke(doFetch: typeof fetch, token: string): Promise<void> {
   try {
-    await doFetch(LICHESS_TOKEN_URL, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await doFetch(LICHESS_TOKEN_URL, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
   } catch {
     /* offline or blocked: the token expires on its own */
   }
 }
 
 export type CallbackResult =
-  | { kind: 'none' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ok'; me: Me };
+  { kind: 'none' } | { kind: 'error'; message: string } | { kind: 'ok'; me: Me };
 
 let callbackRun: Promise<CallbackResult> | undefined;
 
@@ -168,7 +197,10 @@ export function resetCallbackGuard(): void {
  * Processes `?code=&state=` (or `?error=`) if this page load is the redirect back from lichess.
  * Runs at most once per page load (React StrictMode mounts twice); later calls get the same result.
  */
-export function completeLoginFromUrl(api: PortalApi, deps: LichessDeps = {}): Promise<CallbackResult> {
+export function completeLoginFromUrl(
+  api: PortalApi,
+  deps: LichessDeps = {},
+): Promise<CallbackResult> {
   callbackRun ??= run(api, deps);
   return callbackRun;
 }
@@ -193,7 +225,11 @@ async function run(api: PortalApi, deps: LichessDeps): Promise<CallbackResult> {
   clearPending();
   cleanUrl();
   if (!pending || pending.state !== state) {
-    return { kind: 'error', message: 'Login failed: the response from lichess did not match this login attempt. Please try again.' };
+    return {
+      kind: 'error',
+      message:
+        'Login failed: the response from lichess did not match this login attempt. Please try again.',
+    };
   }
   let token: string | undefined;
   try {
@@ -201,7 +237,10 @@ async function run(api: PortalApi, deps: LichessDeps): Promise<CallbackResult> {
     const me = await api.login(token);
     return { kind: 'ok', me };
   } catch (e) {
-    return { kind: 'error', message: e instanceof Error && !('status' in e) ? e.message : errorText(e) };
+    return {
+      kind: 'error',
+      message: e instanceof Error && !('status' in e) ? e.message : errorText(e),
+    };
   } finally {
     if (token) await revoke(doFetch, token);
     token = undefined;
