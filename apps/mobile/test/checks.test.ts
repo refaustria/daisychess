@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkDist, checkLicenceChunk } from '../scripts/check-dist.mjs';
+import { checkDist, checkLicenceChunk, STARTER_MAX_BYTES } from '../scripts/check-dist.mjs';
 import { checkSmokeResult, findSmokeResult } from '../scripts/check-smoke-log.mjs';
 
 const CSP = "default-src 'self'; script-src 'self'";
@@ -53,6 +53,16 @@ describe('checkDist', () => {
     const proto = html(`${meta}<script src="//cdn.example/x.js"></script>`);
     expect(checkDist({ ...ok, indexHtml: proto })[0]).toMatch(/absolute asset URL/);
     expect(checkDist({ ...ok, totalBytes: 50e6 })[0]).toMatch(/budget/);
+  });
+
+  it('asserts the puzzle starter set: present and at most 1 MB raw (ADR-023 §4)', () => {
+    expect(STARTER_MAX_BYTES).toBe(1_000_000);
+    expect(checkDist({ ...ok, starterBytes: 858_236 })).toEqual([]);
+    expect(checkDist({ ...ok, starterBytes: STARTER_MAX_BYTES })).toEqual([]);
+    expect(checkDist({ ...ok, starterBytes: STARTER_MAX_BYTES + 1 })).toEqual([
+      'puzzle starter set is 1000001 bytes, limit 1000000 (ADR-023 §4)',
+    ]);
+    expect(checkDist({ ...ok, starterBytes: null })[0]).toMatch(/starter set missing/);
   });
 });
 

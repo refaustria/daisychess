@@ -60,9 +60,9 @@ describe('App', () => {
     render(<App />);
     const list = screen.getByRole('tablist', { name: 'Game panels' });
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(9);
+    expect(tabs).toHaveLength(10);
     expect(tabs.filter((t) => t.tabIndex === 0)).toHaveLength(1);
-    // Layout of a narrow panel: 9 tabs of 60px in a 200px wide row (jsdom has no layout).
+    // Layout of a narrow panel: 10 tabs of 60px in a 200px wide row (jsdom has no layout).
     const define = (el: HTMLElement, props: Record<string, number>) => {
       for (const [k, v] of Object.entries(props))
         Object.defineProperty(el, k, { configurable: true, value: v });
@@ -74,7 +74,7 @@ describe('App', () => {
     const settings = screen.getByRole('tab', { name: 'Settings' });
     expect(settings.getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(settings);
-    expect(list.scrollLeft).toBe(8 * 60 + 60 - 200);
+    expect(list.scrollLeft).toBe(9 * 60 + 60 - 200);
     fireEvent.keyDown(settings, { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Moves' }).getAttribute('aria-selected')).toBe('true');
     expect(list.scrollLeft).toBe(0);

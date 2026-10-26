@@ -156,6 +156,9 @@ export default defineConfig(({ mode }) => ({
       '@daisychess/engine-core': fileURLToPath(
         new URL('../../packages/engine-core/src/index.ts', import.meta.url),
       ),
+      '@daisychess/puzzles': fileURLToPath(
+        new URL('../../packages/puzzles/src/index.ts', import.meta.url),
+      ),
     },
   },
   server: { port: 5180, strictPort: true, headers: isolation },

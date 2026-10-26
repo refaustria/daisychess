@@ -6,6 +6,11 @@ interface ImportMetaEnv {
    * `wss://play.daisychess.org/ws` by default; undefined in the web build.
    */
   readonly VITE_DEFAULT_SERVER_URL?: string;
+  /**
+   * Puzzle files of the apps (ADR-023 §5): `https://play.daisychess.org/puzzles/v1/` when unset;
+   * the web build always uses its own origin's `/puzzles/v1/`.
+   */
+  readonly VITE_PUZZLES_URL?: string;
   /** `1`: run the native smoke check on start (CI only, `src/platform/smoke.ts`). */
   readonly VITE_MOBILE_SMOKE?: string;
   /**

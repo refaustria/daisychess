@@ -1,0 +1,137 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem 0.25rem;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.panel p {
+  margin: 0;
+}
+
+.panel button {
+  min-height: 36px;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.panel button:focus-visible,
+.select:focus-visible,
+.sanInput:focus-visible,
+.panel a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.panel button:disabled,
+.sanInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.panel .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.ratingRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rating {
+  flex: 1 1 auto;
+}
+
+.up {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.down {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.select,
+.sanInput {
+  min-height: 36px;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.status {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.message {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.sanForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sanInput {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.note,
+.meta,
+.footer {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.meta a {
+  color: var(--accent);
+}
+
+.footer {
+  margin-top: 0.4rem;
+}

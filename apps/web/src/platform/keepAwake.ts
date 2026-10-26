@@ -1,11 +1,13 @@
 /**
- * Keep the screen on while a game, a live game, a friend game or an openings drill runs (M26-4).
+ * Keep the screen on while a game, a live game, a friend game, an openings drill or a puzzle runs
+ * (M26-4, M30-4).
  * No-op on the web.
  */
 import { useLiveStore } from '../live/liveStore';
 import { usePlayStore } from '../play/playStore';
 import { isRoomLocked, useRoomStore } from '../room/roomStore';
 import { useDrillStore } from '../trainer/drillStore';
+import { usePuzzleStore } from '../puzzles/puzzleStore';
 import { loadKeepAwake, type KeepAwakePort } from './native';
 
 /** True while something that needs the screen on is running. */
@@ -14,7 +16,8 @@ export function shouldKeepAwake(): boolean {
     usePlayStore.getState().mode === 'playing' ||
     useLiveStore.getState().status === 'playing' ||
     isRoomLocked(useRoomStore.getState()) ||
-    useDrillStore.getState().status === 'running'
+    useDrillStore.getState().status === 'running' ||
+    usePuzzleStore.getState().status === 'running'
   );
 }
 
@@ -35,6 +38,7 @@ export function startKeepAwake(
     useLiveStore.subscribe(update),
     useRoomStore.subscribe(update),
     useDrillStore.subscribe(update),
+    usePuzzleStore.subscribe(update),
   ];
   update();
   return () => {

@@ -83,8 +83,24 @@ const SMOKE_SERVER_URL = /^ws:\/\/(?:127\.0\.0\.1|localhost):\d{1,5}\/ws$/;
 export const MOBILE_HUB_SOURCE = 'wss:';
 
 /**
+ * Puzzle data (ADR-023 §5): the apps fetch `https://play.daisychess.org/puzzles/v1/` (shards and
+ * index.json) from their own origin. Only the app's meta policy needs it; the web app fetches the
+ * same files from its own origin ('self'), so PRODUCTION_CSP is unchanged.
+ */
+export const MOBILE_PUZZLES_SOURCE = `https://${APP_HOST}`;
+
+/**
+ * Origins of the mobile app WebViews (ADR-022 §4): Android serves the bundle from
+ * `https://app.daisychess.org`, iOS from `capacitor://app.daisychess.org`. nginx echoes exactly
+ * these in Access-Control-Allow-Origin for the puzzle data (`$daisychess_app_cors` in
+ * deploy/nginx/daisychess-common.conf, verified by scripts/check-csp.mjs).
+ */
+export const MOBILE_APP_ORIGINS = ['https://app.daisychess.org', 'capacitor://app.daisychess.org'];
+
+/**
  * The meta policy of the mobile bundle (`vite build --mode mobile`, checked by
- * `apps/mobile/scripts/check-dist.mjs`): {@link metaCsp} with `wss:` ({@link MOBILE_HUB_SOURCE}) added to connect-src, plus — only in a CI smoke build
+ * `apps/mobile/scripts/check-dist.mjs`): {@link metaCsp} with `wss:` ({@link MOBILE_HUB_SOURCE})
+ * and the puzzle host ({@link MOBILE_PUZZLES_SOURCE}) added to connect-src, plus — only in a CI smoke build
  * (`VITE_MOBILE_SMOKE=1`) with `VITE_MOBILE_SMOKE_SERVER_URL` set — that loopback server's origin
  * in connect-src. Throws for any other smoke server URL.
  * @param {Record<string, string | undefined>} [env]
@@ -94,7 +110,13 @@ export function mobileMetaCsp(env = process.env) {
   if (url && !SMOKE_SERVER_URL.test(url)) {
     throw new Error(`VITE_MOBILE_SMOKE_SERVER_URL must be ws://127.0.0.1:<port>/ws, got ${url}`);
   }
-  return metaCsp(buildCsp([MOBILE_HUB_SOURCE, ...(url ? [url.slice(0, -'/ws'.length)] : [])]));
+  return metaCsp(
+    buildCsp([
+      MOBILE_HUB_SOURCE,
+      MOBILE_PUZZLES_SOURCE,
+      ...(url ? [url.slice(0, -'/ws'.length)] : []),
+    ]),
+  );
 }
 
 /** hub.daisychess.org serves no documents, only /link (WebSocket) and /health (JSON). */

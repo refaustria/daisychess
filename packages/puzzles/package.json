@@ -18,10 +18,11 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/node": "^20.17.10",
     "vitest": "^3.0.0"
   },
   "dependencies": {

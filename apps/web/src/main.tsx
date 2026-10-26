@@ -12,12 +12,15 @@ import { useLichessAuth } from './lichess/auth';
 import { isNativeApp } from './platform';
 import { installNative } from './platform/installNative';
 import { setupNativeStorage } from './platform/nativeStorage';
+import { installLedger } from './puzzles/installLedger';
 import { startAnalysisController } from './store/analysisStore';
 import { applySettings } from './store/settingsStore';
 
 function start(): void {
   applySettings();
   startAnalysisController();
+  // Stage-2 puzzles (ADR-023 §9): records every finished/loaded review in the game ledger.
+  installLedger();
   // Returning from the lichess login (?code=&state=): exchange the code, then clean the URL.
   void useLichessAuth.getState().handleCallback();
 

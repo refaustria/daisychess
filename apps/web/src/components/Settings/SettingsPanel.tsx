@@ -21,6 +21,7 @@ import { LichessAccountSection } from '../LichessAccount/LichessAccountSection';
 import { MaiaHintsField } from './MaiaHintsField';
 import { AboutField } from './AboutField';
 import { ReviewCacheField } from './ReviewCacheField';
+import { PuzzleNamesField } from './PuzzleNamesField';
 import styles from './SettingsPanel.module.css';
 
 const HIGHLIGHT_LABEL: Record<HighlightStyle, string> = {
@@ -328,6 +329,7 @@ export function SettingsPanel() {
       <ReviewEngineField />
       <MaiaHintsField />
       <ReviewCacheField />
+      <PuzzleNamesField />
       <AboutField />
     </div>
   );

@@ -18,9 +18,11 @@ if [[ ! -f apps/web/dist/index.html ]]; then
   exit 1
 fi
 
-# /portal/ belongs to deploy/deploy-portal.sh: keep it out of this --delete. assetlinks.json is
-# generated below (not part of the build), so keep an already deployed one.
-rsync -a --delete --exclude /portal/ --exclude /.well-known/assetlinks.json apps/web/dist/ "$WEB_ROOT"/
+# /portal/ belongs to deploy/deploy-portal.sh and /puzzles/ to deploy/deploy-puzzles.sh (ADR-023):
+# keep both out of this --delete. assetlinks.json is generated below (not part of the build), so
+# keep an already deployed one.
+rsync -a --delete --exclude /portal/ --exclude /puzzles/ --exclude /.well-known/assetlinks.json \
+  apps/web/dist/ "$WEB_ROOT"/
 
 # Android App Links (ADR-022 §4): /.well-known/assetlinks.json names the Play *app signing*
 # certificate (Play Console -> Setup -> App signing -> SHA-256 certificate fingerprint). It is

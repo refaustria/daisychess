@@ -49,8 +49,8 @@ deploy/deploy-web.sh
 ```
 
 Runs `pnpm install --frozen-lockfile`, `pnpm --filter @daisychess/web build`,
-then `rsync -a --delete --exclude /portal/ apps/web/dist/ /var/www/play.daisychess.org/`. No nginx reload
-needed.
+then `rsync -a --delete --exclude /portal/ --exclude /puzzles/ apps/web/dist/ /var/www/play.daisychess.org/`
+(`/puzzles/` belongs to `deploy/deploy-puzzles.sh`, see "Puzzle data"). No nginx reload needed.
 Android App Links (ADR-022 §4): after the rsync it writes
 `/var/www/play.daisychess.org/.well-known/assetlinks.json` from `deploy/assetlinks.json.template` when
 `PLAY_SIGNING_SHA256` is set in the environment (Play Console, Setup, App signing, SHA-256 certificate
@@ -63,6 +63,69 @@ build; nginx serves both files from the exact locations in `deploy/nginx/play.da
 The build includes the opt-in full-strength Stockfish build
 (`assets/engine/stockfish-<version>/stockfish-19.wasm`, ~99 MB; ADR-010), so `dist/`
 is ~105 MB; browsers fetch it only when a user enables "maximum strength".
+
+## Puzzle data
+
+Curated lichess puzzles (ADR-023; CC0 data from <https://database.lichess.org/#puzzles>) are static
+files under `/var/www/play.daisychess.org/puzzles/v1/`: `shards/<band>-<16 hex>.json` (content-addressed,
+cached immutably) and `index.json` (cached 1 h). The web app fetches them from its own origin, the
+mobile apps from `https://play.daisychess.org/puzzles/v1/` (CORS for the app origins only). Without
+the files the app falls back to the bundled starter set (`apps/web/src/puzzles/data/starter.json`).
+
+Run by hand after each monthly lichess dump (owner decision, ADR-023 addendum):
+
+```bash
+deploy/deploy-puzzles.sh             # download if new, verify, build, publish, prune
+deploy/deploy-puzzles.sh --dry-run   # download/verify and build, print the counts, write nothing
+```
+
+What it does:
+
+1. Fetches `https://database.lichess.org/sha256sums.txt` and downloads `lichess_db_puzzle.csv.zst`
+   (≈ 307 MB) into `${PUZZLE_CACHE_DIR:-~/.cache/daisychess/puzzles}` only when the cached copy is
+   missing or the listed digest changed; `curl -C -` resumes an interrupted download of the same
+   dump (a partial file of an older dump is discarded).
+2. Verifies the dump fail-closed against that digest on every run (cached copies too) and, when
+   `LICHESS_PUZZLE_SHA256` is set, against that pin as well. A mismatch deletes the download and
+   publishes nothing.
+3. Runs `pnpm install --frozen-lockfile` (skip with `--no-install`), builds `@daisychess/puzzles`
+   and `node packages/puzzles/scripts/build-puzzles.mjs` into a temp directory: hard filter
+   (popularity ≥ 90, RD ≤ 80, ≥ 300 plays, rating ≥ 500, 2…20 plies, FEN ≤ 100 chars), 16,000 most
+   played per 100-point band plus a floor of 600 per theme, chess.js legality of every selected
+   line, shards of ≤ 2,000 rows, then `index.json`; the starter (6,000 rows, daily pool, ≤ 1 MB,
+   asserted) and `SOURCE.md` are written to `apps/web/src/puzzles/data/`. It prints the counts per
+   band and theme and the peak RSS.
+4. rsyncs the shards first and `index.json` last into `${PUZZLE_ROOT:-/var/www/play.daisychess.org/puzzles/v1}`
+   **without `--delete`**: a client with a cached index keeps resolving its shards. Shards the new
+   index no longer names are recorded in `$PUZZLE_CACHE_DIR/unreferenced.txt` and deleted once
+   they have been unreferenced for more than `PUZZLE_PRUNE_DAYS` (default 30) days.
+5. Prints the next steps: review and commit `starter.json` + `SOURCE.md`, redeploy the web app
+   (`deploy/deploy-web.sh`); the mobile apps get the new starter with their next release.
+
+Measured on a synthetic input of the full size (6.1 M rows, the 12 MB sample repeated): peak RSS
+1.34 GB, 2.3 minutes on 16 cores (legality checks run in up to 8 worker threads); the script runs
+node with `--max-old-space-size=2048` so a regression fails instead of swapping. Output ≈ 300 k
+puzzles in ≈ 170 shards (≈ 43 MB raw, gzip on the wire).
+
+Development: `deploy/deploy-puzzles.sh --sample 12000000` makes a ranged download of the first
+12 MB (no digest to verify), builds only the starter (`PUZZLE_STARTER=<path>` writes it elsewhere)
+and publishes nothing. The build script also runs directly:
+`node packages/puzzles/scripts/build-puzzles.mjs --input <file.csv.zst|file.csv> --out <dir> [--starter <path>] [--sample <bytes>] [--sha256 <hex>] [--dry-run]`.
+The pipeline falls back to the `zstd` CLI when `zlib.createZstdDecompress` is missing (Node < 22.15).
+
+nginx (once): the map `$daisychess_app_cors` in `daisychess-common.conf` (echoes exactly
+`https://app.daisychess.org` and `capacitor://app.daisychess.org`) and the locations
+`/puzzles/v1/shards/`, `= /puzzles/v1/index.json` and `/puzzles/` in `play.daisychess.org.conf`
+(full header group with CORP `cross-origin`, `Access-Control-Allow-Origin $daisychess_app_cors`,
+`Vary: Origin`). `node scripts/check-csp.mjs` checks both. Verify after a reload:
+
+```bash
+curl -sI -H 'Origin: https://app.daisychess.org' https://play.daisychess.org/puzzles/v1/index.json
+# 200, Cache-Control: public, max-age=3600, Access-Control-Allow-Origin: https://app.daisychess.org,
+# Vary: Origin, Cross-Origin-Resource-Policy: cross-origin, Content-Type: application/json
+curl -sI -H 'Origin: https://evil.example' https://play.daisychess.org/puzzles/v1/index.json
+# no Access-Control-Allow-Origin
+```
 
 ## Engine server
 

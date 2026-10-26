@@ -15,9 +15,10 @@ import {
 } from '../review/reviewStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useRoomStore } from '../room/roomStore';
-import { useAnalysisStore } from '../store/analysisStore';
+import { pauseAnalysis } from '../engine/analysisPause';
 import { currentFen, useGameStore, type Orientation } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
+import { usePuzzleStore } from '../puzzles/puzzleStore';
 import { formatEval, judgeDeviation, resolveSan, sideToMove, terminalScore } from './drill';
 import {
   useDrillStore,
@@ -98,8 +99,6 @@ let appTimer: ReturnType<typeof setTimeout> | null = null;
 let lease: Promise<SearchEngineLease> | null = null;
 let unwatchGame: (() => void) | null = null;
 let unwatchLocks: (() => void) | null = null;
-let unwatchAnalysis: (() => void) | null = null;
-let analysisSuspended = false;
 /** True while the drill itself changes the game store (its own subscriber ignores that). */
 let applying = false;
 /** Plies (index into `line`) where the user made a mistake: not "right first try" any more. */
@@ -316,26 +315,15 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 // ---------------------------------------------------------------------------------------------
 // Live analysis: off while drilling (no best-move arrow while training), restored afterwards.
 
+let releaseAnalysis: (() => void) | null = null;
+
 function suspendAnalysis(): void {
-  const a = useAnalysisStore.getState();
-  if (a.enabled) {
-    a.setEnabled(false);
-    analysisSuspended = true;
-  }
-  unwatchAnalysis ??= useAnalysisStore.subscribe((s) => {
-    if (s.enabled && useDrillStore.getState().status === 'running') {
-      analysisSuspended = true;
-      s.setEnabled(false);
-    }
-  });
+  releaseAnalysis ??= pauseAnalysis(() => useDrillStore.getState().status === 'running');
 }
 
 function restoreAnalysis(): void {
-  unwatchAnalysis?.();
-  unwatchAnalysis = null;
-  if (!analysisSuspended) return;
-  analysisSuspended = false;
-  if (!useAnalysisStore.getState().enabled) useAnalysisStore.getState().setEnabled(true);
+  releaseAnalysis?.();
+  releaseAnalysis = null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -655,6 +643,8 @@ const actions: DrillActions = {
       set({ message: `The drill uses the engine: ${lockText(lock) ?? 'a game runs'}.` });
       return;
     }
+    // A running puzzle ends silently (before the board is reset under its watcher).
+    usePuzzleStore.getState().stop();
     teardown();
     failedPlies = new Set();
     evalCache.clear();

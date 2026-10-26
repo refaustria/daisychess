@@ -11,6 +11,7 @@ COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/engine-core/package.json packages/engine-core/
 COPY packages/ui-theme/package.json packages/ui-theme/
+COPY packages/puzzles/package.json packages/puzzles/
 RUN pnpm install --frozen-lockfile --filter @daisychess/web...
 COPY tsconfig.base.json ./
 COPY packages packages
