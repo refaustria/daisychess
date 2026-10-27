@@ -44,6 +44,11 @@ jobs:
           echo "AAB=$aab" >> "$GITHUB_ENV"
           echo "RELEASE_NAME=$(echo "${name#daisychess-}" | sed -E 's/-([0-9]+)$/ (\1)/')" >> "$GITHUB_ENV"
           ls -l "$aab"
+      - name: Service account
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        # Only the public account e-mail and project, to match it with Play Console → Users and permissions.
+        run: node -e 'const j=JSON.parse(process.env.PLAY_SERVICE_ACCOUNT_JSON); console.log(`client_email=${j.client_email} project_id=${j.project_id}`)'
       - name: Upload to Google Play
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
