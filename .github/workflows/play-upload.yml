@@ -1,0 +1,52 @@
+# Uploads the signed AAB artifact of an earlier "Release mobile" run to a Google Play track (manual).
+# Use it when that run did not publish (PLAY_PUBLISH_ENABLED not 'true', or a first upload). While
+# the app is still a draft in Play Console, play-publish.mjs falls back to a draft release; roll it
+# out in Play Console afterwards. Secret: PLAY_SERVICE_ACCOUNT_JSON.
+name: Play upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: ID of the "Release mobile" run whose android-aab artifact to upload
+        required: true
+      track:
+        description: Play track
+        default: internal
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      RUN_ID: ${{ inputs.run_id }}
+      TRACK: ${{ inputs.track }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Download the AAB
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::run_id must be numeric"; exit 1; }
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -p 'android-aab-*' -D "$RUNNER_TEMP/aab"
+          aab=$(find "$RUNNER_TEMP/aab" -name '*.aab' ! -name '*-unsigned.aab' | head -1)
+          [ -n "$aab" ] || { echo "::error::no signed AAB in run $RUN_ID"; exit 1; }
+          name=$(basename "$aab" .aab)
+          echo "AAB=$aab" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=$(echo "${name#daisychess-}" | sed -E 's/-([0-9]+)$/ (\1)/')" >> "$GITHUB_ENV"
+          ls -l "$aab"
+      - name: Upload to Google Play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: >-
+          node apps/mobile/scripts/play-publish.mjs --aab "$AAB" --package org.daisychess.app
+          --track "$TRACK" --release-name "$RELEASE_NAME"
