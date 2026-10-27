@@ -1,0 +1,34 @@
+# Prints the Play App Signing certificate SHA-256 of org.daisychess.app (manual), for the repository
+# variable PLAY_SIGNING_SHA256 (assetlinks.json, deploy/README.md "Mobile release"). Secret:
+# PLAY_SERVICE_ACCOUNT_JSON. Prints only the public fingerprint.
+name: Play signing cert
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: versionCode of a bundle already uploaded to Play
+        default: '9'
+
+permissions:
+  contents: read
+
+jobs:
+  cert:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ inputs.version_code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Read the app signing certificate
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "::error::version_code must be numeric"; exit 1; }
+          node apps/mobile/scripts/play-signing-cert.mjs --package org.daisychess.app --version-code "$VERSION_CODE"
