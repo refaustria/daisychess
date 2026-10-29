@@ -1,0 +1,49 @@
+# Promotes a versionCode that is already on Google Play (e.g. internal) to another track, default
+# production, without re-uploading (manual; deploy/README.md "Mobile release"). Secret:
+# PLAY_SERVICE_ACCOUNT_JSON. Play's error body is printed on failure (it names missing declarations).
+name: Play promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: versionCode of a bundle already uploaded to Play
+        required: true
+      track:
+        description: Target track (production, beta, alpha, internal)
+        default: production
+      release_name:
+        description: Release name (optional, e.g. "0.1.0 (9)")
+        default: ''
+      release_notes_en:
+        description: Release notes (en-US)
+        default: First release.
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ inputs.version_code }}
+      TRACK: ${{ inputs.track }}
+      RELEASE_NAME: ${{ inputs.release_name }}
+      RELEASE_NOTES_EN: ${{ inputs.release_notes_en }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Promote the release
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "::error::version_code must be numeric"; exit 1; }
+          [[ "$TRACK" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::track must be a track name"; exit 1; }
+          node apps/mobile/scripts/play-promote.mjs --package org.daisychess.app \
+            --version-code "$VERSION_CODE" --track "$TRACK" \
+            --release-name "$RELEASE_NAME" --release-notes-en "$RELEASE_NOTES_EN"

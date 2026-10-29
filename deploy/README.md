@@ -598,6 +598,15 @@ missing. Secret values are never printed (GitHub masks them; the scripts print n
   Profiles, or create the profile in the developer portal (App Store, `org.daisychess.app`, the
   distribution certificate) and set `IOS_PROVISIONING_PROFILE_B64`.
 
+### Promoting an uploaded build
+
+Play rejects a versionCode twice, so moving a build to another track is not a re-upload: run
+`gh workflow run play-promote.yml -f version_code=9 [-f track=production] [-f release_name='0.1.0 (9)'] [-f release_notes_en='First release.']`
+(`apps/mobile/scripts/play-promote.mjs`: edit → track update → commit; falls back to a `draft`
+release while the app is still a draft). On failure Play's error body is printed; it names missing
+declarations (data safety, content rating, ...) to complete in Play Console. The service account
+needs the "Release to production" permission for the `production` track.
+
 ### Owner checklist (once, in this order)
 
 1. **Android upload key** (on this host; outside the repo):

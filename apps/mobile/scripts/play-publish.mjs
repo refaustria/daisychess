@@ -82,7 +82,7 @@ export class PlayError extends Error {
  * @param {RequestInit} init
  * @returns {Promise<Record<string, unknown>>}
  */
-async function call(fetchImpl, url, init) {
+export async function call(fetchImpl, url, init) {
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(10 * 60_000), ...init });
   const text = await res.text();
   if (!res.ok) {
