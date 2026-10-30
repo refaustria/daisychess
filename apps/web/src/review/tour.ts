@@ -38,6 +38,8 @@ export interface MistakeCard {
   ply: number;
   /** One line: {@link highlightText} plus the Maia suffix; the content until M31-6 explains. */
   text: string;
+  /** Human-like hint suffix ("common at 1500"), when it had arrived by then. */
+  maia?: string;
   /** The rule-based explanation (M31-6). */
   explanation?: TourExplanation;
 }

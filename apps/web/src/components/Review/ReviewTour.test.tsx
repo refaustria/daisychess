@@ -5,8 +5,9 @@ import { configureGameLedger } from '../../puzzles/gameLedger';
 import { buildMoveDetails } from '../../review/details';
 import { gameToBatch, useReviewStore } from '../../review/reviewStore';
 import { scholarSummary } from '../../review/testFixtures';
-import { setTourTimer, setTourUserSide, useTourStore } from '../../review/tourStore';
+import { installReviewTour, setTourTimer, setTourUserSide, useTourStore } from '../../review/tourStore';
 import { useGameStore } from '../../store/gameStore';
+import { usePreviewStore } from '../../store/previewStore';
 import { useUiStore } from '../../store/uiStore';
 import { mockMatchMedia } from '../../test/matchMedia';
 import { ActionBar } from '../PhoneLayout/ActionBar';
@@ -149,6 +150,66 @@ describe('ReviewTour', () => {
     );
     const text = within(screen.getByRole('region', { name: 'Tour stop' })).getByRole('status');
     expect(text.textContent).toBe('3... Nf6?? Blunder (−41%)Nf6 allows mate in 1.');
+  });
+
+  it('a click on a control inside the card does not continue; the line steps with buttons and [ ]', async () => {
+    render(<ReviewTour />);
+    await replay();
+    act(() => tour().skip());
+    const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    act(() =>
+      useTourStore.setState({
+        card: {
+          kind: 'mistake',
+          ply: 6,
+          text: 'plain',
+          maia: 'common at 1500',
+          explanation: {
+            headline: '3... Nf6?? Blunder (−41%)',
+            sentences: ['Nf6 allows mate in 1.'],
+            line: { fen: START, sans: ['e4', 'e5'], label: 'Best line' },
+            arrows: [],
+          },
+        },
+      }),
+    );
+    const stop = screen.getByRole('region', { name: 'Tour stop' });
+    expect(within(stop).getByTestId('tour-maia').textContent).toBe('common at 1500');
+    const ply = useGameStore.getState().ply;
+    fireEvent.click(within(stop).getByRole('button', { name: 'Next move of the line' }));
+    expect(tour().status).toBe('waiting');
+    expect(useGameStore.getState().ply).toBe(ply);
+    expect(usePreviewStore.getState().lineIndex).toBe(1);
+    expect(screen.getByTestId('tour-line-step').textContent).toBe('1/2 e4');
+    const uninstall = installReviewTour();
+    try {
+      fireEvent.keyDown(document, { key: ']' });
+      expect(screen.getByTestId('tour-line-step').textContent).toBe('2/2 e5');
+      expect(usePreviewStore.getState().lineArrow).toBe('e7e5');
+      fireEvent.keyDown(document, { key: '[' });
+      expect(usePreviewStore.getState().lineIndex).toBe(1);
+      expect(tour().status).toBe('waiting');
+      // Continuing ends the preview with the stop.
+      fireEvent.click(screen.getByTestId('tour-next'));
+      expect(usePreviewStore.getState().fen).toBeNull();
+    } finally {
+      uninstall();
+    }
+  });
+
+  it('"Show book move" previews the book alternative one step in', async () => {
+    render(<ReviewTour />);
+    await replay();
+    act(() => tour().skip());
+    const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    act(() =>
+      useTourStore.setState({
+        card: { kind: 'opening', title: 'Opening: X', sentences: ['s'], preview: { fen: START, sans: ['d4'] } },
+      }),
+    );
+    fireEvent.click(screen.getByTestId('tour-book-move'));
+    expect(tour().status).toBe('waiting');
+    expect(usePreviewStore.getState().lineArrow).toBe('d2d4');
   });
 
   it("Switch restarts the tour with the other side's stops", async () => {

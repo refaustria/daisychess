@@ -97,3 +97,20 @@
 .para {
   margin: 0.2rem 0 0;
 }
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.lineLabel {
+  font-weight: 600;
+}
+
+.lineStep {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

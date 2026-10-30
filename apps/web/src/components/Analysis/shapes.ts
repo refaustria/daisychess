@@ -46,8 +46,18 @@ export const CLASS_BRUSH: Record<MoveClass, string> = {
   blunder: 'red',
 };
 
+/** An extra arrow of a stop card's explanation; a repeated square (`e5e5`) is a circle. */
+export interface ExtraArrow {
+  uci: string;
+  brush: string;
+}
+
 export interface ReviewShapeInput {
   previewing: boolean;
+  /** Extra arrows of the tour's stop card (best green, played red, threat yellow). */
+  extra?: readonly ExtraArrow[];
+  /** UCI of the last stepped move of a previewed line; the only arrow while previewing. */
+  lineArrow?: string | null;
   /** Review data of the move that led to the displayed position, if any. */
   move?: {
     playedUci: string;
@@ -61,10 +71,31 @@ export interface ReviewShapeInput {
  * the engine's best move in green (from the position before the move).
  */
 export function reviewShapes(i: ReviewShapeInput): DrawShape[] {
-  if (i.previewing || !i.move) return [];
-  const { playedUci, bestUci, classification } = i.move;
-  const same = bestUci === playedUci;
-  const played = uciArrow(playedUci, same ? 'green' : CLASS_BRUSH[classification]);
-  const best = bestUci && !same ? uciArrow(bestUci, 'green') : null;
-  return [played, best].filter((s): s is DrawShape => s !== null);
+  if (i.previewing) {
+    const step = i.lineArrow ? uciArrow(i.lineArrow, 'blue') : null;
+    return step ? [step] : [];
+  }
+  const base: DrawShape[] = [];
+  if (i.move) {
+    const { playedUci, bestUci, classification } = i.move;
+    const same = bestUci === playedUci;
+    const played = uciArrow(playedUci, same ? 'green' : CLASS_BRUSH[classification]);
+    const best = bestUci && !same ? uciArrow(bestUci, 'green') : null;
+    for (const s of [played, best]) if (s) base.push(s);
+  }
+  const extra = (i.extra ?? []).map(extraShape).filter((s): s is DrawShape => s !== null);
+  const seen = new Set<string>();
+  return [...base, ...extra].filter((s) => {
+    const key = `${s.orig}${s.dest ?? ''}${s.brush ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Arrow, or a circle (no `dest`) when the move repeats its square. */
+function extraShape(a: ExtraArrow): DrawShape | null {
+  const s = uciArrow(a.uci, a.brush);
+  if (s && s.orig === s.dest) return { orig: s.orig, brush: a.brush };
+  return s;
 }

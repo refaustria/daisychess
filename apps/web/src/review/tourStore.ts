@@ -6,10 +6,12 @@ import type { Side } from '../puzzles/userSide';
 import { START_FEN, useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
+import { usePreviewStore } from '../store/previewStore';
 import { maiaHintAt } from '../maia/hintStore';
 import { hintShortText } from '../maia/hintText';
 import type { MoveDetails } from './details';
 import { computeOpeningFocus } from './openingFocus';
+import { explainMistake } from './explain';
 import { openingStopCard } from './openingStop';
 import { gameKey as reviewGameKey } from './reviewCache';
 import { gameToBatch, useReviewStore } from './reviewStore';
@@ -20,6 +22,7 @@ import {
   stopNumber,
   tourActive,
   TourController,
+  type MistakeCard,
   type TourCard,
   type TourStatus,
   type TourStep,
@@ -156,6 +159,47 @@ function stepText(
   return short ? `${text} — ${short}` : text;
 }
 
+/** The mistake stop's card: plain text, Maia hint and the rule-based explanation (ADR-024 §4). */
+function mistakeCard(
+  step: TourStep,
+  text: string,
+  details: MoveDetails,
+  trouble: ReadonlySet<number>,
+): TourCard {
+  const card: MistakeCard = { kind: 'mistake', ply: step.ply, text };
+  const maia = hintShortText(maiaHintAt(step.ply));
+  if (maia) card.maia = maia;
+  const detail = details[step.ply];
+  if (detail) {
+    try {
+      card.explanation = explainMistake({
+        detail,
+        reply: details[step.ply + 1],
+        timeTrouble: trouble.has(step.ply),
+      });
+    } catch {
+      // The plain text stays.
+    }
+  }
+  return card;
+}
+
+/**
+ * Steps the stop card's line (`[` / `]` and the card's buttons): starts it from the card's
+ * explanation when it is not the one on the board yet. A no-op without a line.
+ */
+export function stepCardLine(delta: number): void {
+  const { card, status } = useTourStore.getState();
+  if (status !== 'waiting' || card?.kind !== 'mistake') return;
+  const line = card.explanation?.line;
+  if (!line) return;
+  const preview = usePreviewStore.getState();
+  if (!preview.line || preview.line.fens[0] !== line.fen || preview.fen === null) {
+    preview.startLine(line.fen, line.sans);
+  }
+  usePreviewStore.getState().stepLine(delta);
+}
+
 /** Opening card and last book ply of a standard-start game (undefined when unavailable). */
 async function openingStop(
   game: GameState,
@@ -237,7 +281,7 @@ export const useTourStore = create<TourStore>()((set, get) => ({
           if (step.stop === 'opening') card = opening?.card;
           else if (step.stop === 'mistake') {
             const plain = text || stepText({ ...step, kind: 'mistake' }, moveDetails, trouble);
-            card = { kind: 'mistake', ply: step.ply, text: plain };
+            card = mistakeCard(step, plain, moveDetails, trouble);
           }
           set({ reached: stopNumber(schedule, i), text, card });
         },
@@ -248,6 +292,7 @@ export const useTourStore = create<TourStore>()((set, get) => ({
             if (status === 'waiting') focusTourNext();
           } else {
             tourPly = null;
+            usePreviewStore.getState().clear();
             set({ status, card: undefined });
             focusTourReplay();
           }
@@ -301,6 +346,12 @@ function onTourKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault();
     tour.stop();
+    return;
+  }
+  if (e.key === '[' || e.key === ']') {
+    if (tour.card?.kind !== 'mistake' || !tour.card.explanation?.line) return;
+    e.preventDefault();
+    stepCardLine(e.key === ']' ? 1 : -1);
     return;
   }
   if (!CONTINUE_KEYS.has(e.key)) return;

@@ -61,6 +61,37 @@ describe('reviewShapes', () => {
       }),
     ).toEqual([{ orig: 'e2', dest: 'e4', brush: 'green' }]);
   });
+  it('adds the explanation arrows once and draws a circle for a repeated square', () => {
+    const move = { playedUci: 'g8f6', bestUci: 'g7g6', classification: 'blunder' as const };
+    expect(
+      reviewShapes({
+        previewing: false,
+        move,
+        extra: [
+          { uci: 'g7g6', brush: 'green' },
+          { uci: 'g8f6', brush: 'red' },
+          { uci: 'h5f7', brush: 'yellow' },
+          { uci: 'e5e5', brush: 'yellow' },
+        ],
+      }),
+    ).toEqual([
+      { orig: 'g8', dest: 'f6', brush: 'red' },
+      { orig: 'g7', dest: 'g6', brush: 'green' },
+      { orig: 'h5', dest: 'f7', brush: 'yellow' },
+      { orig: 'e5', brush: 'yellow' },
+    ]);
+    expect(reviewShapes({ previewing: false, extra: [{ uci: 'h5f7', brush: 'yellow' }] })).toEqual([
+      { orig: 'h5', dest: 'f7', brush: 'yellow' },
+    ]);
+  });
+  it('shows only the stepped line move while previewing', () => {
+    expect(reviewShapes({ previewing: true, lineArrow: 'e2e4' })).toEqual([
+      { orig: 'e2', dest: 'e4', brush: 'blue' },
+    ]);
+    expect(
+      reviewShapes({ previewing: true, lineArrow: null, extra: [{ uci: 'h5f7', brush: 'yellow' }] }),
+    ).toEqual([]);
+  });
   it('draws nothing while previewing or without a reviewed move', () => {
     const move = { playedUci: 'e2e4', classification: 'best' as const };
     expect(reviewShapes({ previewing: true, move })).toEqual([]);

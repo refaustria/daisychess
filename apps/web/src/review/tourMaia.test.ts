@@ -65,6 +65,10 @@ describe('guided tour with Maia hints', () => {
     useTourStore.getState().skip();
     const card = useTourStore.getState().card;
     expect(card?.kind === 'mistake' && card.text).toMatch(/ — common at 1500$/);
+    expect(card?.kind === 'mistake' && card.maia).toMatch(/common at 1500$/);
+    // The explainer's output is on the card, with the headline and arrows.
+    expect(card?.kind === 'mistake' && card.explanation?.headline).toContain('Nf6');
+    expect(card?.kind === 'mistake' && card.explanation?.arrows.length).toBeGreaterThan(0);
   });
 
   it('no suffix for an unusual mistake or hints of another game', async () => {

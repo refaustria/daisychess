@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import { tourActive, type TourCard } from '../../review/tour';
-import { useTourStore } from '../../review/tourStore';
+import { stepCardLine, useTourStore } from '../../review/tourStore';
+import { usePreviewStore } from '../../store/previewStore';
 import { usePhoneLayout } from '../PhoneLayout/usePhoneLayout';
 import styles from './ReviewTour.module.css';
 
@@ -51,10 +52,82 @@ function CardBody({ card }: { card: TourCard }) {
             {s}
           </p>
         ))}
+        {card.maia && (
+          <p className={styles.para} data-testid="tour-maia">
+            {card.maia}
+          </p>
+        )}
       </>
     );
   }
   return <p className={styles.para}>{card.text}</p>;
+}
+
+/** "Show book move" of the opening card: the book alternative, one step into the preview. */
+function BookMoveButton({ preview }: { preview: { fen: string; sans: string[] } }) {
+  return (
+    <button
+      type="button"
+      className={styles.btn}
+      data-testid="tour-book-move"
+      onClick={() => {
+        const p = usePreviewStore.getState();
+        p.startLine(preview.fen, preview.sans);
+        usePreviewStore.getState().stepLine(1);
+      }}
+    >
+      Show book move
+    </button>
+  );
+}
+
+/** "Best line ◀ ▶" of a mistake card; `[` and `]` step it too. Shows the current move as SAN. */
+function LineStepper({ line }: { line: { fen: string; sans: string[]; label: string } }) {
+  const active = usePreviewStore((s) => s.line !== null && s.line.fens[0] === line.fen);
+  const index = usePreviewStore((s) => (s.line?.fens[0] === line.fen ? s.lineIndex : 0));
+  const total = line.sans.length;
+  const current = active && index > 0 ? line.sans[index - 1] : undefined;
+  return (
+    <div className={styles.line} data-testid="tour-line">
+      <span className={styles.lineLabel}>{line.label}</span>
+      <button
+        type="button"
+        className={styles.btn}
+        aria-label="Previous move of the line"
+        aria-keyshortcuts="["
+        disabled={!active || index === 0}
+        onClick={() => stepCardLine(-1)}
+      >
+        <span aria-hidden>◀</span>
+      </button>
+      <button
+        type="button"
+        className={styles.btn}
+        aria-label="Next move of the line"
+        aria-keyshortcuts="]"
+        disabled={active && index >= total}
+        onClick={() => stepCardLine(1)}
+      >
+        <span aria-hidden>▶</span>
+      </button>
+      <span className={styles.lineStep} data-testid="tour-line-step" aria-live="polite">
+        {active ? `${index}/${total}${current ? ` ${current}` : ''}` : `${total} moves`}
+      </span>
+    </div>
+  );
+}
+
+/** Controls under the card text (outside its status region). */
+function CardControls({ card }: { card: TourCard }) {
+  if (card.kind === 'opening') {
+    return card.preview ? (
+      <div className={styles.line}>
+        <BookMoveButton preview={card.preview} />
+      </div>
+    ) : null;
+  }
+  const line = card.explanation?.line;
+  return line && line.sans.length > 0 ? <LineStepper line={line} /> : null;
 }
 
 /** A click/tap on the stop card continues the tour, unless it hit a control inside the card. */
@@ -129,6 +202,7 @@ export function ReviewTour() {
             <div role="status" data-testid="review-tour-text">
               <CardBody card={card} />
             </div>
+            <CardControls card={card} />
           </section>
         ) : (
           <p className={styles.text} role="status" data-testid="review-tour-text">

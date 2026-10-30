@@ -26,7 +26,7 @@ import { usePhoneLayout } from './components/PhoneLayout/usePhoneLayout';
 import { PlayerBar, useBoardPlayers } from './components/PlayerBar/PlayerBar';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
 import { installAutoReview } from './review/autoReview';
-import { installReviewTour } from './review/tourStore';
+import { installReviewTour, useTourStore } from './review/tourStore';
 import { installRoomRoute } from './room/roomStore';
 import { useRoomStatus } from './room/useRoomStatus';
 import { useReviewStore } from './review/reviewStore';
@@ -160,6 +160,11 @@ function ConnectedBoard() {
     const d = s.moveDetails[ply];
     return d && d.fenAfter === gameFen ? d : undefined;
   });
+  const lineArrow = usePreviewStore((s) => s.lineArrow);
+  // Arrows of the tour's mistake stop; they go with the stop when the tour continues.
+  const stopArrows = useTourStore((s) =>
+    s.status === 'waiting' && s.card?.kind === 'mistake' ? s.card.explanation?.arrows : undefined,
+  );
   const drillArrows = useDrillArrows();
   const puzzleShapes = usePuzzleShapes();
   const shapes = useMemo(
@@ -169,7 +174,12 @@ function ConnectedBoard() {
         : drillArrows.length > 0
           ? drillArrows
           : reviewing && hasReview
-            ? reviewShapes({ previewing: previewFen !== null, move: reviewed })
+            ? reviewShapes({
+                previewing: previewFen !== null,
+                move: reviewed,
+                extra: stopArrows,
+                lineArrow,
+              })
             : analysisShapes({
                 enabled,
                 terminal: terminal !== null,
@@ -184,6 +194,8 @@ function ConnectedBoard() {
       reviewing,
       hasReview,
       reviewed,
+      stopArrows,
+      lineArrow,
       enabled,
       terminal,
       previewFen,
