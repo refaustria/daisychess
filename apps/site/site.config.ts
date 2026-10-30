@@ -9,6 +9,10 @@ export const APP_URL = 'https://play.daisychess.org';
 export const PORTAL_URL = 'https://play.daisychess.org/portal/';
 /** Link endpoint that community nodes connect to. */
 export const HUB_LINK_URL = 'wss://hub.daisychess.org/link';
+/** Google Play listing of the Android app (plain URL, no tracking parameters). */
+export const androidAppUrl: string | null = 'https://play.google.com/store/apps/details?id=org.daisychess.app';
+/** App Store listing of the iOS app. Set it once the app is live: the "coming soon" note then turns into a link. */
+export const iosAppUrl: string | null = null;
 /** Public contact address (support, privacy requests, imprint). */
 export const CONTACT_EMAIL = 'hello@daisychess.org';
 /** Source repository. The repo rename is pending: change it here only. */

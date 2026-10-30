@@ -6,9 +6,10 @@ import {
   renderFooter,
   renderHead,
   renderHeader,
+  renderStores,
   replaceTokens,
 } from '../../build/partials';
-import { APP_URL, PAGES, REPO_URL, SITE_URL, canonicalUrl, pageByFile } from '../../site.config';
+import { APP_URL, androidAppUrl, PAGES, REPO_URL, SITE_URL, canonicalUrl, pageByFile } from '../../site.config';
 
 const home = pageByFile('index.html')!;
 const notFound = pageByFile('404.html')!;
@@ -50,6 +51,17 @@ describe('partials', () => {
     expect(replaceTokens('{{APP_URL}}/x {{REPO_URL}}')).toBe(`${APP_URL}/x ${REPO_URL}`);
     expect(replaceTokens('mailto:{{CONTACT_EMAIL}}')).toBe('mailto:hello@daisychess.org');
     expect(() => replaceTokens('{{NOPE}}')).toThrow(/unknown template token/);
+  });
+
+  it('renders the store row: Play link, and "coming soon" until the iOS URL is set', () => {
+    expect(androidAppUrl).toBe('https://play.google.com/store/apps/details?id=org.daisychess.app');
+    const row = renderStores(androidAppUrl, null);
+    expect(row).toContain(`href="${androidAppUrl}"`);
+    expect(row).toContain('Get it on Google Play');
+    expect(row).toContain('iPhone and iPad: coming soon to the App Store.');
+    const live = renderStores(androidAppUrl, 'https://apps.apple.com/app/id1');
+    expect(live).toContain('href="https://apps.apple.com/app/id1"');
+    expect(live).not.toContain('coming soon');
   });
 
   it('renders head metadata with canonical, OG and Twitter tags', () => {

@@ -9,11 +9,14 @@ import {
   PORTAL_URL,
   REPO_URL,
   SITE_URL,
+  androidAppUrl,
   canonicalUrl,
+  iosAppUrl,
   type PageMeta,
 } from '../site.config';
 
 const TOKENS: Record<string, string> = {
+  ANDROID_APP_URL: androidAppUrl ?? '',
   APP_URL,
   CONTACT_EMAIL,
   PORTAL_URL,
@@ -39,6 +42,29 @@ export function replaceTokens(html: string): string {
     if (v === undefined) throw new Error(`unknown template token {{${name}}}`);
     return v;
   });
+}
+
+const PHONE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>';
+const PLAY_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 4.5v15l12-7.5z"/></svg>';
+
+/** Mobile-app links for the hero: a store link per live app, a plain "coming soon" note otherwise. */
+export function renderStores(android: string | null = androidAppUrl, ios: string | null = iosAppUrl): string {
+  const items: string[] = [];
+  if (android) {
+    items.push(
+      `<li><a class="store-pill store-link" href="${escapeHtml(android)}" rel="noopener">${PLAY_ICON}<span><small>Android app</small>Get it on Google Play</span></a></li>`,
+    );
+  }
+  if (ios) {
+    items.push(
+      `<li><a class="store-pill store-link" href="${escapeHtml(ios)}" rel="noopener">${PHONE_ICON}<span><small>iPhone &amp; iPad app</small>Download on the App Store</span></a></li>`,
+    );
+  } else {
+    items.push(`<li class="store-note">iPhone and iPad: coming soon to the App Store.</li>`);
+  }
+  return `<ul class="store-row" aria-label="Mobile apps">${items.join('')}</ul>`;
 }
 
 export function renderHead(page: PageMeta): string {
@@ -171,13 +197,14 @@ export function renderFooter(): string {
 
 /**
  * Applies the partial directives of one page:
- * `<!--#head-->`, `<!--#header-->`, `<!--#footer-->`, `<!--#daisy-->` (the mark) and `{{TOKENS}}`.
+ * `<!--#head-->`, `<!--#header-->`, `<!--#footer-->`, `<!--#stores-->`, `<!--#daisy-->` (the mark) and `{{TOKENS}}`.
  */
 export function applyPartials(html: string, page: PageMeta): string {
   const out = html
     .replace('<!--#head-->', renderHead(page))
     .replace('<!--#header-->', renderHeader(page.key))
     .replace('<!--#footer-->', renderFooter())
+    .replace('<!--#stores-->', renderStores())
     .replaceAll('<!--#daisy-->', DAISY_SVG);
   return replaceTokens(out);
 }

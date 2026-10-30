@@ -741,6 +741,26 @@ pre .c {
   font-size: 0.9375rem;
 }
 
+.store-link {
+  border-style: solid;
+  text-decoration: none;
+  background: var(--surface);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.store-link:hover {
+  border-color: var(--daisy-ring);
+}
+
+.store-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.store-note {
+  font-size: 0.9375rem;
+}
+
 .store-pill svg {
   width: 20px;
   height: 20px;
