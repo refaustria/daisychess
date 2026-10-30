@@ -196,6 +196,39 @@ for (const size of SIZES) {
       if (size.width === 390) await shot(page, 'review-390x844-light');
     });
 
+    test('review tour: waits at the opening stop; Pause · Next · Stop in the bar', async ({
+      page,
+    }) => {
+      test.setTimeout(90_000);
+      await page.goto('/');
+      await openMore(page, 'Import');
+      await page.getByLabel('PGN text').fill(SCHOLAR);
+      await page.getByRole('button', { name: 'Load PGN' }).click();
+      const panel = page.getByTestId('review-panel');
+      await expect(panel).toHaveAttribute('data-status', 'done', { timeout: 45_000 });
+      const tour = page.getByTestId('review-tour');
+      // The automatic tour waits at the book end (2... Nc6, Bishop's Opening).
+      await expect(tour).toHaveAttribute('data-status', 'waiting', { timeout: 15_000 });
+      await expect(page.getByRole('region', { name: 'Tour stop' })).toContainText(
+        "Bishop's Opening",
+      );
+      await expect(bar(page)).toHaveAttribute('data-kind', 'review');
+      // Each control once: the tour bar leaves Pause · Next · Stop to the action bar on phones.
+      await expect(page.getByTestId('tour-next')).toHaveCount(1);
+      await expect(bar(page).getByTestId('tour-next')).toBeFocused();
+      await expect(bar(page).getByRole('button', { name: 'Pause tour' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Stop tour' })).toHaveCount(1);
+      await expect(page.getByRole('button', { name: 'Next mistake' })).toHaveCount(0);
+      await expectPhoneLayout(page);
+      await checkA11y(page, `review tour ${tag}`);
+      await bar(page).getByTestId('tour-next').click();
+      await expect(tour).not.toHaveAttribute('data-status', 'waiting');
+      await bar(page).getByRole('button', { name: 'Stop tour' }).click();
+      await expect(tour).toHaveAttribute('data-status', 'stopped');
+      await expect(page.getByRole('button', { name: 'Next mistake' })).toHaveCount(1);
+      await expect(page.getByTestId('tour-next')).toHaveCount(0);
+    });
+
     test('play vs engine: Take back, Resign, Stop in the bar; result actions after', async ({
       page,
     }) => {

@@ -6,7 +6,7 @@ import { useGameStore } from '../store/gameStore';
 import { buildMoveDetails } from './details';
 import { gameToBatch, useReviewStore } from './reviewStore';
 import { scholarSummary } from './testFixtures';
-import { setTourTimer, useTourStore } from './tourStore';
+import { setTourTimer, setTourUserSide, useTourStore } from './tourStore';
 
 const PGN = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 const hint = (playedIsTop: boolean): MaiaHint => ({
@@ -19,6 +19,7 @@ const hint = (playedIsTop: boolean): MaiaHint => ({
 
 let fire: () => void = () => undefined;
 beforeEach(() => {
+  setTourUserSide(async () => 'white');
   useGameStore.getState().loadPgn(PGN);
   const summary = scholarSummary();
   const moveDetails = buildMoveDetails(
@@ -38,38 +39,51 @@ beforeEach(() => {
 afterEach(() => {
   useTourStore.getState().stop();
   setTourTimer(undefined);
+  setTourUserSide(undefined);
   resetMaiaHints();
 });
 
 const level = { rating: 1500, source: 'setting' as const };
 
 describe('guided tour with Maia hints', () => {
-  it('appends "common at 1500" to a mistake that is Maia\'s top move', () => {
+  it('appends "common at 1500" to a mistake that is Maia\'s top move', async () => {
     useMaiaHintStore.setState({
       status: 'done',
       forMoves: useGameStore.getState().moves,
       levels: { white: level, black: level },
       hints: { 6: hint(true) },
     });
-    useTourStore.getState().start();
-    for (let i = 0; i < 5; i++) fire();
+    await useTourStore.getState().start();
+    for (let i = 0; i < 3; i++) fire();
+    useTourStore.getState().next(); // past the opening stop
+    fire();
     expect(useGameStore.getState().ply).toBe(6);
     expect(useTourStore.getState().text).toMatch(/^3\.\.\. Nf6\?\? Blunder.* — common at 1500$/);
+    // As a stop of the user's side: the mistake card carries the same line.
+    await useTourStore.getState().start('black');
+    useTourStore.getState().skip();
+    useTourStore.getState().skip();
+    const card = useTourStore.getState().card;
+    expect(card?.kind === 'mistake' && card.text).toMatch(/ — common at 1500$/);
   });
 
-  it('no suffix for an unusual mistake or hints of another game', () => {
+  it('no suffix for an unusual mistake or hints of another game', async () => {
     useMaiaHintStore.setState({
       status: 'done',
       forMoves: [],
       levels: { white: level, black: level },
       hints: { 6: hint(true) },
     });
-    useTourStore.getState().start();
-    for (let i = 0; i < 5; i++) fire();
+    await useTourStore.getState().start('black');
+    useTourStore.getState().skip();
+    useTourStore.getState().skip();
+    expect(useGameStore.getState().ply).toBe(6);
     expect(useTourStore.getState().text).not.toContain('common');
     useMaiaHintStore.setState({ forMoves: useGameStore.getState().moves, hints: { 6: hint(false) } });
-    useTourStore.getState().start();
-    for (let i = 0; i < 5; i++) fire();
+    await useTourStore.getState().start('black');
+    useTourStore.getState().skip();
+    useTourStore.getState().skip();
+    expect(useGameStore.getState().ply).toBe(6);
     expect(useTourStore.getState().text).not.toContain('common');
   });
 });

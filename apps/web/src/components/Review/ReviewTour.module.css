@@ -44,3 +44,56 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.primary {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.side {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Stop card (ADR-024 section 1); a click on it continues the tour. */
+.card {
+  padding: 0.4rem 0.5rem;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.title {
+  display: block;
+}
+
+.para {
+  margin: 0.2rem 0 0;
+}

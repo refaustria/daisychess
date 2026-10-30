@@ -18,6 +18,8 @@ import { usePuzzleStore } from '../../puzzles/puzzleStore';
 import { RUSH_STRIKES, useRushStore } from '../../puzzles/rushStore';
 import { findJump } from '../../review/details';
 import { useReviewStore } from '../../review/reviewStore';
+import { tourActive } from '../../review/tour';
+import { useTourStore } from '../../review/tourStore';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUiStore, type PuzzleMode, type TabId } from '../../store/uiStore';
@@ -76,6 +78,7 @@ function Btn({
   icon,
   title,
   pressed,
+  testId,
 }: {
   /** Accessible name; it starts with/contains the visible text (WCAG 2.5.3). */
   label?: string;
@@ -86,6 +89,7 @@ function Btn({
   icon?: boolean;
   title?: string;
   pressed?: boolean;
+  testId?: string;
 }) {
   const cls = [styles.barBtn, primary ? styles.barPrimary : '', icon ? styles.barIcon : '']
     .filter(Boolean)
@@ -98,6 +102,7 @@ function Btn({
       aria-pressed={pressed}
       title={title}
       disabled={disabled}
+      data-testid={testId}
       onClick={onClick}
     >
       {children}
@@ -236,7 +241,36 @@ function MistakesBar() {
   );
 }
 
+/** Review mode while the guided tour runs (ADR-024 section 1): Pause/Resume · Next · Stop. */
+function TourBar() {
+  const status = useTourStore((s) => s.status);
+  const tour = useTourStore.getState();
+  const paused = status === 'paused';
+  return (
+    <>
+      <Btn
+        label={paused ? 'Resume tour' : 'Pause tour'}
+        disabled={status === 'waiting'}
+        onClick={paused ? tour.resume : tour.pause}
+      >
+        {paused ? 'Resume' : 'Pause'}
+      </Btn>
+      <Btn primary testId="tour-next" onClick={tour.next}>
+        Next
+      </Btn>
+      <Btn label="Stop tour" onClick={tour.stop}>
+        Stop
+      </Btn>
+    </>
+  );
+}
+
 function ReviewBar() {
+  const touring = useTourStore((s) => tourActive(s.status));
+  return touring ? <TourBar /> : <ReviewNavBar />;
+}
+
+function ReviewNavBar() {
   const ply = useGameStore((s) => s.ply);
   const summary = useReviewStore((s) => s.summary);
   const next = summary ? findJump(summary, ply, 1) : undefined;

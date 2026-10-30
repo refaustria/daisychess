@@ -4,7 +4,7 @@ import { alternativesText, moverSwingText, plyLabel, type OpeningFocus } from '.
 
 /**
  * Content of the opening stop of the guided review (M31-4, ADR-024 section 3). Pure.
- * `TourCard` is the opening variant; the tour (M31-2/M31-6) widens it with the mistake card.
+ * The tour's `TourCard` (`review/tour.ts`) is the union of this card and the mistake card.
  */
 export interface OpeningCard {
   kind: 'opening';
@@ -17,7 +17,6 @@ export interface OpeningCard {
   /** "Show book move": the position where the book ended and the first book alternative. */
   preview?: { fen: string; sans: string[] };
 }
-export type TourCard = OpeningCard;
 
 const sideName = (s: 'white' | 'black'): string => (s === 'white' ? 'White' : 'Black');
 

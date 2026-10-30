@@ -17,6 +17,7 @@ import {
 } from '../../puzzles/puzzleStore';
 import { useRushStore } from '../../puzzles/rushStore';
 import { useReviewStore } from '../../review/reviewStore';
+import { useTourStore } from '../../review/tourStore';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
@@ -245,6 +246,51 @@ describe('ActionBar', () => {
     expect(btn('Next mistake').disabled).toBe(true);
     fireEvent.click(btn('Previous move'));
     expect(useGameStore.getState().ply).toBe(3);
+  });
+
+  it('review with a running tour: Pause/Resume · Next · Stop, only while the tour is active', () => {
+    const tour0 = useTourStore.getState();
+    const calls: string[] = [];
+    useTourStore.setState({
+      status: 'playing',
+      pause: () => calls.push('pause'),
+      resume: () => calls.push('resume'),
+      next: () => calls.push('next'),
+      stop: () => calls.push('stop'),
+    });
+    try {
+      useUiStore.setState({ activeTab: 'review' });
+      useReviewStore.setState({
+        status: 'done',
+        summary: { moves: [] } as unknown as ReviewSummary,
+      });
+      render(<ActionBar />);
+      expect(bar().getAttribute('data-kind')).toBe('review');
+      expect(screen.queryByRole('button', { name: 'Next mistake' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Next move' })).toBeNull();
+      const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent);
+      expect(names).toEqual(['Pause tour', 'Next', 'Stop tour']);
+      expect(screen.getAllByTestId('tour-next')).toHaveLength(1);
+      fireEvent.click(btn('Pause tour'));
+      fireEvent.click(screen.getByTestId('tour-next'));
+      fireEvent.click(btn('Stop tour'));
+      expect(calls).toEqual(['pause', 'next', 'stop']);
+
+      act(() => useTourStore.setState({ status: 'paused' }));
+      fireEvent.click(btn('Resume tour'));
+      expect(calls.at(-1)).toBe('resume');
+      act(() => useTourStore.setState({ status: 'waiting' }));
+      expect(btn('Pause tour').disabled).toBe(true);
+      expect(btn('Next').getAttribute('data-testid')).toBe('tour-next');
+
+      for (const status of ['finished', 'stopped', 'idle'] as const) {
+        act(() => useTourStore.setState({ status }));
+        expect(screen.queryByTestId('tour-next')).toBeNull();
+        expect(btn('Next mistake')).toBeTruthy();
+      }
+    } finally {
+      useTourStore.setState(tour0, true);
+    }
   });
 
   it('play: Take back, Resign, Stop while playing; Rematch, Review, New setup after', () => {
