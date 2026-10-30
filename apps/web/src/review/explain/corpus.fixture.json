@@ -1,0 +1,1134 @@
+[
+  {
+    "detail": {
+      "ply": 13,
+      "mover": "white",
+      "moveLabel": "7.",
+      "playedUci": "d1d2",
+      "playedSan": "Qd2",
+      "bestUci": "g1e2",
+      "bestSan": "Nge2",
+      "bestLine": ["g1e2", "e7e6", "d5e6", "d8d1", "a1d1", "c8e6", "c4e6", "f7e6"],
+      "bestLineSan": "7. Nge2 e6 8. dxe6 Qxd1+ 9. Rxd1 Bxe6 10. Bxe6 fxe6",
+      "bestLineMoves": ["Nge2", "e6", "dxe6", "Qxd1+", "Rxd1", "Bxe6", "Bxe6", "fxe6"],
+      "bestLineFen": "rn2kb1r/pp4pp/2p1pn2/8/4pB2/2N5/PPP1NPPP/3RK2R w Kkq - 0 11",
+      "fenBefore": "rnbqkb1r/pp2pppp/2p2n2/3P4/2B1pB2/2N5/PPP2PPP/R2QK1NR w KQkq - 0 7",
+      "fenAfter": "rnbqkb1r/pp2pppp/2p2n2/3P4/2B1pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 1 7",
+      "evalBeforeWhite": {
+        "cp": 27
+      },
+      "evalAfterWhite": {
+        "cp": -181
+      },
+      "evalIfBest": {
+        "cp": 27
+      },
+      "swing": "−2.08",
+      "winProbLoss": 18.554284193177985,
+      "classification": "mistake",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 14,
+      "mover": "black",
+      "moveLabel": "7...",
+      "playedUci": "c6d5",
+      "playedSan": "cxd5",
+      "bestUci": "b7b5",
+      "bestSan": "b5",
+      "bestLine": ["b7b5", "c4b3", "b5b4", "c3e4", "f6e4", "d2b4", "f7f5", "e1c1"],
+      "bestLineSan": "7... b5 8. Bb3 b4 9. Nxe4 Nxe4 10. Qxb4 f5 11. O-O-O",
+      "bestLineMoves": ["b5", "Bb3", "b4", "Nxe4", "Nxe4", "Qxb4", "f5", "O-O-O"],
+      "bestLineFen": "rnbqkb1r/p3p1pp/2p5/3P1p2/1Q2nB2/1B6/PPP2PPP/2KR2NR b kq - 1 11",
+      "fenBefore": "rnbqkb1r/pp2pppp/2p2n2/3P4/2B1pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 1 7",
+      "fenAfter": "rnbqkb1r/pp2pppp/5n2/3p4/2B1pB2/2N5/PPPQ1PPP/R3K1NR w KQkq - 0 8",
+      "evalBeforeWhite": {
+        "cp": -181
+      },
+      "evalAfterWhite": {
+        "cp": 45
+      },
+      "evalIfBest": {
+        "cp": -181
+      },
+      "swing": "−2.26",
+      "winProbLoss": 20.203814063731024,
+      "classification": "blunder",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 14,
+      "mover": "black",
+      "moveLabel": "7...",
+      "playedUci": "c6d5",
+      "playedSan": "cxd5",
+      "bestUci": "b7b5",
+      "bestSan": "b5",
+      "bestLine": ["b7b5", "c4b3", "b5b4", "c3e4", "f6e4", "d2b4", "f7f5", "e1c1"],
+      "bestLineSan": "7... b5 8. Bb3 b4 9. Nxe4 Nxe4 10. Qxb4 f5 11. O-O-O",
+      "bestLineMoves": ["b5", "Bb3", "b4", "Nxe4", "Nxe4", "Qxb4", "f5", "O-O-O"],
+      "bestLineFen": "rnbqkb1r/p3p1pp/2p5/3P1p2/1Q2nB2/1B6/PPP2PPP/2KR2NR b kq - 1 11",
+      "fenBefore": "rnbqkb1r/pp2pppp/2p2n2/3P4/2B1pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 1 7",
+      "fenAfter": "rnbqkb1r/pp2pppp/5n2/3p4/2B1pB2/2N5/PPPQ1PPP/R3K1NR w KQkq - 0 8",
+      "evalBeforeWhite": {
+        "cp": -181
+      },
+      "evalAfterWhite": {
+        "cp": 45
+      },
+      "evalIfBest": {
+        "cp": -181
+      },
+      "swing": "−2.26",
+      "winProbLoss": 20.203814063731024,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 15,
+      "mover": "white",
+      "moveLabel": "8.",
+      "playedUci": "c4d5",
+      "playedSan": "Bxd5",
+      "bestUci": "c3d5",
+      "bestSan": "Nxd5",
+      "bestLine": ["c3d5", "f6d5", "c4d5", "b8d7", "e1c1", "e7e5", "f4g3", "f8e7"],
+      "bestLineSan": "8. Nxd5 Nxd5 9. Bxd5 Nd7 10. O-O-O e5 11. Bg3 Be7",
+      "bestLineMoves": ["Nxd5", "Nxd5", "Bxd5", "Nd7", "O-O-O", "e5", "Bg3", "Be7"],
+      "bestLineFen": "r1bqk2r/pp1nbppp/8/3Bp3/4p3/6B1/PPPQ1PPP/2KR2NR w kq - 2 12",
+      "fenBefore": "rnbqkb1r/pp2pppp/5n2/3p4/2B1pB2/2N5/PPPQ1PPP/R3K1NR w KQkq - 0 8",
+      "fenAfter": "rnbqkb1r/pp2pppp/5n2/3B4/4pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 0 8",
+      "evalBeforeWhite": {
+        "cp": 45
+      },
+      "evalAfterWhite": {
+        "cp": -31
+      },
+      "evalIfBest": {
+        "cp": 45
+      },
+      "swing": "−0.76",
+      "winProbLoss": 6.983406566973656,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 15,
+      "mover": "white",
+      "moveLabel": "8.",
+      "playedUci": "c4d5",
+      "playedSan": "Bxd5",
+      "bestUci": "c3d5",
+      "bestSan": "Nxd5",
+      "bestLine": ["c3d5", "f6d5", "c4d5", "b8d7", "e1c1", "e7e5", "f4g3", "f8e7"],
+      "bestLineSan": "8. Nxd5 Nxd5 9. Bxd5 Nd7 10. O-O-O e5 11. Bg3 Be7",
+      "bestLineMoves": ["Nxd5", "Nxd5", "Bxd5", "Nd7", "O-O-O", "e5", "Bg3", "Be7"],
+      "bestLineFen": "r1bqk2r/pp1nbppp/8/3Bp3/4p3/6B1/PPPQ1PPP/2KR2NR w kq - 2 12",
+      "fenBefore": "rnbqkb1r/pp2pppp/5n2/3p4/2B1pB2/2N5/PPPQ1PPP/R3K1NR w KQkq - 0 8",
+      "fenAfter": "rnbqkb1r/pp2pppp/5n2/3B4/4pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 0 8",
+      "evalBeforeWhite": {
+        "cp": 45
+      },
+      "evalAfterWhite": {
+        "cp": -31
+      },
+      "evalIfBest": {
+        "cp": 45
+      },
+      "swing": "−0.76",
+      "winProbLoss": 6.983406566973656,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 16,
+      "mover": "black",
+      "moveLabel": "8...",
+      "playedUci": "h7h5",
+      "playedSan": "h5",
+      "bestUci": "e7e6",
+      "bestSan": "e6",
+      "bestLine": ["e7e6", "d5e4", "d8d2", "f4d2", "f6e4", "c3e4", "b8c6", "e1c1"],
+      "bestLineSan": "8... e6 9. Bxe4 Qxd2+ 10. Bxd2 Nxe4 11. Nxe4 Nc6 12. O-O-O",
+      "bestLineMoves": ["e6", "Bxe4", "Qxd2+", "Bxd2", "Nxe4", "Nxe4", "Nc6", "O-O-O"],
+      "bestLineFen": "r1b1kb1r/pp3ppp/2n1p3/8/4N3/8/PPPB1PPP/2KR2NR b kq - 2 12",
+      "fenBefore": "rnbqkb1r/pp2pppp/5n2/3B4/4pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 0 8",
+      "fenAfter": "rnbqkb1r/pp2ppp1/5n2/3B3p/4pB2/2N5/PPPQ1PPP/R3K1NR w KQkq - 0 9",
+      "evalBeforeWhite": {
+        "cp": -31
+      },
+      "evalAfterWhite": {
+        "cp": 898
+      },
+      "evalIfBest": {
+        "cp": -31
+      },
+      "swing": "−9.29",
+      "winProbLoss": 49.315657168704796,
+      "classification": "blunder",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 16,
+      "mover": "black",
+      "moveLabel": "8...",
+      "playedUci": "h7h5",
+      "playedSan": "h5",
+      "bestUci": "e7e6",
+      "bestSan": "e6",
+      "bestLine": ["e7e6", "d5e4", "d8d2", "f4d2", "f6e4", "c3e4", "b8c6", "e1c1"],
+      "bestLineSan": "8... e6 9. Bxe4 Qxd2+ 10. Bxd2 Nxe4 11. Nxe4 Nc6 12. O-O-O",
+      "bestLineMoves": ["e6", "Bxe4", "Qxd2+", "Bxd2", "Nxe4", "Nxe4", "Nc6", "O-O-O"],
+      "bestLineFen": "r1b1kb1r/pp3ppp/2n1p3/8/4N3/8/PPPB1PPP/2KR2NR b kq - 2 12",
+      "fenBefore": "rnbqkb1r/pp2pppp/5n2/3B4/4pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 0 8",
+      "fenAfter": "rnbqkb1r/pp2ppp1/5n2/3B3p/4pB2/2N5/PPPQ1PPP/R3K1NR w KQkq - 0 9",
+      "evalBeforeWhite": {
+        "cp": -31
+      },
+      "evalAfterWhite": {
+        "cp": 898
+      },
+      "evalIfBest": {
+        "cp": -31
+      },
+      "swing": "−9.29",
+      "winProbLoss": 49.315657168704796,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 17,
+      "mover": "white",
+      "moveLabel": "9.",
+      "playedUci": "d5f7",
+      "playedSan": "Bxf7+",
+      "bestUci": "d5f7",
+      "bestLine": ["d5f7", "e8f7", "d2d8", "e7e5", "d8c7", "b8d7", "c7c4", "f7g6"],
+      "bestLineSan": "9. Bxf7+ Kxf7 10. Qxd8 e5 11. Qc7+ Nbd7 12. Qc4+ Kg6",
+      "bestLineMoves": ["Bxf7+", "Kxf7", "Qxd8", "e5", "Qc7+", "Nbd7", "Qc4+", "Kg6"],
+      "bestLineFen": "r1b2b1r/pp1n2p1/5nk1/4p2p/2Q1pB2/2N5/PPP2PPP/R3K1NR w KQ - 4 13",
+      "fenBefore": "rnbqkb1r/pp2ppp1/5n2/3B3p/4pB2/2N5/PPPQ1PPP/R3K1NR w KQkq - 0 9",
+      "fenAfter": "rnbqkb1r/pp2pBp1/5n2/7p/4pB2/2N5/PPPQ1PPP/R3K1NR b KQkq - 0 9",
+      "evalBeforeWhite": {
+        "cp": 898
+      },
+      "evalAfterWhite": {
+        "cp": 827
+      },
+      "swing": "−0.71",
+      "winProbLoss": 1.0081747269647963,
+      "classification": "best",
+      "playedIsBest": true
+    }
+  },
+  {
+    "detail": {
+      "ply": 8,
+      "mover": "black",
+      "moveLabel": "4...",
+      "playedUci": "g8e7",
+      "playedSan": "Ne7",
+      "bestUci": "d8d5",
+      "bestSan": "Qxd5",
+      "bestLine": ["d8d5", "g1f3", "b8c6", "f1e2", "f8d6", "f3g5", "d6c7", "d1b3"],
+      "bestLineSan": "4... Qxd5 5. Nf3 Nc6 6. Be2 Bd6 7. Ng5 Bc7 8. Qb3",
+      "bestLineMoves": ["Qxd5", "Nf3", "Nc6", "Be2", "Bd6", "Ng5", "Bc7", "Qb3"],
+      "bestLineFen": "r1b1k1nr/ppb2ppp/2n5/2pqp1N1/8/1QPP4/PP2BPPP/RNB1K2R b KQkq - 7 8",
+      "fenBefore": "rnbqkbnr/pp3ppp/8/2pPp3/8/2PP4/PP3PPP/RNBQKBNR b KQkq - 0 4",
+      "fenAfter": "rnbqkb1r/pp2nppp/8/2pPp3/8/2PP4/PP3PPP/RNBQKBNR w KQkq - 1 5",
+      "evalBeforeWhite": {
+        "cp": -3
+      },
+      "evalAfterWhite": {
+        "cp": 193
+      },
+      "evalIfBest": {
+        "cp": -3
+      },
+      "swing": "−1.96",
+      "winProbLoss": 17.330441102579528,
+      "classification": "mistake",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 9,
+      "mover": "white",
+      "moveLabel": "5.",
+      "playedUci": "c3c4",
+      "playedSan": "c4",
+      "bestUci": "c3c4",
+      "bestLine": ["c3c4", "e7f5", "g1f3", "f5d4", "b1c3", "f8d6", "c3e4", "e8g8"],
+      "bestLineSan": "5. c4 Nf5 6. Nf3 Nd4 7. Nc3 Bd6 8. Ne4 O-O",
+      "bestLineMoves": ["c4", "Nf5", "Nf3", "Nd4", "Nc3", "Bd6", "Ne4", "O-O"],
+      "bestLineFen": "rnbq1rk1/pp3ppp/3b4/2pPp3/2PnN3/3P1N2/PP3PPP/R1BQKB1R w KQ - 7 9",
+      "fenBefore": "rnbqkb1r/pp2nppp/8/2pPp3/8/2PP4/PP3PPP/RNBQKBNR w KQkq - 1 5",
+      "fenAfter": "rnbqkb1r/pp2nppp/8/2pPp3/2P5/3P4/PP3PPP/RNBQKBNR b KQkq - 0 5",
+      "evalBeforeWhite": {
+        "cp": 193
+      },
+      "evalAfterWhite": {
+        "cp": 173
+      },
+      "swing": "−0.20",
+      "winProbLoss": 1.6467923277726584,
+      "classification": "best",
+      "playedIsBest": true
+    }
+  },
+  {
+    "detail": {
+      "ply": 31,
+      "mover": "white",
+      "moveLabel": "16.",
+      "playedUci": "e2d2",
+      "playedSan": "Qd2",
+      "bestUci": "e2d1",
+      "bestSan": "Qd1",
+      "bestLine": ["e2d1", "f7f5", "e4c3", "a7a5", "e1g1", "a8e8", "c1d2", "f8f7"],
+      "bestLineSan": "16. Qd1 f5 17. Nc3 a5 18. O-O Rae8 19. Bd2 Rf7",
+      "bestLineMoves": ["Qd1", "f5", "Nc3", "a5", "O-O", "Rae8", "Bd2", "Rf7"],
+      "bestLineFen": "4r1k1/1p1n1rbp/1q4p1/p1pPpp2/P1Pn4/2NP2PP/1P1B1PB1/1R1Q1RK1 w - - 4 20",
+      "fenBefore": "r4rk1/pp1n1pbp/1q4p1/2pPp3/P1PnN3/3P2PP/1P2QPB1/1RB1K2R w K - 1 16",
+      "fenAfter": "r4rk1/pp1n1pbp/1q4p1/2pPp3/P1PnN3/3P2PP/1P1Q1PB1/1RB1K2R b K - 2 16",
+      "evalBeforeWhite": {
+        "cp": 137
+      },
+      "evalAfterWhite": {
+        "cp": 30
+      },
+      "evalIfBest": {
+        "cp": 137
+      },
+      "swing": "−1.07",
+      "winProbLoss": 9.591578940720694,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 32,
+      "mover": "black",
+      "moveLabel": "16...",
+      "playedUci": "b6a6",
+      "playedSan": "Qa6",
+      "bestUci": "f7f5",
+      "bestSan": "f5",
+      "bestLine": ["f7f5", "e4c3", "f5f4", "e1g1", "f4g3", "f2g3", "f8f1", "g1f1"],
+      "bestLineSan": "16... f5 17. Nc3 f4 18. O-O fxg3 19. fxg3 Rxf1+ 20. Kxf1",
+      "bestLineMoves": ["f5", "Nc3", "f4", "O-O", "fxg3", "fxg3", "Rxf1+", "Kxf1"],
+      "bestLineFen": "r5k1/pp1n2bp/1q4p1/2pPp3/P1Pn4/2NP2PP/1P1Q2B1/1RB2K2 b - - 0 20",
+      "fenBefore": "r4rk1/pp1n1pbp/1q4p1/2pPp3/P1PnN3/3P2PP/1P1Q1PB1/1RB1K2R b K - 2 16",
+      "fenAfter": "r4rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3P2PP/1P1Q1PB1/1RB1K2R w K - 3 17",
+      "evalBeforeWhite": {
+        "cp": 30
+      },
+      "evalAfterWhite": {
+        "cp": 119
+      },
+      "evalIfBest": {
+        "cp": 30
+      },
+      "swing": "−0.89",
+      "winProbLoss": 8.023474703476893,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 32,
+      "mover": "black",
+      "moveLabel": "16...",
+      "playedUci": "b6a6",
+      "playedSan": "Qa6",
+      "bestUci": "f7f5",
+      "bestSan": "f5",
+      "bestLine": ["f7f5", "e4c3", "f5f4", "e1g1", "f4g3", "f2g3", "f8f1", "g1f1"],
+      "bestLineSan": "16... f5 17. Nc3 f4 18. O-O fxg3 19. fxg3 Rxf1+ 20. Kxf1",
+      "bestLineMoves": ["f5", "Nc3", "f4", "O-O", "fxg3", "fxg3", "Rxf1+", "Kxf1"],
+      "bestLineFen": "r5k1/pp1n2bp/1q4p1/2pPp3/P1Pn4/2NP2PP/1P1Q2B1/1RB2K2 b - - 0 20",
+      "fenBefore": "r4rk1/pp1n1pbp/1q4p1/2pPp3/P1PnN3/3P2PP/1P1Q1PB1/1RB1K2R b K - 2 16",
+      "fenAfter": "r4rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3P2PP/1P1Q1PB1/1RB1K2R w K - 3 17",
+      "evalBeforeWhite": {
+        "cp": 30
+      },
+      "evalAfterWhite": {
+        "cp": 119
+      },
+      "evalIfBest": {
+        "cp": 30
+      },
+      "swing": "−0.89",
+      "winProbLoss": 8.023474703476893,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 33,
+      "mover": "white",
+      "moveLabel": "17.",
+      "playedUci": "d2d1",
+      "playedSan": "Qd1",
+      "bestUci": "b2b4",
+      "bestSan": "b4",
+      "bestLine": ["b2b4", "c5b4", "e1g1", "f7f5", "e4g5", "g7h6", "h3h4", "d7c5"],
+      "bestLineSan": "17. b4 cxb4 18. O-O f5 19. Ng5 Bh6 20. h4 Nc5",
+      "bestLineMoves": ["b4", "cxb4", "O-O", "f5", "Ng5", "Bh6", "h4", "Nc5"],
+      "bestLineFen": "r4rk1/pp5p/q5pb/2nPppN1/PpPn3P/3P2P1/3Q1PB1/1RB2RK1 w - - 1 21",
+      "fenBefore": "r4rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3P2PP/1P1Q1PB1/1RB1K2R w K - 3 17",
+      "fenAfter": "r4rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3P2PP/1P3PB1/1RBQK2R b K - 4 17",
+      "evalBeforeWhite": {
+        "cp": 119
+      },
+      "evalAfterWhite": {
+        "cp": 133
+      },
+      "evalIfBest": {
+        "cp": 119
+      },
+      "swing": "+0.14",
+      "winProbLoss": 0,
+      "classification": "best",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 34,
+      "mover": "black",
+      "moveLabel": "17...",
+      "playedUci": "a8b8",
+      "playedSan": "Rab8",
+      "bestUci": "f7f5",
+      "bestSan": "f5",
+      "bestLine": ["f7f5", "e4g5", "e5e4", "e1g1", "h7h6", "g5e6", "d4e6", "d5e6"],
+      "bestLineSan": "17... f5 18. Ng5 e4 19. O-O h6 20. Ne6 Nxe6 21. dxe6",
+      "bestLineMoves": ["f5", "Ng5", "e4", "O-O", "h6", "Ne6", "Nxe6", "dxe6"],
+      "bestLineFen": "r4rk1/pp1n2b1/q3P1pp/2p2p2/P1P1p3/3P2PP/1P3PB1/1RBQ1RK1 b - - 0 21",
+      "fenBefore": "r4rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3P2PP/1P3PB1/1RBQK2R b K - 4 17",
+      "fenAfter": "1r3rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3P2PP/1P3PB1/1RBQK2R w K - 5 18",
+      "evalBeforeWhite": {
+        "cp": 133
+      },
+      "evalAfterWhite": {
+        "cp": 212
+      },
+      "evalIfBest": {
+        "cp": 133
+      },
+      "swing": "−0.79",
+      "winProbLoss": 6.57699424254475,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 35,
+      "mover": "white",
+      "moveLabel": "18.",
+      "playedUci": "c1e3",
+      "playedSan": "Be3",
+      "bestUci": "e1g1",
+      "bestSan": "O-O",
+      "bestLine": ["e1g1", "f7f5", "e4c3", "a6f6", "c3b5", "f5f4", "b5d4", "c5d4"],
+      "bestLineSan": "18. O-O f5 19. Nc3 Qf6 20. Nb5 f4 21. Nxd4 cxd4",
+      "bestLineMoves": ["O-O", "f5", "Nc3", "Qf6", "Nb5", "f4", "Nxd4", "cxd4"],
+      "bestLineFen": "1r3rk1/pp1n2bp/5qp1/3Pp3/P1Pp1p2/3P2PP/1P3PB1/1RBQ1RK1 w - - 0 22",
+      "fenBefore": "1r3rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3P2PP/1P3PB1/1RBQK2R w K - 5 18",
+      "fenAfter": "1r3rk1/pp1n1pbp/q5p1/2pPp3/P1PnN3/3PB1PP/1P3PB1/1R1QK2R b K - 6 18",
+      "evalBeforeWhite": {
+        "cp": 212
+      },
+      "evalAfterWhite": {
+        "cp": 175
+      },
+      "evalIfBest": {
+        "cp": 212
+      },
+      "swing": "−0.37",
+      "winProbLoss": 3.0070338685789864,
+      "classification": "good",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 53,
+      "mover": "white",
+      "moveLabel": "27.",
+      "playedUci": "f5g6",
+      "playedSan": "fxg6",
+      "bestUci": "g2f1",
+      "bestSan": "Bf1",
+      "bestLine": ["g2f1", "c4d5", "d1d3", "d5f5", "d3f5", "f8f5", "f1c4", "g8h8"],
+      "bestLineSan": "27. Bf1 Qxd5 28. Qxd3 Qxf5 29. Qxf5 Rxf5 30. Bc4+ Kh8",
+      "bestLineMoves": ["Bf1", "Qxd5", "Qxd3", "Qxf5", "Qxf5", "Rxf5", "Bc4+", "Kh8"],
+      "bestLineFen": "1r5k/pp4bp/6p1/5r2/P1B5/6PP/1P3P2/1R4KR w - - 2 31",
+      "fenBefore": "1r3rk1/pp4bp/6p1/3P1P2/P1q5/3p2PP/1P3PB1/1R1Q2KR w - - 0 27",
+      "fenAfter": "1r3rk1/pp4bp/6P1/3P4/P1q5/3p2PP/1P3PB1/1R1Q2KR b - - 0 27",
+      "evalBeforeWhite": {
+        "cp": 42
+      },
+      "evalAfterWhite": {
+        "cp": -203
+      },
+      "evalIfBest": {
+        "cp": 42
+      },
+      "swing": "−2.45",
+      "winProbLoss": 21.721045412872243,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 54,
+      "mover": "black",
+      "moveLabel": "27...",
+      "playedUci": "h7g6",
+      "playedSan": "hxg6",
+      "bestUci": "f8f2",
+      "bestSan": "Rxf2",
+      "bestLine": ["f8f2", "b2b3", "c4d4", "g1h2", "d4d5", "h1g1", "d3d2", "d1g4"],
+      "bestLineSan": "27... Rxf2 28. b3 Qd4 29. Kh2 Qxd5 30. Rg1 d2 31. Qg4",
+      "bestLineMoves": ["Rxf2", "b3", "Qd4", "Kh2", "Qxd5", "Rg1", "d2", "Qg4"],
+      "bestLineFen": "1r4k1/pp4bp/6P1/3q4/P5Q1/1P4PP/3p1rBK/1R4R1 b - - 1 31",
+      "fenBefore": "1r3rk1/pp4bp/6P1/3P4/P1q5/3p2PP/1P3PB1/1R1Q2KR b - - 0 27",
+      "fenAfter": "1r3rk1/pp4b1/6p1/3P4/P1q5/3p2PP/1P3PB1/1R1Q2KR w - - 0 28",
+      "evalBeforeWhite": {
+        "cp": -203
+      },
+      "evalAfterWhite": {
+        "cp": -58
+      },
+      "evalIfBest": {
+        "cp": -203
+      },
+      "swing": "−1.45",
+      "winProbLoss": 12.543732034997774,
+      "classification": "mistake",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 54,
+      "mover": "black",
+      "moveLabel": "27...",
+      "playedUci": "h7g6",
+      "playedSan": "hxg6",
+      "bestUci": "f8f2",
+      "bestSan": "Rxf2",
+      "bestLine": ["f8f2", "b2b3", "c4d4", "g1h2", "d4d5", "h1g1", "d3d2", "d1g4"],
+      "bestLineSan": "27... Rxf2 28. b3 Qd4 29. Kh2 Qxd5 30. Rg1 d2 31. Qg4",
+      "bestLineMoves": ["Rxf2", "b3", "Qd4", "Kh2", "Qxd5", "Rg1", "d2", "Qg4"],
+      "bestLineFen": "1r4k1/pp4bp/6P1/3q4/P5Q1/1P4PP/3p1rBK/1R4R1 b - - 1 31",
+      "fenBefore": "1r3rk1/pp4bp/6P1/3P4/P1q5/3p2PP/1P3PB1/1R1Q2KR b - - 0 27",
+      "fenAfter": "1r3rk1/pp4b1/6p1/3P4/P1q5/3p2PP/1P3PB1/1R1Q2KR w - - 0 28",
+      "evalBeforeWhite": {
+        "cp": -203
+      },
+      "evalAfterWhite": {
+        "cp": -58
+      },
+      "evalIfBest": {
+        "cp": -203
+      },
+      "swing": "−1.45",
+      "winProbLoss": 12.543732034997774,
+      "classification": "mistake",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 55,
+      "mover": "white",
+      "moveLabel": "28.",
+      "playedUci": "g2f3",
+      "playedSan": "Bf3",
+      "bestUci": "g2f1",
+      "bestSan": "Bf1",
+      "bestLine": ["g2f1", "c4d4", "h1h2", "d3d2", "d1g4", "b8c8", "b1d1", "d4d5"],
+      "bestLineSan": "28. Bf1 Qd4 29. Rh2 d2 30. Qg4 Rbc8 31. Rd1 Qxd5",
+      "bestLineMoves": ["Bf1", "Qd4", "Rh2", "d2", "Qg4", "Rbc8", "Rd1", "Qxd5"],
+      "bestLineFen": "2r2rk1/pp4b1/6p1/3q4/P5Q1/6PP/1P1p1P1R/3R1BK1 w - - 0 32",
+      "fenBefore": "1r3rk1/pp4b1/6p1/3P4/P1q5/3p2PP/1P3PB1/1R1Q2KR w - - 0 28",
+      "fenAfter": "1r3rk1/pp4b1/6p1/3P4/P1q5/3p1BPP/1P3P2/1R1Q2KR b - - 1 28",
+      "evalBeforeWhite": {
+        "cp": -58
+      },
+      "evalAfterWhite": {
+        "cp": -139
+      },
+      "evalIfBest": {
+        "cp": -58
+      },
+      "swing": "−0.81",
+      "winProbLoss": 7.204231620842492,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 59,
+      "mover": "white",
+      "moveLabel": "30.",
+      "playedUci": "h2g2",
+      "playedSan": "Kg2",
+      "bestUci": "f3g2",
+      "bestSan": "Bg2",
+      "bestLine": ["f3g2", "f7f2", "h1g1", "d3d2", "d1g4", "c4g4", "h3g4", "f2e2"],
+      "bestLineSan": "30. Bg2 Rxf2 31. Rg1 d2 32. Qg4 Qxg4 33. hxg4 Re2",
+      "bestLineMoves": ["Bg2", "Rxf2", "Rg1", "d2", "Qg4", "Qxg4", "hxg4", "Re2"],
+      "bestLineFen": "5rk1/pp4b1/6p1/3P4/P5P1/6P1/1P1pr1BK/1R4R1 w - - 1 34",
+      "fenBefore": "5rk1/pp3rb1/6p1/3P4/P1q5/3p1BPP/1P3P1K/1R1Q3R w - - 4 30",
+      "fenAfter": "5rk1/pp3rb1/6p1/3P4/P1q5/3p1BPP/1P3PK1/1R1Q3R b - - 5 30",
+      "evalBeforeWhite": {
+        "cp": -351
+      },
+      "evalAfterWhite": {
+        "cp": -760
+      },
+      "evalIfBest": {
+        "cp": -351
+      },
+      "swing": "−4.09",
+      "winProbLoss": 15.803342198515345,
+      "classification": "mistake",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 60,
+      "mover": "black",
+      "moveLabel": "30...",
+      "playedUci": "d3d2",
+      "playedSan": "d2",
+      "bestUci": "f7f3",
+      "bestSan": "Rxf3",
+      "bestLine": ["f7f3", "d1f3", "f8f3", "g2f3", "g7f8", "f3g2", "c4d5", "f2f3"],
+      "bestLineSan": "30... Rxf3 31. Qxf3 Rxf3 32. Kxf3 Bf8 33. Kg2 Qxd5+ 34. f3",
+      "bestLineMoves": ["Rxf3", "Qxf3", "Rxf3", "Kxf3", "Bf8", "Kg2", "Qxd5+", "f3"],
+      "bestLineFen": "5bk1/pp6/6p1/3q4/P7/3p1PPP/1P4K1/1R5R b - - 0 34",
+      "fenBefore": "5rk1/pp3rb1/6p1/3P4/P1q5/3p1BPP/1P3PK1/1R1Q3R b - - 5 30",
+      "fenAfter": "5rk1/pp3rb1/6p1/3P4/P1q5/5BPP/1P1p1PK1/1R1Q3R w - - 0 31",
+      "evalBeforeWhite": {
+        "cp": -760
+      },
+      "evalAfterWhite": {
+        "cp": -615
+      },
+      "evalIfBest": {
+        "cp": -760
+      },
+      "swing": "−1.45",
+      "winProbLoss": 3.6696078249132995,
+      "classification": "good",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 18,
+      "mover": "black",
+      "moveLabel": "9...",
+      "playedUci": "g4d7",
+      "playedSan": "Bd7",
+      "bestUci": "g5h4",
+      "bestSan": "gxh4",
+      "bestLine": ["g5h4", "g3h4", "g4e6", "g1e2", "c7c6", "e2f4", "d8a5", "a2a3"],
+      "bestLineSan": "9... gxh4 10. Bxh4 Be6 11. Nge2 c6 12. Nf4 Qa5 13. a3",
+      "bestLineMoves": ["gxh4", "Bxh4", "Be6", "Nge2", "c6", "Nf4", "Qa5", "a3"],
+      "bestLineFen": "rn2kb1r/pp2pp2/2ppbn2/q6p/3P1N1B/P1NBPP2/1PP3P1/R2QK2R b KQkq - 0 13",
+      "fenBefore": "rn1qkb1r/ppp1pp2/3p1n2/6pp/3P2bP/2NBPPB1/PPP3P1/R2QK1NR b KQkq - 0 9",
+      "fenAfter": "rn1qkb1r/pppbpp2/3p1n2/6pp/3P3P/2NBPPB1/PPP3P1/R2QK1NR w KQkq - 1 10",
+      "evalBeforeWhite": {
+        "cp": 290
+      },
+      "evalAfterWhite": {
+        "cp": 685
+      },
+      "evalIfBest": {
+        "cp": 290
+      },
+      "swing": "−3.95",
+      "winProbLoss": 18.15063276723822,
+      "classification": "mistake",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 19,
+      "mover": "white",
+      "moveLabel": "10.",
+      "playedUci": "g1e2",
+      "playedSan": "Nge2",
+      "bestUci": "h4g5",
+      "bestSan": "hxg5",
+      "bestLine": ["h4g5", "f6g8", "f3f4", "f8g7", "h1h5", "b8c6", "h5h8", "g7h8"],
+      "bestLineSan": "10. hxg5 Ng8 11. f4 Bg7 12. Rxh5 Nc6 13. Rxh8 Bxh8",
+      "bestLineMoves": ["hxg5", "Ng8", "f4", "Bg7", "Rxh5", "Nc6", "Rxh8", "Bxh8"],
+      "bestLineFen": "r2qk1nb/pppbpp2/2np4/6P1/3P1P2/2NBP1B1/PPP3P1/R2QK1N1 w Qq - 0 14",
+      "fenBefore": "rn1qkb1r/pppbpp2/3p1n2/6pp/3P3P/2NBPPB1/PPP3P1/R2QK1NR w KQkq - 1 10",
+      "fenAfter": "rn1qkb1r/pppbpp2/3p1n2/6pp/3P3P/2NBPPB1/PPP1N1P1/R2QK2R b KQkq - 2 10",
+      "evalBeforeWhite": {
+        "cp": 685
+      },
+      "evalAfterWhite": {
+        "cp": 197
+      },
+      "evalIfBest": {
+        "cp": 685
+      },
+      "swing": "−4.88",
+      "winProbLoss": 25.189687141362526,
+      "classification": "blunder",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 19,
+      "mover": "white",
+      "moveLabel": "10.",
+      "playedUci": "g1e2",
+      "playedSan": "Nge2",
+      "bestUci": "h4g5",
+      "bestSan": "hxg5",
+      "bestLine": ["h4g5", "f6g8", "f3f4", "f8g7", "h1h5", "b8c6", "h5h8", "g7h8"],
+      "bestLineSan": "10. hxg5 Ng8 11. f4 Bg7 12. Rxh5 Nc6 13. Rxh8 Bxh8",
+      "bestLineMoves": ["hxg5", "Ng8", "f4", "Bg7", "Rxh5", "Nc6", "Rxh8", "Bxh8"],
+      "bestLineFen": "r2qk1nb/pppbpp2/2np4/6P1/3P1P2/2NBP1B1/PPP3P1/R2QK1N1 w Qq - 0 14",
+      "fenBefore": "rn1qkb1r/pppbpp2/3p1n2/6pp/3P3P/2NBPPB1/PPP3P1/R2QK1NR w KQkq - 1 10",
+      "fenAfter": "rn1qkb1r/pppbpp2/3p1n2/6pp/3P3P/2NBPPB1/PPP1N1P1/R2QK2R b KQkq - 2 10",
+      "evalBeforeWhite": {
+        "cp": 685
+      },
+      "evalAfterWhite": {
+        "cp": 197
+      },
+      "evalIfBest": {
+        "cp": 685
+      },
+      "swing": "−4.88",
+      "winProbLoss": 25.189687141362526,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 20,
+      "mover": "black",
+      "moveLabel": "10...",
+      "playedUci": "g5h4",
+      "playedSan": "gxh4",
+      "bestUci": "g5g4",
+      "bestSan": "g4",
+      "bestLine": ["g5g4", "f3f4", "d6d5", "f4f5", "f8h6", "g3f4", "h6f4", "e2f4"],
+      "bestLineSan": "10... g4 11. f4 d5 12. f5 Bh6 13. Bf4 Bxf4 14. Nxf4",
+      "bestLineMoves": ["g4", "f4", "d5", "f5", "Bh6", "Bf4", "Bxf4", "Nxf4"],
+      "bestLineFen": "rn1qk2r/pppbpp2/5n2/3p1P1p/3P1NpP/2NBP3/PPP3P1/R2QK2R b KQkq - 0 14",
+      "fenBefore": "rn1qkb1r/pppbpp2/3p1n2/6pp/3P3P/2NBPPB1/PPP1N1P1/R2QK2R b KQkq - 2 10",
+      "fenAfter": "rn1qkb1r/pppbpp2/3p1n2/7p/3P3p/2NBPPB1/PPP1N1P1/R2QK2R w KQkq - 0 11",
+      "evalBeforeWhite": {
+        "cp": 197
+      },
+      "evalAfterWhite": {
+        "cp": 309
+      },
+      "evalIfBest": {
+        "cp": 197
+      },
+      "swing": "−1.12",
+      "winProbLoss": 8.348025789271915,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 35,
+      "mover": "white",
+      "moveLabel": "18.",
+      "playedUci": "d2h6",
+      "playedSan": "Qxh6",
+      "bestUci": "f2e3",
+      "bestSan": "Be3",
+      "bestLine": ["f2e3", "h6e3", "d2e3", "c6e7", "g1h1", "e7g6", "d3b5", "d7b5"],
+      "bestLineSan": "18. Be3 Bxe3 19. Qxe3 Ne7 20. Rh1 Ng6 21. Bb5 Bxb5",
+      "bestLineMoves": ["Be3", "Bxe3", "Qxe3", "Ne7", "Rh1", "Ng6", "Bb5", "Bxb5"],
+      "bestLineFen": "r2qk2r/ppp2p2/3p1nn1/1b1Pp3/4P3/2N1QP1p/PPP1N3/R3K2R w Qkq - 0 22",
+      "fenBefore": "r2qk2r/pppb1p2/2np1n1b/3Pp3/4P3/2NB1P1p/PPPQNB2/R3K1R1 w Qkq - 1 18",
+      "fenAfter": "r2qk2r/pppb1p2/2np1n1Q/3Pp3/4P3/2NB1P1p/PPP1NB2/R3K1R1 b Qkq - 0 18",
+      "evalBeforeWhite": {
+        "cp": -196
+      },
+      "evalAfterWhite": {
+        "cp": -706
+      },
+      "evalIfBest": {
+        "cp": -196
+      },
+      "swing": "−5.10",
+      "winProbLoss": 25.785396755076917,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 36,
+      "mover": "black",
+      "moveLabel": "18...",
+      "playedUci": "h8h6",
+      "playedSan": "Rxh6",
+      "bestUci": "h8h6",
+      "bestLine": ["h8h6", "d5c6", "b7c6", "e2g3", "h6h8", "g1h1", "a7a6", "g3f5"],
+      "bestLineSan": "18... Rxh6 19. dxc6 bxc6 20. Ng3 Rh8 21. Rh1 a6 22. Nf5",
+      "bestLineMoves": ["Rxh6", "dxc6", "bxc6", "Ng3", "Rh8", "Rh1", "a6", "Nf5"],
+      "bestLineFen": "r2qk2r/2pb1p2/p1pp1n2/4pN2/4P3/2NB1P1p/PPP2B2/R3K2R b Qq - 1 22",
+      "fenBefore": "r2qk2r/pppb1p2/2np1n1Q/3Pp3/4P3/2NB1P1p/PPP1NB2/R3K1R1 b Qkq - 0 18",
+      "fenAfter": "r2qk3/pppb1p2/2np1n1r/3Pp3/4P3/2NB1P1p/PPP1NB2/R3K1R1 w Qq - 0 19",
+      "evalBeforeWhite": {
+        "cp": -706
+      },
+      "evalAfterWhite": {
+        "cp": -674
+      },
+      "swing": "−0.32",
+      "winProbLoss": 0.7982031436202135,
+      "classification": "best",
+      "playedIsBest": true
+    }
+  },
+  {
+    "detail": {
+      "ply": 50,
+      "mover": "black",
+      "moveLabel": "25...",
+      "playedUci": "h7g7",
+      "playedSan": "Rg7",
+      "bestUci": "a8b8",
+      "bestSan": "Rb8",
+      "bestLine": ["a8b8", "b7c6", "e8d8", "e2g3", "b8b6", "c6a4", "d8c8", "g3f1"],
+      "bestLineSan": "25... Rb8 26. Bxc6+ Kd8 27. Ng3 Rb6 28. Ba4 Kc8 29. Nf1",
+      "bestLineMoves": ["Rb8", "Bxc6+", "Kd8", "Ng3", "Rb6", "Ba4", "Kc8", "Nf1"],
+      "bestLineFen": "2k5/p1p1qp1r/1r1pbn2/4p1B1/B3P3/2N2P2/PPP4p/R3KN1R b Q - 6 29",
+      "fenBefore": "r3k3/pBp1qp1r/2ppbn2/4p1B1/4P3/2N2P2/PPP1N2p/R3K2R b Qq - 1 25",
+      "fenAfter": "r3k3/pBp1qpr1/2ppbn2/4p1B1/4P3/2N2P2/PPP1N2p/R3K2R w Qq - 2 26",
+      "evalBeforeWhite": {
+        "cp": -485
+      },
+      "evalAfterWhite": {
+        "cp": -182
+      },
+      "evalIfBest": {
+        "cp": -485
+      },
+      "swing": "−3.03",
+      "winProbLoss": 19.487846965599175,
+      "classification": "mistake",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 51,
+      "mover": "white",
+      "moveLabel": "26.",
+      "playedUci": "b7c6",
+      "playedSan": "Bxc6+",
+      "bestUci": "b7c6",
+      "bestLine": ["b7c6", "e8f8", "g5h6", "f6g4", "h6g7", "f8g7", "c6a8", "e7h4"],
+      "bestLineSan": "26. Bxc6+ Kf8 27. Bh6 Ng4 28. Bxg7+ Kxg7 29. Bxa8 Qh4+",
+      "bestLineMoves": ["Bxc6+", "Kf8", "Bh6", "Ng4", "Bxg7+", "Kxg7", "Bxa8", "Qh4+"],
+      "bestLineFen": "B7/p1p2pk1/3pb3/4p3/4P1nq/2N2P2/PPP1N2p/R3K2R w Q - 1 30",
+      "fenBefore": "r3k3/pBp1qpr1/2ppbn2/4p1B1/4P3/2N2P2/PPP1N2p/R3K2R w Qq - 2 26",
+      "fenAfter": "r3k3/p1p1qpr1/2Bpbn2/4p1B1/4P3/2N2P2/PPP1N2p/R3K2R b Qq - 0 26",
+      "evalBeforeWhite": {
+        "cp": -182
+      },
+      "evalAfterWhite": {
+        "cp": -236
+      },
+      "swing": "−0.54",
+      "winProbLoss": 4.299733001072035,
+      "classification": "best",
+      "playedIsBest": true
+    }
+  },
+  {
+    "detail": {
+      "ply": 54,
+      "mover": "black",
+      "moveLabel": "27...",
+      "playedUci": "a8d8",
+      "playedSan": "Rd8",
+      "bestUci": "a8b8",
+      "bestSan": "Rb8",
+      "bestLine": ["a8b8", "h1h2", "b8b2", "e1c1", "b2b6", "c3d5", "e6d5", "c6d5"],
+      "bestLineSan": "27... Rb8 28. Rxh2 Rxb2 29. O-O-O Rb6 30. Nd5 Bxd5 31. Bxd5",
+      "bestLineMoves": ["Rb8", "Rxh2", "Rxb2", "O-O-O", "Rb6", "Nd5", "Bxd5", "Bxd5"],
+      "bestLineFen": "5k2/p1p1qpr1/1r1p1n2/3Bp3/4P2B/5P2/P1P1N2R/2KR4 b - - 0 31",
+      "fenBefore": "r4k2/p1p1qpr1/2Bpbn2/4p3/4P2B/2N2P2/PPP1N2p/R3K2R b Q - 2 27",
+      "fenAfter": "3r1k2/p1p1qpr1/2Bpbn2/4p3/4P2B/2N2P2/PPP1N2p/R3K2R w Q - 3 28",
+      "evalBeforeWhite": {
+        "cp": -333
+      },
+      "evalAfterWhite": {
+        "cp": -132
+      },
+      "evalIfBest": {
+        "cp": -333
+      },
+      "swing": "−2.01",
+      "winProbLoss": 15.396914700553701,
+      "classification": "mistake",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 55,
+      "mover": "white",
+      "moveLabel": "28.",
+      "playedUci": "h1h2",
+      "playedSan": "Rxh2",
+      "bestUci": "h1h2",
+      "bestLine": ["h1h2", "d8b8", "e1c1", "b8b6", "c6a4", "g7g8", "h2h1", "c7c6"],
+      "bestLineSan": "28. Rxh2 Rb8 29. O-O-O Rb6 30. Ba4 Rg8 31. Rhh1 c6",
+      "bestLineMoves": ["Rxh2", "Rb8", "O-O-O", "Rb6", "Ba4", "Rg8", "Rhh1", "c6"],
+      "bestLineFen": "5kr1/p3qp2/1rppbn2/4p3/B3P2B/2N2P2/PPP1N3/2KR3R w - - 0 32",
+      "fenBefore": "3r1k2/p1p1qpr1/2Bpbn2/4p3/4P2B/2N2P2/PPP1N2p/R3K2R w Q - 3 28",
+      "fenAfter": "3r1k2/p1p1qpr1/2Bpbn2/4p3/4P2B/2N2P2/PPP1N2R/R3K3 b Q - 0 28",
+      "evalBeforeWhite": {
+        "cp": -132
+      },
+      "evalAfterWhite": {
+        "cp": -121
+      },
+      "swing": "+0.11",
+      "winProbLoss": 0,
+      "classification": "best",
+      "playedIsBest": true
+    }
+  },
+  {
+    "detail": {
+      "ply": 60,
+      "mover": "black",
+      "moveLabel": "30...",
+      "playedUci": "d8c8",
+      "playedSan": "Rc8",
+      "bestUci": "h8h4",
+      "bestSan": "Rxh4",
+      "bestLine": ["h8h4", "h1h4", "f6g8", "h4h1", "e7g5", "e1f2", "g5d2", "g3e2"],
+      "bestLineSan": "30... Rxh4 31. Rxh4 Ng8 32. Rh1 Qg5 33. Kf2 Qd2+ 34. Nge2",
+      "bestLineMoves": ["Rxh4", "Rxh4", "Ng8", "Rh1", "Qg5", "Kf2", "Qd2+", "Nge2"],
+      "bestLineFen": "3r1kn1/p1p2p2/2Bpb3/4p3/4P3/2N2P2/PPPqNK2/R6R b - - 6 34",
+      "fenBefore": "3r1k1r/p1p1qp2/2Bpbn2/4p3/4P2B/2N2PN1/PPP5/R3K2R b Q - 4 30",
+      "fenAfter": "2r2k1r/p1p1qp2/2Bpbn2/4p3/4P2B/2N2PN1/PPP5/R3K2R w Q - 5 31",
+      "evalBeforeWhite": {
+        "cp": -351
+      },
+      "evalAfterWhite": {
+        "cp": -69
+      },
+      "evalIfBest": {
+        "cp": -351
+      },
+      "swing": "−2.82",
+      "winProbLoss": 22.13784232141159,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 61,
+      "mover": "white",
+      "moveLabel": "31.",
+      "playedUci": "e1e2",
+      "playedSan": "Ke2",
+      "bestUci": "c3d5",
+      "bestSan": "Nd5",
+      "bestLine": ["c3d5", "h8h4", "d5e7", "h4h1", "g3h1", "f8e7", "h1f2", "f6h5"],
+      "bestLineSan": "31. Nd5 Rxh4 32. Nxe7 Rxh1+ 33. Nxh1 Kxe7 34. Nf2 Nh5",
+      "bestLineMoves": ["Nd5", "Rxh4", "Nxe7", "Rxh1+", "Nxh1", "Kxe7", "Nf2", "Nh5"],
+      "bestLineFen": "2r5/p1p1kp2/2Bpb3/4p2n/4P3/5P2/PPP2N2/R3K3 w Q - 2 35",
+      "fenBefore": "2r2k1r/p1p1qp2/2Bpbn2/4p3/4P2B/2N2PN1/PPP5/R3K2R w Q - 5 31",
+      "fenAfter": "2r2k1r/p1p1qp2/2Bpbn2/4p3/4P2B/2N2PN1/PPP1K3/R6R b - - 6 31",
+      "evalBeforeWhite": {
+        "cp": -69
+      },
+      "evalAfterWhite": {
+        "cp": -63
+      },
+      "evalIfBest": {
+        "cp": -69
+      },
+      "swing": "+0.06",
+      "winProbLoss": 0,
+      "classification": "best",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 32,
+      "mover": "black",
+      "moveLabel": "16...",
+      "playedUci": "h5f3",
+      "playedSan": "Bf3",
+      "bestUci": "h5f7",
+      "bestSan": "Bf7",
+      "bestLine": ["h5f7", "f4e6", "f7e6", "h3e6", "b7b5", "c3a2", "f8d6", "e3h6"],
+      "bestLineSan": "16... Bf7 17. Ne6+ Bxe6 18. Bxe6 b5 19. Na2 Bd6 20. Bxh6",
+      "bestLineMoves": ["Bf7", "Ne6+", "Bxe6", "Bxe6", "b5", "Na2", "Bd6", "Bxh6"],
+      "bestLineFen": "rn5r/p1k3pp/2pbBp1B/Pp2p3/4P3/6P1/NPP2P2/2KR3R b - - 0 20",
+      "fenBefore": "rn3b1r/ppk3pp/2p2p1n/P3p2b/4PN2/2N1B1PB/1PP2P2/2KR3R b - - 1 16",
+      "fenAfter": "rn3b1r/ppk3pp/2p2p1n/P3p3/4PN2/2N1BbPB/1PP2P2/2KR3R w - - 2 17",
+      "evalBeforeWhite": {
+        "cp": 221
+      },
+      "evalAfterWhite": {
+        "mate": 2
+      },
+      "evalIfBest": {
+        "cp": 221
+      },
+      "swing": "allows mate in 2",
+      "winProbLoss": 30.709416559278864,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 33,
+      "mover": "white",
+      "moveLabel": "17.",
+      "playedUci": "f4e6",
+      "playedSan": "Ne6+",
+      "bestUci": "f4e6",
+      "bestLine": ["f4e6", "c7c8", "d1d8"],
+      "bestLineSan": "17. Ne6+ Kc8 18. Rd8#",
+      "bestLineMoves": ["Ne6+", "Kc8", "Rd8#"],
+      "bestLineFen": "rnkR1b1r/pp4pp/2p1Np1n/P3p3/4P3/2N1BbPB/1PP2P2/2K4R b - - 5 18",
+      "fenBefore": "rn3b1r/ppk3pp/2p2p1n/P3p3/4PN2/2N1BbPB/1PP2P2/2KR3R w - - 2 17",
+      "fenAfter": "rn3b1r/ppk3pp/2p1Np1n/P3p3/4P3/2N1BbPB/1PP2P2/2KR3R b - - 3 17",
+      "evalBeforeWhite": {
+        "mate": 2
+      },
+      "evalAfterWhite": {
+        "mate": 1
+      },
+      "swing": "keeps the mate",
+      "winProbLoss": 0,
+      "classification": "best",
+      "playedIsBest": true
+    }
+  },
+  {
+    "detail": {
+      "ply": 53,
+      "mover": "white",
+      "moveLabel": "27.",
+      "playedUci": "f2g1",
+      "playedSan": "Kg1",
+      "bestUci": "h3h4",
+      "bestSan": "h4",
+      "bestLine": ["h3h4", "b4c3", "d2c3", "f8f5", "d4b4", "d8c8", "f1e3", "f5e5"],
+      "bestLineSan": "27. h4 bxc3 28. Qxc3 Rf5 29. Rb4 Rc8 30. Ne3 Rxe5",
+      "bestLineMoves": ["h4", "bxc3", "Qxc3", "Rf5", "Rb4", "Rc8", "Ne3", "Rxe5"],
+      "bestLineFen": "2r4k/1p4bp/4b2q/2Ppr1p1/1R5P/2Q1NpP1/P4K2/3BR3 w - - 0 31",
+      "fenBefore": "3r1r1k/1p4bp/4b2q/2PpP1p1/1p1R4/2P2pPP/P2Q1K2/3BRN2 w - - 1 27",
+      "fenAfter": "3r1r1k/1p4bp/4b2q/2PpP1p1/1p1R4/2P2pPP/P2Q4/3BRNK1 b - - 2 27",
+      "evalBeforeWhite": {
+        "cp": -257
+      },
+      "evalAfterWhite": {
+        "cp": -849
+      },
+      "evalIfBest": {
+        "cp": -257
+      },
+      "swing": "−5.92",
+      "winProbLoss": 23.758665675230663,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 54,
+      "mover": "black",
+      "moveLabel": "27...",
+      "playedUci": "e6h3",
+      "playedSan": "Bxh3",
+      "bestUci": "f3f2",
+      "bestSan": "f2+",
+      "bestLine": ["f3f2", "d2f2", "f8f2", "g1f2", "b4c3", "h3h4", "g7f8", "f2g2"],
+      "bestLineSan": "27... f2+ 28. Qxf2 Rxf2 29. Kxf2 bxc3 30. h4 Bf8 31. Kg2",
+      "bestLineMoves": ["f2+", "Qxf2", "Rxf2", "Kxf2", "bxc3", "h4", "Bf8", "Kg2"],
+      "bestLineFen": "3r1b1k/1p5p/4b2q/2PpP1p1/3R3P/2p3P1/P5K1/3BRN2 b - - 2 31",
+      "fenBefore": "3r1r1k/1p4bp/4b2q/2PpP1p1/1p1R4/2P2pPP/P2Q4/3BRNK1 b - - 2 27",
+      "fenAfter": "3r1r1k/1p4bp/7q/2PpP1p1/1p1R4/2P2pPb/P2Q4/3BRNK1 w - - 0 28",
+      "evalBeforeWhite": {
+        "cp": -849
+      },
+      "evalAfterWhite": {
+        "cp": -616
+      },
+      "evalIfBest": {
+        "cp": -849
+      },
+      "swing": "−2.33",
+      "winProbLoss": 5.175041187934994,
+      "classification": "inaccuracy",
+      "playedIsBest": false
+    }
+  },
+  {
+    "detail": {
+      "ply": 49,
+      "mover": "white",
+      "moveLabel": "25.",
+      "playedUci": "h2h3",
+      "playedSan": "h3",
+      "bestUci": "e3d4",
+      "bestSan": "exd4",
+      "bestLine": ["e3d4", "f8e8", "d2b2", "d7g7", "h2h3", "g4e3", "c1e3", "e8e3"],
+      "bestLineSan": "25. exd4 Rfe8 26. Qb2 Qg7 27. h3 Ne3+ 28. Bxe3 Rxe3",
+      "bestLineMoves": ["exd4", "Rfe8", "Qb2", "Qg7", "h3", "Ne3+", "Bxe3", "Rxe3"],
+      "bestLineFen": "3r2k1/1pp3qp/2n3p1/p1Pp1p2/3P1P2/1PN1r1PP/PQ4K1/1R1R4 w - - 0 29",
+      "fenBefore": "3r1rk1/1ppq3p/2n3p1/p1Pp1p2/3b1Pn1/1PN1P1P1/P2Q2KP/1RBR4 w - - 0 25",
+      "fenAfter": "3r1rk1/1ppq3p/2n3p1/p1Pp1p2/3b1Pn1/1PN1P1PP/P2Q2K1/1RBR4 b - - 0 25",
+      "evalBeforeWhite": {
+        "cp": -183
+      },
+      "evalAfterWhite": {
+        "cp": -915
+      },
+      "evalIfBest": {
+        "cp": -183
+      },
+      "swing": "−7.32",
+      "winProbLoss": 30.436671923350218,
+      "classification": "blunder",
+      "playedIsBest": false
+    },
+    "reply": {
+      "ply": 50,
+      "mover": "black",
+      "moveLabel": "25...",
+      "playedUci": "g4e3",
+      "playedSan": "Nxe3+",
+      "bestUci": "g4e3",
+      "bestLine": ["g4e3", "g2h2", "e3d1", "c3b5", "d4c5", "c1a3", "c5b4", "a3b4"],
+      "bestLineSan": "25... Nxe3+ 26. Kh2 Nxd1 27. Nb5 Bxc5 28. Ba3 Bb4 29. Bxb4",
+      "bestLineMoves": ["Nxe3+", "Kh2", "Nxd1", "Nb5", "Bxc5", "Ba3", "Bb4", "Bxb4"],
+      "bestLineFen": "3r1rk1/1ppq3p/2n3p1/pN1p1p2/1B3P2/1P4PP/P2Q3K/1R1n4 b - - 0 29",
+      "fenBefore": "3r1rk1/1ppq3p/2n3p1/p1Pp1p2/3b1Pn1/1PN1P1PP/P2Q2K1/1RBR4 b - - 0 25",
+      "fenAfter": "3r1rk1/1ppq3p/2n3p1/p1Pp1p2/3b1P2/1PN1n1PP/P2Q2K1/1RBR4 w - - 0 26",
+      "evalBeforeWhite": {
+        "cp": -915
+      },
+      "evalAfterWhite": {
+        "cp": -924
+      },
+      "swing": "+0.09",
+      "winProbLoss": 0,
+      "classification": "best",
+      "playedIsBest": true
+    }
+  }
+]
