@@ -354,6 +354,39 @@ sudo fail2ban-regex /var/log/nginx/hub.daisychess.org.access.log daisychess-link
 sudo systemctl restart fail2ban && sudo fail2ban-client status daisychess-ws && sudo fail2ban-client status daisychess-link
 ```
 
+## Traffic stats
+
+Owner-only [GoAccess](https://goaccess.io) reports at `https://daisychess.org/stats/` (basic auth), one per
+site (`daisychess.org`, `play.daisychess.org`, `hub.daisychess.org`), regenerated hourly from the nginx
+access logs (`/var/log/nginx/*.access.log` plus the rotated `.N` / `.N.gz`, so at most 14 days). The
+"Referring sites" panel shows the `Origin` header: `capacitor://app.daisychess.org` (iOS app),
+`https://app.daisychess.org` (Android app), `https://play.daisychess.org` (web). No GoAccess database
+is kept, and the reports are static HTML with all scripts and styles inline. Privacy: legitimate
+interest, see `apps/site/privacy/index.html` section 5.
+
+```bash
+sudo apt install goaccess apache2-utils
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin --groups adm daisychess-stats
+sudo install -d -o daisychess-stats -g www-data -m 0750 /var/www/daisychess-stats
+sudo install -D -m 0755 deploy/stats/goaccess-report.sh /usr/local/lib/daisychess/goaccess-report.sh
+sudo install -m 0644 deploy/stats/daisychess-stats.service deploy/stats/daisychess-stats.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now daisychess-stats.timer
+sudo systemctl start daisychess-stats.service   # first report now; check: journalctl -u daisychess-stats
+
+# the owner picks the password (prompted, never put it on a command line or in the repo)
+sudo htpasswd -c /etc/nginx/daisychess-stats.htpasswd <user>
+sudo chown root:www-data /etc/nginx/daisychess-stats.htpasswd && sudo chmod 0640 /etc/nginx/daisychess-stats.htpasswd
+
+# update /etc/nginx/sites-available/daisychess.org from deploy/nginx/daisychess.org.conf (the /stats/ location)
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`/stats/` has its own CSP (`'unsafe-inline'` for script and style, nothing external) because the GoAccess
+HTML is self-contained; `node scripts/check-site-csp.mjs` checks the block. Visits to `/stats/` are not
+logged. A site without logs is skipped. Manual run into a scratch directory:
+`deploy/stats/goaccess-report.sh /var/log/nginx /tmp/stats-out`.
+
 ## Certificate renewal
 
 Handled automatically by certbot's systemd timer (`certbot.timer`). Check with:

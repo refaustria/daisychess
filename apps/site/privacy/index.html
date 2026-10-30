@@ -82,8 +82,8 @@
             daisychess.org is a static website. It sets <strong>no cookies</strong>, uses no
             analytics and loads nothing from other servers — fonts, scripts and images all come from
             daisychess.org itself. Like every web server, ours writes an access log (IP address,
-            time, requested page, status, browser user agent) for security purposes; it is kept as
-            described in <a href="#ip">section 5</a>.
+            time, requested page, status, browser user agent) for security purposes and for
+            aggregated usage statistics; it is kept as described in <a href="#ip">section 5</a>.
           </p>
 
           <h2 id="hub">4. What the hub stores</h2>
@@ -165,7 +165,10 @@
                     no body), status, <code>Origin</code> and user agent
                   </td>
                   <td>everyone who visits</td>
-                  <td>Security (abuse detection, blocking abusive clients)</td>
+                  <td>
+                    Security (abuse detection, blocking abusive clients); aggregated usage
+                    statistics (see section 5)
+                  </td>
                   <td>14 days</td>
                 </tr>
               </tbody>
@@ -207,6 +210,13 @@
             hashed with a daily salt, the hub's application log. IP addresses are used to limit
             abuse (per-address session and connection limits) and to block abusive clients. They are
             never passed to node operators.
+          </p>
+          <p>
+            The same access logs are also used for aggregated usage statistics (pages visited,
+            countries, browsers, app versus web), again our legitimate interest under Art. 6(1)(f)
+            GDPR in understanding how DaisyChess is used. The statistics reports are generated from
+            the logs, are stored only on our server, are viewed only by the operator, are not shared
+            with anyone and contain no data older than the 14-day log retention.
           </p>
 
           <h2 id="nodes">6. Community nodes: who sees what</h2>

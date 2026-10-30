@@ -1,0 +1,29 @@
+# GoAccess traffic reports for https://daisychess.org/stats/ (deploy/README.md "Traffic stats").
+# Install: copy the script to /usr/local/lib/daisychess/goaccess-report.sh (or adjust ExecStart).
+[Unit]
+Description=DaisyChess traffic stats (GoAccess reports from the nginx access logs)
+Documentation=file:///usr/local/lib/daisychess/goaccess-report.sh
+
+[Service]
+Type=oneshot
+User=daisychess-stats
+Group=daisychess-stats
+# adm may read the 0640 www-data:adm nginx logs.
+SupplementaryGroups=adm
+ExecStart=/usr/local/lib/daisychess/goaccess-report.sh
+Nice=10
+ProtectSystem=strict
+ReadWritePaths=/var/www/daisychess-stats
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+UMask=0027

@@ -43,6 +43,14 @@ for (const file of files) {
   const locs = conf.split(/\n\s*location\s/).slice(1);
   for (const loc of locs) {
     const body = loc.slice(0, loc.indexOf('}'));
+    // /stats/ (owner-only GoAccess reports) has its own CSP and repeats the common headers.
+    if (/^\/stats\/\s*\{/.test(loc)) {
+      for (const h of ['Content-Security-Policy', 'X-Content-Type-Options', 'Strict-Transport-Security', 'Cache-Control']) {
+        if (!new RegExp(`add_header\\s+${h}\\s`).test(body)) fail(`${file}: /stats/ lacks add_header ${h}`);
+      }
+      if (!/auth_basic_user_file/.test(body)) fail(`${file}: /stats/ lacks auth_basic_user_file`);
+      continue;
+    }
     if (/add_header/.test(body)) fail(`${file}: a location declares add_header and would lose the security headers`);
   }
   if (failed === before) console.log(`✓ ${file}`);
