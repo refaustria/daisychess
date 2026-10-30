@@ -24,7 +24,7 @@ Data controller: **INCEPTUM e.U. (owner Bojan Savicevic)**, **Brunellengasse 1/3
 | Usage counters per token, node and day (searches, sessions, engine seconds) | token holders (pseudonymous) | Fair-use budget and the operator's usage view | 90 days (`USAGE_RETENTION_DAYS`) |
 | Spot-check results (node id, time, agreed yes/no) | nodes | Quality control of the shared pool | 24 hours |
 | Portal login sessions | operators | Keep you logged in | 30 days or until logout |
-| Game reviews and position evaluations in the review store | nobody in particular | Re-use of finished analyses | Until evicted by the size limit |
+| Game reviews and position evaluations in the review store (a review may carry the "played like" rating estimate of each side) | nobody in particular | Re-use of finished analyses | Until evicted by the size limit |
 | Application log (journal): token id, node id, connection id, error events, a **daily-salted hash** of the client address | players, operators | Operating and debugging the service | See the retention row below |
 | Web server access log: client IP address, time, request path (no query string, no body), status, `Origin` and User-Agent | everyone who visits | Security (abuse detection, fail2ban) | Stock log rotation, **14 days by default on the current host (deploy README)**
 
@@ -45,7 +45,7 @@ Every web server records the address of the connection. Here: the nginx access l
 
 When you analyse on a **community node**, the hub relays your search to the machine of a volunteer operator.
 
-- The operator's node **receives the chess positions (FEN strings) and search settings** you analyse (including the moves of a game under review, one position at a time). That is inherent in how the service works. A position can be personal: a game in progress, your opening preparation. If you do not want a stranger's machine to see it, use the in-browser engine, your own node or the hub's own engines.
+- The operator's node **receives the chess positions (FEN strings) and search settings** you analyse (including the moves of a game under review, one position at a time; the review hints and the "played like" rating estimate also send the positions of the scored moves, so the same servers see the same positions as during the review). That is inherent in how the service works. A position can be personal: a game in progress, your opening preparation. If you do not want a stranger's machine to see it, use the in-browser engine, your own node or the hub's own engines.
 - The node does **not** receive your IP address, name, lichess account, PGN headers or token. For shared-pool searches the node cannot tell who you are; for tokens issued by the operator it can see the token's id and label.
 - The app shows which node and operator a search runs on, and shows a notice before your first search on a shared-pool node.
 - Operators agree in the [terms](./TERMS.md) not to log, keep or misuse positions. The hub cannot technically prevent a dishonest operator from doing so. The hub checks result quality (spot-checks), not privacy.

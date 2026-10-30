@@ -145,7 +145,10 @@
                   <td>30 days or until logout</td>
                 </tr>
                 <tr>
-                  <td>Game reviews and position evaluations in the review store</td>
+                  <td>
+                    Game reviews and position evaluations in the review store (a review may carry the
+                    &ldquo;played like&rdquo; rating estimate of each side)
+                  </td>
                   <td>nobody in particular</td>
                   <td>Re-use of finished analyses</td>
                   <td>Until evicted by the size limit</td>
@@ -230,7 +233,9 @@
             <li>
               The operator's node
               <strong>receives the chess positions (FEN) and search settings</strong> you analyse,
-              including the moves of a game under review, one position at a time. That is inherent
+              including the moves of a game under review, one position at a time; the review hints and the
+              &ldquo;played like&rdquo; rating estimate also send the positions of the scored moves, so
+              the same servers see the same positions as during the review. That is inherent
               in how the service works. A position can be personal — a game in progress, your
               opening preparation. If you do not want a stranger's machine to see it, use the
               in-browser engine, your own node or the hub's own engines.
