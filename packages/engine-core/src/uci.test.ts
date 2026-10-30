@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseLc0MoveStats, parseUciBestMove, parseUciInfo, topPolicy } from './index.js';
+import {
+  mergePolicy,
+  parseLc0MoveStats,
+  parseUciBestMove,
+  parseUciInfo,
+  topPolicy,
+} from './index.js';
 
 describe('parseUciInfo', () => {
   it('parses a full line', () => {
@@ -107,5 +113,39 @@ describe('Lc0 specifics (ADR-019)', () => {
     ]);
     expect(topPolicy([], 5)).toEqual([]);
     expect(topPolicy(entries, 0)).toEqual([]);
+  });
+});
+
+describe('mergePolicy (ADR-024 policyMoves)', () => {
+  const entries = [
+    { uci: 'a2a3', p: 0.01 },
+    { uci: 'e2e4', p: 0.5 },
+    { uci: 'h2h4', p: 0.002 },
+    { uci: 'd2d4', p: 0.2 },
+    { uci: 'c2c4', p: 0.05 },
+    { uci: 'g1f3', p: 0.04 },
+    { uci: 'e2e3', p: 0.03 },
+    { uci: 'b1c3', p: 0.02 },
+  ];
+
+  it('without requested moves equals topPolicy', () => {
+    expect(mergePolicy(entries, [])).toEqual(topPolicy(entries, 5));
+  });
+
+  it('adds requested moves outside the top n, keeps the result sorted, skips duplicates and unknown moves', () => {
+    expect(mergePolicy(entries, ['h2h4', 'e2e4', 'e7e5', 'a2a3', 'h2h4'])).toEqual([
+      { uci: 'e2e4', p: 0.5 },
+      { uci: 'd2d4', p: 0.2 },
+      { uci: 'c2c4', p: 0.05 },
+      { uci: 'g1f3', p: 0.04 },
+      { uci: 'e2e3', p: 0.03 },
+      { uci: 'a2a3', p: 0.01 },
+      { uci: 'h2h4', p: 0.002 },
+    ]);
+  });
+
+  it('respects n and handles empty input', () => {
+    expect(mergePolicy(entries, ['b1c3'], 2).map((e) => e.uci)).toEqual(['e2e4', 'd2d4', 'b1c3']);
+    expect(mergePolicy([], ['e2e4'])).toEqual([]);
   });
 });

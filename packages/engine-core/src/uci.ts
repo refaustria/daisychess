@@ -114,3 +114,27 @@ export function topPolicy(entries: readonly PolicyEntry[], n = 5): PolicyEntry[]
     .slice(0, Math.max(0, n))
     .map(({ e }) => e);
 }
+
+/**
+ * The `n` most probable entries plus the entries of `requested` moves outside them (ADR-024
+ * `analyze.policyMoves`), most probable first (stable for equal probabilities). A requested move
+ * without an entry (illegal, or not printed by the engine) is simply absent; duplicates count
+ * once. The result has at most `n + requested.length` entries.
+ */
+export function mergePolicy(
+  entries: readonly PolicyEntry[],
+  requested: readonly string[],
+  n = 5,
+): PolicyEntry[] {
+  const top = topPolicy(entries, n);
+  const have = new Set(top.map((e) => e.uci));
+  const extra: PolicyEntry[] = [];
+  for (const uci of requested) {
+    if (have.has(uci)) continue;
+    const entry = entries.find((e) => e.uci === uci);
+    if (!entry) continue;
+    have.add(uci);
+    extra.push(entry);
+  }
+  return extra.length === 0 ? top : topPolicy([...top, ...extra], top.length + extra.length);
+}

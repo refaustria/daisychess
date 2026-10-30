@@ -37,6 +37,7 @@
  */
 import { z } from 'zod';
 import { MOVE_CLASSES, type MoveClass, type ReviewSummary } from './review.js';
+import { EloEstimateSchema } from './elo.js';
 import { REVIEW_PRESETS } from './reviewKey.js';
 import type { BestMove, EngineInfo } from './types.js';
 
@@ -97,8 +98,13 @@ export const PROTOCOL_BOUNDS = {
   /** `analyze.nodes` (ADR-019): a node-limited search; human-like engines use 1. */
   nodes: { min: 1, max: 10_000 },
   sessionsPerConnection: { min: 1, max: 16 },
-  /** Entries of `info.policy` (ADR-019); the server relays the top 5. */
+  /**
+   * Entries of `info.policy` (ADR-019); the server relays the top 5, plus the requested
+   * `analyze.policyMoves` outside them (ADR-024).
+   */
   policyMaxEntries: 10,
+  /** `analyze.policyMoves` (ADR-024): moves whose policy entry the final `info.policy` carries. */
+  policyMovesMax: 4,
   /** `sessionId`: 1–64 characters of `[A-Za-z0-9_-]`. */
   sessionIdPattern: /^[A-Za-z0-9_-]{1,64}$/,
   /** Engine ids (same rule as `engines.json`). */
@@ -685,6 +691,13 @@ export const StoredReviewRecordSchema = z.object({
   summary: ReviewSummarySchema,
   /** Keyed by ply (1-based, as a string in JSON). */
   moveDetails: z.record(z.string().regex(/^[1-9]\d{0,3}$/, 'ply'), StoredMoveDetailSchema),
+  /**
+   * Maia Elo estimate per side (ADR-024 §5), written once the web's estimate run finished.
+   * Optional and additive: older records lack it, older servers strip it.
+   */
+  elo: z
+    .object({ white: EloEstimateSchema.optional(), black: EloEstimateSchema.optional() })
+    .optional(),
 });
 
 /** A stored review as the browser cache keeps it: the record plus the game and its preset. */
@@ -764,6 +777,13 @@ export const AnalyzeMessageSchema = z.object({
    * `maxNodes`. Combined with `depth`/`movetime` the search ends at whichever comes first.
    */
   nodes: range('nodes', PROTOCOL_BOUNDS.nodes).optional(),
+  /**
+   * Policy moves of interest (ADR-024): a policy-network engine (`style: 'human'`) adds the
+   * entries of these moves (when legal) to the top 5 of the final `info.policy`, still sorted
+   * most probable first. Rejected on other engines (`limit_exceeded`). Servers older than
+   * ADR-024 strip the field and answer with the top 5 only.
+   */
+  policyMoves: z.array(UciMoveSchema).min(1).max(PROTOCOL_BOUNDS.policyMovesMax).optional(),
 });
 
 /** Stops the running search of a session (its `bestmove` follows). No-op when nothing runs. */
@@ -1275,8 +1295,14 @@ export function parseServerMessage(input: unknown): ParseResult<ServerMessage> {
  * Checks an `analyze` message against a server's {@link Limits}. Returns a human-readable
  * description of the first violation (to be sent as `limit_exceeded`) or null when within limits.
  * The client uses it with `welcome.limits` to fail fast; the server uses it with its own limits.
+ * With `engine` (the serving node knows it), `policyMoves` on an engine without
+ * `style: 'human'` is a violation too (ADR-024).
  */
-export function checkAnalyzeLimits(msg: AnalyzeMessage, limits: Limits): string | null {
+export function checkAnalyzeLimits(
+  msg: AnalyzeMessage,
+  limits: Limits,
+  engine?: Pick<EngineDescriptor, 'style'>,
+): string | null {
   const checks: [name: string, value: number | undefined, max: number][] = [
     ['depth', msg.depth, limits.maxDepth],
     ['movetime', msg.movetime, limits.maxMovetimeMs],
@@ -1292,6 +1318,11 @@ export function checkAnalyzeLimits(msg: AnalyzeMessage, limits: Limits): string 
     if (limits.maxNodes === undefined) return 'nodes is not supported by this server';
     if (msg.nodes > limits.maxNodes)
       return `nodes ${msg.nodes} exceeds the server limit of ${limits.maxNodes}`;
+  }
+  // ADR-024: only a policy network has per-move priors. Checked when the engine is known
+  // (the serving node; a hub relays without knowing the node's engines).
+  if (msg.policyMoves !== undefined && engine !== undefined && engine.style !== 'human') {
+    return 'policyMoves needs a policy engine';
   }
   return null;
 }

@@ -725,5 +725,32 @@ describe('ClientSessions', () => {
       await settle();
       expect(backend.engine.goes).toEqual([{ nodes: 1 }]);
     });
+
+    it('passes policyMoves to a policy engine and rejects it on any other (ADR-024)', async () => {
+      const engines: EngineDescriptor[] = [
+        {
+          id: 'maia',
+          name: 'Maia',
+          enabled: true,
+          defaults: { threads: 1, hash: 16 },
+          style: 'human',
+          maxNodes: 1,
+        },
+        { id: 'fake', name: 'Fake', enabled: true, defaults: { threads: 1, hash: 16 } },
+      ];
+      const { sessions, backend, out } = setup({ engines });
+      sessions.handle(analyze(1, { engine: 'fake', policyMoves: ['e2e4'] }));
+      await settle();
+      expect(out[0]).toMatchObject({
+        type: 'error',
+        code: 'limit_exceeded',
+        searchId: 1,
+        message: 'policyMoves needs a policy engine',
+      });
+      expect(backend.acquires).toHaveLength(0);
+      sessions.handle(analyze(2, { engine: 'maia', policyMoves: ['e2e4', 'g1f3'] }));
+      await settle();
+      expect(backend.engine.goes).toEqual([{ nodes: 1, policyMoves: ['e2e4', 'g1f3'] }]);
+    });
   });
 });

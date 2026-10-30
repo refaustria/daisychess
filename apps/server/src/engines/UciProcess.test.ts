@@ -214,6 +214,31 @@ describe('UciProcess — Lc0 specifics (ADR-019)', () => {
     expect(infos[1]?.nodes).toBe(7);
   });
 
+  it('policyMoves (ADR-024) adds the requested legal moves outside the top 5, sorted; illegal ones are absent', async () => {
+    const p = make(['--lc0'], { initOptions: { VerboseMoveStats: true } });
+    await p.start();
+    p.position(START);
+    const r = await p.go({ nodes: 1, policyMoves: ['h2h4', 'e2e4', 'e7e5', 'b1c3', 'h2h4'] });
+    expect(r.bestMove).toEqual({ move: 'e2e4' });
+    expect(r.policy).toEqual([
+      { uci: 'e2e4', p: 0.5022 },
+      { uci: 'd2d4', p: 0.2334 },
+      { uci: 'c2c4', p: 0.0497 },
+      { uci: 'g1f3', p: 0.0435 },
+      { uci: 'e2e3', p: 0.0359 },
+      { uci: 'b1c3', p: 0.0246 },
+      { uci: 'h2h4', p: 0.0021 },
+    ]);
+    // the next search without policyMoves is back to the top 5
+    p.position(START);
+    expect((await p.go({ nodes: 1 })).policy).toHaveLength(5);
+    // four requested moves outside the top 5: 9 entries
+    p.position(START);
+    const r9 = await p.go({ nodes: 1, policyMoves: ['g2g4', 'a2a3', 'f2f4', 'g1h3'] });
+    expect(r9.policy).toHaveLength(9);
+    expect(r9.policy!.map((e) => e.uci).slice(5)).toEqual(['f2f4', 'a2a3', 'g1h3', 'g2g4']);
+  });
+
   it('no VerboseMoveStats → no policy; a terminal position (bestmove a1a1) → bestMove null', async () => {
     const p = make(['--lc0']);
     await p.start();

@@ -69,6 +69,44 @@ describe('human-like engines (ADR-019) — additive protocol', () => {
     expect(checkAnalyzeLimits(analyze(), legacy)).toBeNull();
   });
 
+  it('analyze accepts 1…4 policyMoves in UCI (ADR-024) and rejects more or malformed ones', () => {
+    expect(PROTOCOL_BOUNDS.policyMovesMax).toBe(4);
+    expect(PROTOCOL_BOUNDS.policyMaxEntries).toBeGreaterThanOrEqual(
+      5 + PROTOCOL_BOUNDS.policyMovesMax,
+    );
+    const ok = (policyMoves: unknown) =>
+      AnalyzeMessageSchema.safeParse({ ...analyze(), policyMoves }).success;
+    expect(ok(['e2e4'])).toBe(true);
+    expect(ok(['e2e4', 'd2d4', 'e7e8q', 'g1f3'])).toBe(true);
+    expect(ok([])).toBe(false);
+    expect(ok(['e2e4', 'd2d4', 'c2c4', 'g1f3', 'b1c3'])).toBe(false);
+    expect(ok(['e2-e4'])).toBe(false);
+    expect(ok(['E2E4'])).toBe(false);
+    expect(ok('e2e4')).toBe(false);
+    const parsed = parseClientMessage(JSON.stringify(analyze({ policyMoves: ['e2e4', 'g1f3'] })));
+    expect(parsed.ok && parsed.message).toMatchObject({ policyMoves: ['e2e4', 'g1f3'] });
+    // absent stays absent
+    const plain = parseClientMessage(JSON.stringify(analyze()));
+    expect(plain.ok && 'policyMoves' in plain.message).toBe(false);
+  });
+
+  it('checkAnalyzeLimits: policyMoves needs a policy engine when the engine is known', () => {
+    const msg = analyze({ policyMoves: ['e2e4'] });
+    expect(checkAnalyzeLimits(msg, DEFAULT_LIMITS, { style: 'human' })).toBeNull();
+    expect(checkAnalyzeLimits(msg, DEFAULT_LIMITS, { style: 'strength' })).toBe(
+      'policyMoves needs a policy engine',
+    );
+    expect(checkAnalyzeLimits(msg, DEFAULT_LIMITS, {})).toBe('policyMoves needs a policy engine');
+    // without the engine (a hub relaying) nothing is reported
+    expect(checkAnalyzeLimits(msg, DEFAULT_LIMITS)).toBeNull();
+    // no policyMoves: no engine requirement
+    expect(checkAnalyzeLimits(analyze(), DEFAULT_LIMITS, {})).toBeNull();
+    // other limits are reported first
+    expect(checkAnalyzeLimits({ ...msg, depth: 99 }, DEFAULT_LIMITS, {})).toBe(
+      'depth 99 exceeds the server limit of 30',
+    );
+  });
+
   it('resolveEngineNodes: a capped engine runs its cap by default and rejects more', () => {
     const maia: Pick<EngineDescriptor, 'id' | 'maxNodes'> = { id: 'maia-1500', maxNodes: 1 };
     expect(resolveEngineNodes({}, maia)).toEqual({ ok: true, nodes: 1 });

@@ -487,6 +487,31 @@ describe('hub → node messages', () => {
     bad({ shared: undefined });
   });
 
+  it('client.msg to a node relays an analyze with policyMoves unchanged (ADR-024)', () => {
+    const withPolicy: ClientMsgToNode = {
+      ...ANALYZE,
+      msg: {
+        type: 'analyze',
+        sessionId: 'hint-1500',
+        searchId: 3,
+        engine: 'maia-1500',
+        fen: START,
+        nodes: 1,
+        policyMoves: ['e2e4', 'g1f3'],
+      },
+    };
+    const back = roundTrip(withPolicy, parseHubToNodeMessage);
+    expect(back.msg).toMatchObject({ type: 'analyze', policyMoves: ['e2e4', 'g1f3'] });
+    expect(HubRelayMessageSchema.safeParse(withPolicy.msg).success).toBe(true);
+    // the bound applies on the link as on the player socket
+    expect(
+      ClientMsgToNodeSchema.safeParse({
+        ...ANALYZE,
+        msg: { ...ANALYZE.msg, policyMoves: ['a2a3', 'a2a4', 'b2b3', 'b2b4', 'c2c3'] },
+      }).success,
+    ).toBe(false);
+  });
+
   it('client.msg to a node relays analyze, stop and release only', () => {
     roundTrip(ANALYZE, parseHubToNodeMessage);
     roundTrip(

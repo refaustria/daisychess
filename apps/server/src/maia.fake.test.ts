@@ -101,6 +101,73 @@ describe('Maia over /ws (fake Lc0)', () => {
     expect(client.invalid).toEqual([]);
   });
 
+  it('policyMoves (ADR-024): requested moves outside the top 5 join the final policy, sorted; illegal ones are absent', async () => {
+    const { client } = await start();
+    client.send({
+      type: 'analyze',
+      sessionId: 'h',
+      searchId: 1,
+      engine: 'maia-1500',
+      fen: START,
+      policyMoves: ['a2a3', 'e7e5', 'd2d4', 'h2h4'],
+    });
+    expect(await client.terminal('h', 1)).toMatchObject({
+      type: 'bestmove',
+      bestMove: { move: 'e2e4' },
+      reason: 'completed',
+    });
+    const infos = client.messages.filter((m): m is InfoMessage => m.type === 'info');
+    const policy = infos[infos.length - 1]!.info.policy!;
+    expect(policy.length).toBeLessThanOrEqual(7);
+    expect(policy).toEqual([
+      { uci: 'e2e4', p: 0.5022 },
+      { uci: 'd2d4', p: 0.2334 },
+      { uci: 'c2c4', p: 0.0497 },
+      { uci: 'g1f3', p: 0.0435 },
+      { uci: 'e2e3', p: 0.0359 },
+      { uci: 'a2a3', p: 0.0081 },
+      { uci: 'h2h4', p: 0.0021 },
+    ]);
+    expect(policy.map((e) => e.uci)).not.toContain('e7e5');
+    expect(client.invalid).toEqual([]);
+  });
+
+  it('policyMoves is rejected on a non-policy engine and above the protocol bound', async () => {
+    const { client } = await start();
+    client.send({
+      type: 'analyze',
+      sessionId: 's',
+      searchId: 1,
+      engine: 'fake',
+      fen: START,
+      depth: 1,
+      policyMoves: ['e2e4'],
+    });
+    expect(await client.terminal('s', 1)).toMatchObject({
+      type: 'error',
+      code: 'limit_exceeded',
+      message: 'policyMoves needs a policy engine',
+    });
+    client.send({
+      type: 'analyze',
+      sessionId: 'h',
+      searchId: 2,
+      engine: 'maia-1500',
+      fen: START,
+      policyMoves: ['a2a3', 'a2a4', 'b2b3', 'b2b4', 'c2c3'],
+    });
+    expect(await client.terminal('h', 2)).toMatchObject({ type: 'error', code: 'invalid_message' });
+    client.send({
+      type: 'analyze',
+      sessionId: 'h',
+      searchId: 3,
+      engine: 'maia-1500',
+      fen: START,
+      policyMoves: ['e2-e4'],
+    });
+    expect(await client.terminal('h', 3)).toMatchObject({ type: 'error', code: 'invalid_message' });
+  });
+
   it('a terminal position gives bestMove null and no policy', async () => {
     const { client } = await start();
     client.send({

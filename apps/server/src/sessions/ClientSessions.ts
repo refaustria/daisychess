@@ -21,7 +21,6 @@ import type { AnalysisChannel } from './AnalysisChannel.js';
 import { allowRate, type RateLimit } from './rateLimit.js';
 import { ipHash } from '../logging/ipHash.js';
 
-
 /** Who the sessions belong to: the client address (per-IP cap) and an id for logs. */
 export interface SessionPeer {
   /** Resolved client address (see `resolveClientIp`); the per-IP ledger key. */
@@ -192,7 +191,8 @@ export class ClientSessions implements AnalysisChannel {
       this.sendError('unknown_engine', `unknown engine "${msg.engine}"`, sessionId, searchId);
       return;
     }
-    const violation = checkAnalyzeLimits(msg, this.opts.limits);
+    // With the engine: `policyMoves` needs a policy network (ADR-024).
+    const violation = checkAnalyzeLimits(msg, this.opts.limits, engine);
     if (violation) {
       this.sendError('limit_exceeded', violation, sessionId, searchId);
       return;
@@ -447,6 +447,8 @@ export class ClientSessions implements AnalysisChannel {
       // Validated in analyze(); a capped engine (Maia) runs its cap when the client sent none.
       const nodes = resolveEngineNodes(msg, engine);
       if (nodes.ok && nodes.nodes !== undefined) params.nodes = nodes.nodes;
+      // Validated in analyze(): only reaches policy engines (ADR-024).
+      if (msg.policyMoves !== undefined) params.policyMoves = msg.policyMoves;
       const result = proc.go(params, (info) => this.onInfo(session, search, info));
       result.then(
         (r) => {

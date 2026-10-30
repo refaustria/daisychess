@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import {
+  PROTOCOL_BOUNDS,
+  mergePolicy,
   parseLc0MoveStats,
   parseUciBestMove,
   parseUciInfo,
@@ -35,6 +37,11 @@ export interface GoParams {
    * engine ignores illegal moves and would silently search every move instead.
    */
   searchmoves?: readonly string[];
+  /**
+   * `analyze.policyMoves` (ADR-024): moves whose `VerboseMoveStats` entries are added to the
+   * top {@link POLICY_TOP_N} of {@link SearchResult.policy}. Not sent to the engine.
+   */
+  policyMoves?: readonly string[];
 }
 
 /** A UCI move as `go searchmoves` accepts it (`e2e4`, `e7e8q`). */
@@ -44,8 +51,9 @@ export interface SearchResult {
   /** null for `bestmove (none)` (mate/stalemate) or an unparsable reply. */
   bestMove: BestMove | null;
   /**
-   * Top {@link POLICY_TOP_N} policy moves, when the engine printed Lc0 `VerboseMoveStats` lines
-   * during this search (ADR-019); otherwise absent.
+   * Top {@link POLICY_TOP_N} policy moves plus the requested {@link GoParams.policyMoves} outside
+   * them (ADR-024), most probable first, at most `PROTOCOL_BOUNDS.policyMaxEntries`; when the
+   * engine printed Lc0 `VerboseMoveStats` lines during this search (ADR-019), otherwise absent.
    */
   policy?: PolicyEntry[];
 }
@@ -112,6 +120,8 @@ interface PendingSearch {
   stopSent: boolean;
   /** Lc0 `VerboseMoveStats` entries seen during this search (ADR-019). */
   policy: PolicyEntry[];
+  /** Requested policy moves (ADR-024), merged into the result's policy. */
+  policyMoves?: readonly string[];
 }
 
 type LineListener = (line: string) => void;
@@ -317,6 +327,9 @@ export class UciProcess {
       reject = rej;
     });
     const search: PendingSearch = { promise, resolve, reject, stopSent: false, policy: [] };
+    if (params.policyMoves !== undefined && params.policyMoves.length > 0) {
+      search.policyMoves = params.policyMoves;
+    }
     if (onInfo) search.onInfo = onInfo;
     this.send(parts.join(' '));
     this.search = search;
@@ -393,7 +406,13 @@ export class UciProcess {
       if (s) {
         this.search = null;
         const result: SearchResult = { bestMove: parseUciBestMove(line) };
-        if (s.policy.length > 0) result.policy = topPolicy(s.policy, POLICY_TOP_N);
+        if (s.policy.length > 0) {
+          result.policy = (
+            s.policyMoves
+              ? mergePolicy(s.policy, s.policyMoves, POLICY_TOP_N)
+              : topPolicy(s.policy, POLICY_TOP_N)
+          ).slice(0, PROTOCOL_BOUNDS.policyMaxEntries);
+        }
         s.resolve(result);
       }
     } else if (line === 'readyok') {

@@ -188,6 +188,50 @@ describe('review store building blocks (ADR-017)', () => {
     expect(StoredReviewSchema.safeParse({ ...STORED, preset: 'ultra' }).success).toBe(false);
   });
 
+  it('records carry an optional, bounded Maia Elo estimate per side (ADR-024)', () => {
+    const white = {
+      method: 'maia' as const,
+      rating: 1540,
+      low: 1400,
+      high: 1700,
+      positions: 24,
+      exact: true,
+      maiaVersion: 1,
+    };
+    const black = {
+      method: 'maia' as const,
+      rating: 1100,
+      high: 1300,
+      edge: 'low' as const,
+      positions: 30,
+      exact: false,
+      maiaVersion: 1,
+    };
+    const withElo = { ...RECORD, elo: { white, black } };
+    const parsed = StoredReviewRecordSchema.safeParse(withElo);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.elo).toEqual({ white, black });
+    expect(StoredReviewRecordSchema.safeParse({ ...RECORD, elo: { white } }).success).toBe(true);
+    expect(StoredReviewRecordSchema.safeParse({ ...RECORD, elo: {} }).success).toBe(true);
+    expect(StoredReviewRecordSchema.parse(RECORD).elo).toBeUndefined();
+    expect(StoredReviewSchema.safeParse({ ...STORED, elo: { white } }).success).toBe(true);
+    for (const bad of [
+      { ...white, rating: 2300 },
+      { ...white, rating: 700 },
+      { ...white, rating: 1540.5 },
+      { ...white, low: 100 },
+      { ...white, method: 'fallback' },
+      { ...white, edge: 'middle' },
+      { ...white, positions: 1001 },
+      { ...white, exact: undefined },
+      { ...white, maiaVersion: 0 },
+    ]) {
+      expect(StoredReviewRecordSchema.safeParse({ ...RECORD, elo: { white: bad } }).success).toBe(
+        false,
+      );
+    }
+  });
+
   it('capabilities carry an optional reviewStore flag', () => {
     expect(CapabilitiesSchema.parse({ analysis: true, rooms: true })).toEqual({
       analysis: true,
@@ -232,15 +276,19 @@ describe('review store messages', () => {
 
   it('rejects out-of-bounds client messages', () => {
     const fens = new Array(65).fill(START);
-    expect(
-      parseClientMessage({ type: 'review.positions.get', optsKey: 'mt:300', fens }).ok,
-    ).toBe(false);
-    expect(parseClientMessage({ type: 'review.positions.get', optsKey: 'mt:300', fens: [] }).ok).toBe(
+    expect(parseClientMessage({ type: 'review.positions.get', optsKey: 'mt:300', fens }).ok).toBe(
       false,
     );
     expect(
-      parseClientMessage({ type: 'review.get', gameKey: KEY, startFen: 'nope', moves: ['e4', 'e5'] })
-        .ok,
+      parseClientMessage({ type: 'review.positions.get', optsKey: 'mt:300', fens: [] }).ok,
+    ).toBe(false);
+    expect(
+      parseClientMessage({
+        type: 'review.get',
+        gameKey: KEY,
+        startFen: 'nope',
+        moves: ['e4', 'e5'],
+      }).ok,
     ).toBe(false);
     expect(
       parseClientMessage({ type: 'review.get', gameKey: KEY, startFen: START, moves: ['e4'] }).ok,
@@ -312,7 +360,9 @@ describe('review store messages', () => {
       ok: false,
       error: `message exceeds ${MAX_MESSAGE_BYTES} bytes`,
     });
-    expect(parseClientMessage(big('review.get', { gameKey: KEY, startFen: START, moves: ['e4', 'e5'] }))).toEqual({
+    expect(
+      parseClientMessage(big('review.get', { gameKey: KEY, startFen: START, moves: ['e4', 'e5'] })),
+    ).toEqual({
       ok: false,
       error: `message exceeds ${MAX_MESSAGE_BYTES} bytes`,
     });
@@ -330,7 +380,9 @@ describe('review store messages', () => {
     if (r.ok) expect(r.message.type).toBe('review.put');
     // The large limit is absolute.
     expect(
-      parseClientMessage(JSON.stringify({ type: 'review.put', pad: 'x'.repeat(MAX_LARGE_MESSAGE_BYTES) })),
+      parseClientMessage(
+        JSON.stringify({ type: 'review.put', pad: 'x'.repeat(MAX_LARGE_MESSAGE_BYTES) }),
+      ),
     ).toEqual({ ok: false, error: `message exceeds ${MAX_LARGE_MESSAGE_BYTES} bytes` });
     // Server side: a large review.record passes, a large welcome does not.
     const rec = big('review.record', { gameKey: KEY, found: true, preset: 'fast', record: RECORD });

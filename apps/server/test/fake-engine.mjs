@@ -43,8 +43,26 @@ let ignoreStop = flags.has('ignore-stop');
 const LC0 = flags.has('lc0');
 let verboseMoveStats = false;
 
-/** Lc0-style VerboseMoveStats lines (ascending by P, root summary last), as lc0 v0.32 prints them. */
+/**
+ * Lc0-style VerboseMoveStats lines (ascending by P, root summary last), as lc0 v0.32 prints them:
+ * one per legal move of the start position.
+ */
 const LC0_POLICY = [
+  ['a2a3', '0.81'],
+  ['a2a4', '0.42'],
+  ['b2b3', '1.10'],
+  ['b2b4', '0.37'],
+  ['c2c3', '1.27'],
+  ['d2d3', '1.74'],
+  ['f2f3', '0.18'],
+  ['f2f4', '1.31'],
+  ['g2g3', '2.64'],
+  ['g2g4', '0.12'],
+  ['h2h3', '0.56'],
+  ['h2h4', '0.21'],
+  ['b1a3', '0.15'],
+  ['b1c3', '2.46'],
+  ['g1h3', '0.19'],
   ['g1f3', '4.35'],
   ['c2c4', '4.97'],
   ['e2e3', '3.59'],

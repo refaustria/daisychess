@@ -1,6 +1,43 @@
 export type { Score, EngineInfo, PolicyEntry, BestMove, AnalyzeOptions, Engine } from './types.js';
 export { cpToWinProbability, scoreToWinProbability, evalBarShare, formatScore } from './eval.js';
-export { parseUciInfo, parseUciBestMove, parseLc0MoveStats, topPolicy } from './uci.js';
+export {
+  parseUciInfo,
+  parseUciBestMove,
+  parseLc0MoveStats,
+  topPolicy,
+  mergePolicy,
+} from './uci.js';
+export {
+  MAIA_ELO_LEVELS,
+  MAIA_ELO_VERSION,
+  ELO_MAX_POSITIONS,
+  ELO_MIN_POSITIONS,
+  ELO_SMOOTHING,
+  ELO_BAND_DELTA_LL,
+  ELO_FLOOR_P,
+  ELO_INEXACT_MIN_HALF_BAND,
+  ELO_UNDECIDED_RANGE,
+  FALLBACK_ELO_BOUNDS,
+  SPEED_CLASSES,
+  EloEstimateSchema,
+  EloCurveSchema,
+  EloCalibrationSchema,
+  smoothPolicy,
+  eloLikelihood,
+  selectEloPlies,
+  speedClass,
+  fallbackElo,
+} from './elo.js';
+export type {
+  MaiaEloLevel,
+  EloSample,
+  EloLikelihood,
+  EloPlyCandidate,
+  SpeedClass,
+  EloEstimate,
+  EloCurve,
+  EloCalibration,
+} from './elo.js';
 export { sideToMove, scoreToWhitePov, infoToWhitePov } from './pov.js';
 export {
   PROTOCOL_VERSION,
