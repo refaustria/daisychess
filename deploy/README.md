@@ -365,12 +365,16 @@ is kept, and the reports are static HTML with all scripts and styles inline. Pri
 interest, see `apps/site/privacy/index.html` section 5.
 
 ```bash
-sudo apt install goaccess apache2-utils
+sudo apt install goaccess apache2-utils python3-maxminddb
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin --groups adm daisychess-stats
 sudo install -d -o daisychess-stats -g www-data -m 0750 /var/www/daisychess-stats
 sudo install -D -m 0755 deploy/stats/goaccess-report.sh /usr/local/lib/daisychess/goaccess-report.sh
-sudo install -m 0644 deploy/stats/daisychess-stats.service deploy/stats/daisychess-stats.timer /etc/systemd/system/
+sudo install -m 0755 deploy/stats/visitors.py deploy/stats/geoip-update.sh /usr/local/lib/daisychess/
+sudo install -m 0644 deploy/stats/daisychess-stats.service deploy/stats/daisychess-stats.timer \
+  deploy/stats/daisychess-geoip.service deploy/stats/daisychess-geoip.timer /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo systemctl enable --now daisychess-geoip.timer
+sudo systemctl start daisychess-geoip.service     # first country database now; check: journalctl -u daisychess-geoip
 sudo systemctl enable --now daisychess-stats.timer
 sudo systemctl start daisychess-stats.service   # first report now; check: journalctl -u daisychess-stats
 
@@ -386,6 +390,19 @@ sudo nginx -t && sudo systemctl reload nginx
 HTML is self-contained; `node scripts/check-site-csp.mjs` checks the block. Visits to `/stats/` are not
 logged. A site without logs is skipped. Manual run into a scratch directory:
 `deploy/stats/goaccess-report.sh /var/log/nginx /tmp/stats-out`.
+
+**Countries and visitor classes.** `geoip-update.sh` (monthly via `daisychess-geoip.timer`, falls back to the
+previous month) downloads the free [DB-IP](https://db-ip.com) "IP to Country Lite" database (CC BY 4.0, the
+attribution is on the stats index page) to `/var/lib/daisychess-stats/dbip-country-lite.mmdb`;
+`goaccess-report.sh` then passes `--geoip-database` to GoAccess (Geo Location panel) and without the file
+still works. `visitors.py` writes `visitors.html`: every IP of the three sites with country, first/last seen,
+requests, sites, top user agent, status mix and a class with its reason (crawler: known bot or non-browser
+client; scanner: probe paths such as `wp-login`/`.env`/`*.php`, mostly 4xx or a URL as user agent; likely
+human: browser plus assets, WebSocket upgrade or app origin; unknown: browser, HTML only). Full IPs are shown
+(password-protected, owner only). The country lookup happens offline on our server, nothing is sent to third
+parties. GoAccess keeps crawlers in (no `--ignore-crawlers`) so totals are complete and the Browsers panel has a
+"Crawlers" category; the human estimate lives in `visitors.html`. Classifier tests:
+`python3 deploy/stats/test_visitors.py` (also run by `pnpm test` in `apps/site` when python3 exists).
 
 ## Certificate renewal
 

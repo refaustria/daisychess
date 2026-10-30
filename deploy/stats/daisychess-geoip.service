@@ -1,0 +1,29 @@
+# Monthly download of the DB-IP country database for the traffic stats (deploy/README.md "Traffic stats").
+[Unit]
+Description=DaisyChess GeoIP database update (DB-IP Country Lite)
+Documentation=file:///usr/local/lib/daisychess/geoip-update.sh
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=daisychess-stats
+Group=daisychess-stats
+ExecStart=/usr/local/lib/daisychess/geoip-update.sh
+Nice=10
+StateDirectory=daisychess-stats
+ProtectSystem=strict
+ReadWritePaths=/var/lib/daisychess-stats
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+UMask=0022

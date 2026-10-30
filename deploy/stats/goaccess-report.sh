@@ -9,6 +9,9 @@ set -euo pipefail
 
 LOG_DIR="${1:-/var/log/nginx}"
 OUT_DIR="${2:-/var/www/daisychess-stats}"
+# Optional country database (geoip-update.sh); reports work without it.
+GEOIP_DB="${GEOIP_DB:-/var/lib/daisychess-stats/dbip-country-lite.mmdb}"
+VISITORS_PY="${VISITORS_PY:-$(dirname "$(readlink -f "$0")")/visitors.py}"
 
 # nginx log_format `daisychess` (deploy/nginx/daisychess-common.conf):
 #   1.2.3.4 [30/Oct/2026:00:31:40 +0100] "GET /index.html HTTP/1.1" 200 5438 rt=0.000 urt=- origin="-" ua="…"
@@ -43,6 +46,11 @@ emit_logs() {
   done
 }
 
+geo_args=()
+if [ -f "$GEOIP_DB" ]; then
+  geo_args=(--geoip-database="$GEOIP_DB")
+fi
+
 generated="$(date '+%Y-%m-%d %H:%M %Z')"
 links=""
 
@@ -56,11 +64,13 @@ for entry in "${SITES[@]}"; do
     echo "no logs for $site, skipping" >&2
     continue
   fi
+  # Crawlers are NOT ignored: the Browsers panel then shows them as their own "Crawlers" category and
+  # the totals are complete; visitors.html separates bots from likely humans.
   # Reports embed their own JS/CSS (no external resources). --no-query-string: the logs hold none
   # anyway. --no-progress/--no-global-config keep the run quiet and independent of /etc/goaccess.
   goaccess "$tmp_dir/$site.log" \
     --log-format="$LOG_FORMAT" --date-format="$DATE_FORMAT" --time-format="$TIME_FORMAT" \
-    --ignore-crawlers --real-os --no-query-string --no-progress --no-global-config \
+    "${geo_args[@]}" --real-os --no-query-string --no-progress --no-global-config \
     --html-report-title="DaisyChess stats - $site" \
     -o "$out"
   chmod 0644 "$out"
@@ -68,6 +78,17 @@ for entry in "${SITES[@]}"; do
   rm -f "$tmp_dir/$site.log"
   links+="      <li><a href=\"$site.html\">$site</a> - $desc</li>"$'\n'
 done
+
+# Per-IP classification (crawler / scanner / likely human / unknown) with country. A failure here must
+# not lose the GoAccess reports.
+if python3 "$VISITORS_PY" --log-dir "$LOG_DIR" --out "$tmp_dir/visitors.html" --mmdb "$GEOIP_DB" \
+    --generated "$generated"; then
+  chmod 0644 "$tmp_dir/visitors.html"
+  mv -f "$tmp_dir/visitors.html" "$OUT_DIR/visitors.html"
+  links+="      <li><a href=\"visitors.html\">Visitors</a> - every IP with country and class (crawler, scanner, likely human, unknown)</li>"$'\n'
+else
+  echo "visitors.py failed, keeping the previous visitors.html" >&2
+fi
 
 cat >"$tmp_dir/index.html" <<HTML
 <!doctype html>
@@ -83,7 +104,10 @@ cat >"$tmp_dir/index.html" <<HTML
   <h1>DaisyChess stats</h1>
   <ul>
 ${links}  </ul>
+  <p>The GoAccess reports include crawlers (see the "Crawlers" browser category). The Visitors page separates
+  crawlers, scanners and likely humans per IP, which is the better estimate of real people.</p>
   <p>Generated $generated from the last 14 days of access logs.</p>
+  <p><small>IP geolocation by <a href="https://db-ip.com">DB-IP</a> (IP to Country Lite, CC BY 4.0).</small></p>
 </body>
 </html>
 HTML
