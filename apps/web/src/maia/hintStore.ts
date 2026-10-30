@@ -22,6 +22,7 @@ import {
   runHintJobs,
   type CreateMaiaClient,
   type GameLevels,
+  type HintRunStatus,
   type HintSourceDetail,
   type MaiaHint,
   type MaiaLevel,
@@ -83,6 +84,9 @@ const defaultFactory: CreateMaiaClient = async (engineId) => {
   });
 };
 
+/** The Maia client factory in use: the test override, else the review server's (null: none). */
+export const maiaClientFactory = (): CreateMaiaClient | null => effectiveFactory();
+
 const effectiveFactory = (): CreateMaiaClient | null => {
   const o = hintFactoryOverride();
   if (o !== undefined) return o;
@@ -111,6 +115,32 @@ function remember(id: string, hint: MaiaHint): void {
 
 const serverKey = (): string =>
   `${useAnalysisStore.getState().settings.remoteUrl ?? ''}\n${useSettingsStore.getState().serverToken}`;
+
+/** Identity of the configured Maia server (URL + token), for the cooldown. */
+export const maiaServerKey = serverKey;
+
+/**
+ * The failure status of the Maia server while its cooldown runs ({@link HINT_SERVER_COOLDOWN_MS}
+ * after `unauthorized`/`unavailable`/`busy`), shared by the hints and the Elo estimate.
+ */
+export function maiaServerCooldown(key: string = serverKey()): HintStatus | undefined {
+  const f = serverFailures.get(key);
+  return f && f.until > Date.now() ? f.status : undefined;
+}
+
+/** Records a failed Maia run (`unauthorized`/`unavailable`/`busy`) for the cooldown. */
+export function noteMaiaServerFailure(
+  status: HintStatus | HintRunStatus,
+  key: string = serverKey(),
+): void {
+  if (status === 'unauthorized' || status === 'unavailable' || status === 'busy')
+    serverFailures.set(key, { until: Date.now() + HINT_SERVER_COOLDOWN_MS, status });
+}
+
+/** Settles when the current hint run ended (immediately when none runs). Never rejects. */
+export function maiaHintsSettled(): Promise<void> {
+  return current?.promise ?? Promise.resolve();
+}
 
 /**
  * Shows (and computes what is missing of) the hints for a reviewed game. Idempotent for the same

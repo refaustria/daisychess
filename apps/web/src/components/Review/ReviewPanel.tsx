@@ -11,9 +11,13 @@ import { cachedReviewLabel, covers } from '../../review/reviewCache';
 import { REVIEW_PRESETS, useReviewStore, type ReviewEngineInfo } from '../../review/reviewStore';
 import { hasClockData } from '../../clock/gameTimes';
 import { formatDuration, isTimeTrouble, sideTimeStats } from '../../review/timeUsage';
-import { useGameStore } from '../../store/gameStore';
+import { START_FEN, useGameStore } from '../../store/gameStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { requestMaiaHints, useGameHints } from '../../maia/hintStore';
+import { requestEloEstimate } from '../../maia/eloEstimate';
+import { activeGameSources } from '../../puzzles/installLedger';
+import { useOpeningFocus } from '../../review/useOpeningFocus';
+import { EloLine } from './EloLine';
 import { levelSource, levelText, typicalMistakes } from '../../maia/hintText';
 import { EvalGraph } from './EvalGraph';
 import { TimeGraph } from './TimeGraph';
@@ -207,23 +211,30 @@ function TimeSummary({ summary }: { summary: ReviewSummary }) {
 
 /**
  * Requests the Maia hints (M23-3) once the review of the game on the board is done (computed or
- * loaded from a cache); again when the level setting, the toggle or the token change.
+ * loaded from a cache); again when the level setting, the toggle or the token change. Then the Elo
+ * estimate (ADR-024 §5): its fallback at once, its Maia run after the hints run, once the opening
+ * book told where the book ends.
  */
 function useMaiaHintRequest(): void {
   const status = useReviewStore((s) => s.status);
   const summary = useReviewStore((s) => s.summary);
   const details = useReviewStore((s) => s.moveDetails);
   const reviewed = useReviewStore((s) => s.reviewed);
+  const storedElo = useReviewStore((s) => s.stored?.elo);
   const startFen = useGameStore((s) => s.startFen);
   const moves = useGameStore((s) => s.moves);
   const headers = useGameStore((s) => s.headers);
   const enabled = useSettingsStore((s) => s.maiaHints);
   const rating = useSettingsStore((s) => s.maiaRating);
   const token = useSettingsStore((s) => s.serverToken);
+  const reviewEngine = useSettingsStore((s) => s.reviewEngine);
+  const focus = useOpeningFocus();
+  // A custom start has no book; otherwise wait for the lazily loaded book.
+  const lastBookPly = startFen !== START_FEN ? 0 : focus?.lastBookPly;
   useEffect(() => {
     if (status !== 'done' || !summary || reviewed !== moves) return;
     if (moves.length === 0 || summary.moves.length !== moves.length) return;
-    void requestMaiaHints({
+    const hintsRun = requestMaiaHints({
       startFen,
       moves,
       headers,
@@ -231,7 +242,36 @@ function useMaiaHintRequest(): void {
       enabled,
       fallbackRating: rating,
     });
-  }, [status, summary, details, reviewed, startFen, moves, headers, enabled, rating, token]);
+    if (lastBookPly === undefined) return;
+    const player = activeGameSources(headers).play;
+    void requestEloEstimate({
+      startFen,
+      moves,
+      summary,
+      details,
+      lastBookPly,
+      ...(headers.TimeControl ? { timeControl: headers.TimeControl } : {}),
+      enabled,
+      reviewEngine,
+      ...(storedElo ? { storedElo } : {}),
+      ...(player ? { engineSide: player === 'white' ? 'black' : 'white' } : {}),
+      after: hintsRun,
+    });
+  }, [
+    status,
+    summary,
+    details,
+    reviewed,
+    startFen,
+    moves,
+    headers,
+    enabled,
+    rating,
+    token,
+    reviewEngine,
+    storedElo,
+    lastBookPly,
+  ]);
 }
 
 /**
@@ -318,6 +358,7 @@ function Done({ summary }: { summary: ReviewSummary }) {
         {Math.round(summary[color].accuracy)}%
       </span>
       <span className={styles.muted}>accuracy</span>
+      <EloLine side={color} />
     </div>
   );
   return (

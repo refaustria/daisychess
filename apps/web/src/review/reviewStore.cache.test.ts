@@ -11,6 +11,7 @@ import {
   getStoredPositions,
   getStoredReview,
   peekStoredPreset,
+  putStoredReview,
   warmReviewCache,
 } from './reviewCache';
 import {
@@ -269,6 +270,21 @@ describe('reviewStore: persistent review cache (ADR-016)', () => {
     // Another game: not stored.
     useGameStore.getState().loadPgn('1. d4 d5 2. c4');
     expect(await useReviewStore.getState().loadCached()).toBe(false);
+  });
+
+  it('a stored record with an Elo estimate exposes it on stored.elo (ADR-024)', async () => {
+    await useReviewStore.getState().start({ ...REVIEW_PRESETS.fast });
+    await stored('fast');
+    expect(useReviewStore.getState().stored?.elo).toBeUndefined();
+    const record = (await getStoredReview(key()))!;
+    const elo = {
+      black: { method: 'maia' as const, rating: 1300, positions: 12, exact: true, maiaVersion: 1 },
+    };
+    await putStoredReview({ ...record, elo });
+    await reload();
+    useGameStore.getState().loadPgn(SCHOLAR_WITH_HEADERS);
+    expect(await useReviewStore.getState().loadCached()).toBe(true);
+    expect(useReviewStore.getState().stored?.elo).toEqual(elo);
   });
 
   it('clearReviewCaches empties the store and memory; the shown review no longer counts as stored', async () => {

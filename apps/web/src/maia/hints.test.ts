@@ -5,6 +5,7 @@ import {
   gameLevels,
   hintFromPolicy,
   hintJobs,
+  jobPolicyMoves,
   MAIA_HIGHEST_NOTE,
   MAIA_LOWEST_NOTE,
   maiaEngineId,
@@ -99,17 +100,47 @@ describe('hintFromPolicy', () => {
       ],
       playedP: 0.38,
       bestP: 0.3,
+      playedExact: true,
+      bestExact: true,
       playedIsTop: true,
       minP: 0.02,
       entries: 5,
     });
   });
 
-  it('a played/best move outside the top 5 has no probability', () => {
+  it('a played/best move outside the top 5 has no probability (older server)', () => {
     const h = hintFromPolicy({ ...JOB, playedUci: 'a7a6', bestUci: 'h7h6' }, POLICY)!;
     expect(h.playedP).toBeUndefined();
     expect(h.bestP).toBeUndefined();
+    expect(h.playedExact).toBe(false);
+    expect(h.bestExact).toBe(false);
     expect(h.playedIsTop).toBe(false);
+  });
+
+  it('requested moves beyond the top 5 (policyMoves, ADR-024) give exact probabilities', () => {
+    const job = { ...JOB, playedUci: 'a7a6', bestUci: 'h7h6' };
+    const h = hintFromPolicy(job, [
+      ...POLICY,
+      { uci: 'h7h6', p: 0.012 },
+      { uci: 'a7a6', p: 0.004 },
+    ])!;
+    expect(h.playedP).toBe(0.004);
+    expect(h.bestP).toBe(0.012);
+    expect(h.playedExact).toBe(true);
+    expect(h.bestExact).toBe(true);
+    // The top-5 view is unchanged: top 3, minP of the 5th entry, 5 entries.
+    expect(h.top.map((m) => m.san)).toEqual(['Nf6', 'g6', 'Qe7']);
+    expect(h.minP).toBe(0.02);
+    expect(h.entries).toBe(5);
+    expect(h.playedIsTop).toBe(false);
+  });
+
+  it('no best move: bestExact is left out', () => {
+    const { bestUci: _b, ...noBest } = JOB;
+    void _b;
+    const h = hintFromPolicy(noBest, POLICY)!;
+    expect(h.bestExact).toBeUndefined();
+    expect(h.bestP).toBeUndefined();
   });
 
   it('sorts unsorted policies, drops illegal entries, maps king-takes-rook castling', () => {
@@ -163,10 +194,30 @@ describe('hintJobs', () => {
     };
     const jobs = hintJobs(details, gameLevels({ WhiteElo: '1400', BlackElo: '1800' }, 1500));
     expect(jobs).toEqual([
-      { ply: 3, rating: 1400, fenBefore: 'fen3', playedUci: 'e2e4', bestUci: 'd2d4' },
-      { ply: 4, rating: 1800, fenBefore: 'fen4', playedUci: 'e2e4' },
-      { ply: 5, rating: 1400, fenBefore: 'fen5', playedUci: 'e2e4', bestUci: 'd2d4' },
+      {
+        ply: 3,
+        rating: 1400,
+        fenBefore: 'fen3',
+        playedUci: 'e2e4',
+        bestUci: 'd2d4',
+        policyMoves: ['e2e4', 'd2d4'],
+      },
+      { ply: 4, rating: 1800, fenBefore: 'fen4', playedUci: 'e2e4', policyMoves: ['e2e4'] },
+      {
+        ply: 5,
+        rating: 1400,
+        fenBefore: 'fen5',
+        playedUci: 'e2e4',
+        bestUci: 'd2d4',
+        policyMoves: ['e2e4', 'd2d4'],
+      },
     ]);
+  });
+
+  it('jobPolicyMoves: played and best, deduplicated', () => {
+    expect(jobPolicyMoves('e2e4', 'd2d4')).toEqual(['e2e4', 'd2d4']);
+    expect(jobPolicyMoves('e2e4', 'e2e4')).toEqual(['e2e4']);
+    expect(jobPolicyMoves('e2e4')).toEqual(['e2e4']);
   });
 });
 
@@ -193,6 +244,27 @@ describe('runHintJobs', () => {
       [8, 1900],
       [12, 1900],
     ]);
+  });
+
+  it('sends the job policyMoves with the query; onJobDone once per attempted job', async () => {
+    const server = fakeMaiaServer((_r, fen) => (fen === 'bad' ? coded('invalid_request') : POLICY));
+    const done: number[] = [];
+    const status = await runHintJobs(
+      [
+        { ...JOB, policyMoves: ['g8f6', 'g7g6'] },
+        { ...JOB, ply: 8, fenBefore: 'bad' },
+      ],
+      {
+        createClient: server.createClient,
+        onHint: () => undefined,
+        onJobDone: (j) => done.push(j.ply),
+        sleep: instantSleep(),
+      },
+    );
+    expect(status).toBe('done');
+    expect(server.policyMoves).toEqual([['g8f6', 'g7g6'], undefined]);
+    // The rejected position is skipped but still counts as attempted.
+    expect(done).toEqual([6, 8]);
   });
 
   it('throttles the queries of one client', async () => {

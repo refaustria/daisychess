@@ -87,6 +87,29 @@ describe('serverReviewStore', () => {
     });
   });
 
+  it('carries the Elo estimate (ADR-024) both ways; a record without it has no elo key', async () => {
+    const elo = {
+      white: {
+        method: 'maia' as const,
+        rating: 1540,
+        low: 1400,
+        high: 1700,
+        positions: 24,
+        exact: true,
+        maiaVersion: 1,
+      },
+    };
+    const r = { ...review('deep'), elo };
+    expect(toWireRecord(r).elo).toEqual(elo);
+    expect('elo' in toWireRecord(review())).toBe(false);
+    seed(r);
+    expect((await fetchServerReview(game(), r.gameKey))?.elo).toEqual(elo);
+    useSettingsStore.getState().setServerToken('secret');
+    server.token = 'secret';
+    expect(await storeServerReview(r)).toBe(true);
+    expect(server.of('review.put').at(-1)!.record.elo).toEqual(elo);
+  });
+
   it('is unavailable with the api disabled or the review engine set to browser', () => {
     expect(serverStoreAvailable()).toBe(true);
     useSettingsStore.getState().set({ reviewEngine: 'browser' });

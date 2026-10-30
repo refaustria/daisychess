@@ -47,6 +47,7 @@ export function toWireRecord(r: StoredReview): StoredReviewRecord {
     engine: r.engine,
     summary: r.summary,
     moveDetails: toWireDetails(r.moveDetails),
+    ...(r.elo ? { elo: r.elo } : {}),
   };
 }
 
@@ -63,6 +64,7 @@ export function fromWireReview(r: WireStoredReview): StoredReview {
     engine: r.engine,
     createdAt: r.createdAt,
     version: r.version,
+    ...(r.elo ? { elo: r.elo } : {}),
   };
 }
 

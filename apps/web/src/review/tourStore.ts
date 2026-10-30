@@ -7,6 +7,7 @@ import { START_FEN, useGameStore, type GameState } from '../store/gameStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUiStore } from '../store/uiStore';
 import { usePreviewStore } from '../store/previewStore';
+import { useEloShortTexts } from '../maia/eloEstimate';
 import { maiaHintAt } from '../maia/hintStore';
 import { hintShortText } from '../maia/hintText';
 import type { MoveDetails } from './details';
@@ -140,18 +141,18 @@ export function focusTourReplay(): void {
   if (!inTour) return;
   afterRender(() => {
     const a = document.activeElement;
-    if (a && a !== document.body && !a.closest('[data-testid="review-tour"], [data-testid="action-bar"]'))
+    if (
+      a &&
+      a !== document.body &&
+      !a.closest('[data-testid="review-tour"], [data-testid="action-bar"]')
+    )
       return;
     visibleByTestId('tour-replay')?.focus();
   });
 }
 
 /** Text of a highlight step with the Maia suffix ("… — common at 1500"). */
-function stepText(
-  step: TourStep,
-  details: MoveDetails,
-  trouble: ReadonlySet<number>,
-): string {
+function stepText(step: TourStep, details: MoveDetails, trouble: ReadonlySet<number>): string {
   if (!step.kind) return '';
   const text = highlightText(details, step, trouble);
   // Human-like hint (M23-3), when it has arrived by now.
@@ -359,7 +360,12 @@ function onTourKey(e: KeyboardEvent): void {
   const role = t?.getAttribute('role');
   if (e.key === 'ArrowRight' && (role === 'tab' || role === 'radio' || role === 'slider')) return;
   // Enter/Space on another control activates that control natively (Next itself included).
-  if (e.key !== 'ArrowRight' && t && t !== document.body && t.closest('button, a[href], [role="button"], summary'))
+  if (
+    e.key !== 'ArrowRight' &&
+    t &&
+    t !== document.body &&
+    t.closest('button, a[href], [role="button"], summary')
+  )
     return;
   // preventDefault: the move-list/board key handlers skip prevented events.
   e.preventDefault();
@@ -406,4 +412,24 @@ export function installReviewTour(): () => void {
     document.removeEventListener('keydown', onTourKey);
     useTourStore.getState().stop();
   };
+}
+
+/**
+ * The text shown when the tour finished (ADR-024 §5): it names the Elo estimates once —
+ * "Tour finished — White played like ~1540 here, Black like ~1300." — and falls back to the
+ * plain text when neither side has one (engine side, too few moves).
+ */
+export function tourFinishText(elo: { white?: string; black?: string }): string {
+  const parts: string[] = [];
+  if (elo.white) parts.push(`White played like ${elo.white} here`);
+  if (elo.black)
+    parts.push(elo.white ? `Black like ${elo.black}` : `Black played like ${elo.black} here`);
+  return parts.length > 0
+    ? `Tour finished \u2014 ${parts.join(', ')}.`
+    : 'Tour finished \u2014 browse the moves or jump to a mistake.';
+}
+
+/** {@link tourFinishText} with the estimates of the game on the board. */
+export function useTourFinishText(): string {
+  return tourFinishText(useEloShortTexts());
 }

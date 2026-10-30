@@ -8,6 +8,7 @@ import {
   getStoredHints,
   hintCacheKind,
   hintId,
+  MAX_STORED_HINTS,
   putStoredHints,
 } from './hintCache';
 import type { MaiaHint } from './hints';
@@ -21,6 +22,10 @@ const hint = (ply: number, rating = 1500): MaiaHint => ({
 });
 
 afterEach(() => configureHintCache(undefined));
+
+it('holds 20 000 hints (the Elo estimate stores up to 540 per game, ADR-024)', () => {
+  expect(MAX_STORED_HINTS).toBe(20_000);
+});
 
 const BACKENDS: ReadonlyArray<readonly ['indexeddb' | 'memory', () => IDBFactory | null]> = [
   ['indexeddb', () => new IDBFactory()],

@@ -110,6 +110,23 @@ button:disabled {
   line-height: 1.2;
 }
 
+/* Elo estimate under the accuracy (ADR-024 §5). */
+.elo {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  text-align: center;
+  cursor: help;
+}
+
+.eloPending {
+  color: var(--text-muted);
+}
+
+.eloBand,
+.eloStatus {
+  color: var(--text-muted);
+}
+
 .counts {
   width: 100%;
   border-collapse: collapse;

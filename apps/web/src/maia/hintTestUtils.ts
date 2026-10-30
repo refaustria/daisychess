@@ -22,6 +22,8 @@ export interface FakeMaiaServer {
   createClient: CreateMaiaClient;
   /** Queries as `<rating>:<fen>` in order. */
   queries: string[];
+  /** `analyze.policyMoves` of each query (undefined when none), in query order. */
+  policyMoves: (readonly string[] | undefined)[];
   /** Engine ids of every created client, in order. */
   created: string[];
   /** Engine ids of disposed clients. */
@@ -31,7 +33,12 @@ export interface FakeMaiaServer {
 }
 
 export function fakeMaiaServer(
-  answer: (rating: number, fen: string, attempt: number) => FakeAnswer,
+  answer: (
+    rating: number,
+    fen: string,
+    attempt: number,
+    policyMoves: readonly string[] | undefined,
+  ) => FakeAnswer,
   opts: {
     load?: (engineId: string) => Error | undefined;
     engines?: (engineId: string) => EngineDescriptor[];
@@ -41,6 +48,7 @@ export function fakeMaiaServer(
   let alive = 0;
   const server: FakeMaiaServer = {
     queries: [],
+    policyMoves: [],
     created: [],
     disposed: [],
     maxAlive: 0,
@@ -60,12 +68,13 @@ export function fakeMaiaServer(
           if (err) throw err;
           loaded = true;
         },
-        analyze: (fen) => {
+        analyze: (fen, opts) => {
           server.queries.push(`${rating}:${fen}`);
+          server.policyMoves.push(opts?.policyMoves);
           const k = `${rating}:${fen}`;
           const attempt = attempts.get(k) ?? 0;
           attempts.set(k, attempt + 1);
-          const a = answer(rating, fen, attempt);
+          const a = answer(rating, fen, attempt, opts?.policyMoves);
           async function* gen(): AsyncGenerator<EngineInfo> {
             await Promise.resolve();
             if (a instanceof Error) throw a;

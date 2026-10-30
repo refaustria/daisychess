@@ -34,6 +34,7 @@ import {
   putStoredReview,
   REVIEW_CACHE_VERSION,
   type ReviewPreset,
+  type StoredElo,
   type StoredReview,
   type StoredReviewSource,
 } from './reviewCache';
@@ -82,6 +83,8 @@ export interface StoredReviewInfo {
   fromCache: boolean;
   /** Where the record came from: this browser's cache or the server store (ADR-017). */
   source: StoredReviewSource;
+  /** The record's Maia Elo estimates (ADR-024 §5), when it carries them. */
+  elo?: StoredElo;
 }
 
 export interface ReviewState {
@@ -622,7 +625,14 @@ function storedState(
     // A stored Deep review needs no "run Deep" hint.
     autoNotice: trigger === 'auto' && r.preset === 'fast',
     reviewed: moves,
-    stored: { preset: r.preset, createdAt: r.createdAt, engine: r.engine, fromCache: true, source },
+    stored: {
+      preset: r.preset,
+      createdAt: r.createdAt,
+      engine: r.engine,
+      fromCache: true,
+      source,
+      ...(r.elo ? { elo: r.elo } : {}),
+    },
   };
 }
 

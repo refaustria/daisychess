@@ -40,6 +40,21 @@ describe('hint text', () => {
     ).toEqual(['At 1500, 41% would play Nf3 here (a4? in the game: under 4%).']);
   });
 
+  it('exact shares when the server returned the requested moves (playedExact, ADR-024)', () => {
+    // Without policyMoves the played move outside the top 5 is "under 4%" (above); with them the
+    // exact share is known and shown, and the engine move gets its exact share too.
+    expect(
+      hintLines(
+        hint({ playedP: 0.012, playedExact: true, bestP: 0.021, bestExact: true }),
+        { playedSan: 'a4', bestSan: 'Qh5', classification: 'mistake' },
+        L1500,
+      ),
+    ).toEqual([
+      'At 1500, 41% would play Nf3 here (a4? in the game: 1%).',
+      'The engine move Qh5 is hard to find: only 2% at 1500.',
+    ]);
+  });
+
   it('"A very common mistake at 1500" when the mistake is Maia\'s top move', () => {
     const h = hint({
       top: [

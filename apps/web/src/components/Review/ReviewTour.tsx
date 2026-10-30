@@ -1,6 +1,6 @@
 import type { MouseEvent } from 'react';
 import { tourActive, type TourCard } from '../../review/tour';
-import { stepCardLine, useTourStore } from '../../review/tourStore';
+import { stepCardLine, useTourFinishText, useTourStore } from '../../review/tourStore';
 import { usePreviewStore } from '../../store/previewStore';
 import { usePhoneLayout } from '../PhoneLayout/usePhoneLayout';
 import styles from './ReviewTour.module.css';
@@ -150,6 +150,7 @@ export function ReviewTour() {
   const reached = useTourStore((s) => s.reached);
   const text = useTourStore((s) => s.text);
   const card = useTourStore((s) => s.card);
+  const finishText = useTourFinishText();
   const { start, next, pause, resume, skip, stop } = useTourStore.getState();
 
   if (tourActive(status)) {
@@ -218,7 +219,7 @@ export function ReviewTour() {
       <div className={styles.row}>
         {status === 'finished' && (
           <span role="status" data-testid="review-tour-text">
-            Tour finished — browse the moves or jump to a mistake.
+            {finishText}
           </span>
         )}
         {status === 'stopped' && (

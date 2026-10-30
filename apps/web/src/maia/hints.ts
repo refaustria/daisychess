@@ -104,10 +104,21 @@ export interface MaiaHint {
   rating: number;
   /** Maia's three most likely moves, most likely first. */
   top: HintMove[];
-  /** Probability of the move actually played, when it is in Maia's top 5. */
+  /**
+   * Probability of the move actually played, when the server returned it (in Maia's top 5, or
+   * requested with `policyMoves` on a server with ADR-024).
+   */
   playedP?: number;
-  /** Probability of Stockfish's best move, when it is in Maia's top 5. */
+  /** Probability of Stockfish's best move, when the server returned it (as `playedP`). */
   bestP?: number;
+  /**
+   * `playedP` is the exact policy value (true) or the move was missing from the answer (false: an
+   * older server without `policyMoves` and the move outside the top 5). Undefined on hints
+   * computed before ADR-024 (cached).
+   */
+  playedExact?: boolean;
+  /** As {@link playedExact}, for the best move (undefined when there is no best move). */
+  bestExact?: boolean;
   /** The played move is Maia's most likely move. */
   playedIsTop: boolean;
   /** Smallest probability in the top 5 (a move outside it is less likely than this). */
@@ -116,12 +127,16 @@ export interface MaiaHint {
   entries: number;
 }
 
-/** UCI → SAN in `fen` (castling as `e1g1` or `e1h1`); undefined when illegal. */
-function toSan(chess: Chess, uci: string): string | undefined {
+const legalMovesOf = (chess: Chess) => chess.moves({ verbose: true });
+
+/**
+ * UCI → SAN among the legal moves of a position (castling as `e1g1` or `e1h1`); undefined when
+ * illegal. The legal moves are generated once per position by the caller.
+ */
+function toSan(legal: ReturnType<typeof legalMovesOf>, uci: string): string | undefined {
   const from = uci.slice(0, 2);
   const to = uci.slice(2, 4);
   const promotion = uci.length > 4 ? uci[4] : undefined;
-  const legal = chess.moves({ verbose: true });
   const m =
     legal.find((x) => x.from === from && x.to === to && (x.promotion ?? undefined) === promotion) ??
     // King-takes-rook castling notation.
@@ -145,6 +160,16 @@ export interface HintJob {
   playedUci: string;
   /** Stockfish's best move in `fenBefore`, if known. */
   bestUci?: string;
+  /**
+   * Moves whose policy entry the server should return besides its top 5 (`analyze.policyMoves`,
+   * ADR-024; 1…4 UCI moves). An older server ignores it.
+   */
+  policyMoves?: string[];
+}
+
+/** `policyMoves` for a job: the played and the best move, deduplicated. */
+export function jobPolicyMoves(playedUci: string, bestUci?: string): string[] {
+  return bestUci && bestUci !== playedUci ? [playedUci, bestUci] : [playedUci];
 }
 
 /**
@@ -158,14 +183,17 @@ export function hintFromPolicy(job: HintJob, policy: readonly PolicyEntry[]): Ma
   } catch {
     return undefined;
   }
+  const legal = legalMovesOf(chess);
+  // Most probable first: the server's top 5, then any requested moves (`policyMoves`) outside it.
   const moves: HintMove[] = [];
-  for (const e of [...policy].sort((a, b) => b.p - a.p).slice(0, 5)) {
-    const san = toSan(chess, e.uci);
+  for (const e of [...policy].sort((a, b) => b.p - a.p)) {
+    const san = toSan(legal, e.uci);
     if (san && !moves.some((m) => m.san === san)) moves.push({ uci: e.uci, san, p: e.p });
   }
   if (moves.length === 0) return undefined;
-  const playedSan = toSan(chess, job.playedUci);
-  const bestSan = job.bestUci ? toSan(chess, job.bestUci) : undefined;
+  const top5 = moves.slice(0, 5);
+  const playedSan = toSan(legal, job.playedUci);
+  const bestSan = job.bestUci ? toSan(legal, job.bestUci) : undefined;
   const played = playedSan ? moves.find((m) => m.san === playedSan) : undefined;
   const best = bestSan ? moves.find((m) => m.san === bestSan) : undefined;
   return {
@@ -174,9 +202,11 @@ export function hintFromPolicy(job: HintJob, policy: readonly PolicyEntry[]): Ma
     top: moves.slice(0, 3),
     ...(played ? { playedP: played.p } : {}),
     ...(best ? { bestP: best.p } : {}),
+    playedExact: played !== undefined,
+    ...(job.bestUci ? { bestExact: best !== undefined } : {}),
     playedIsTop: playedSan !== undefined && moves[0]!.san === playedSan,
-    ...(moves.length >= 5 ? { minP: moves[moves.length - 1]!.p } : {}),
-    entries: moves.length,
+    ...(top5.length >= 5 ? { minP: top5[top5.length - 1]!.p } : {}),
+    entries: top5.length,
   };
 }
 
@@ -204,6 +234,7 @@ export function hintJobs(
       fenBefore: d.fenBefore,
       playedUci: d.playedUci,
       ...(d.bestUci ? { bestUci: d.bestUci } : {}),
+      policyMoves: jobPolicyMoves(d.playedUci, d.bestUci),
     }));
 }
 
@@ -221,11 +252,14 @@ export interface MaiaClient {
   readonly engines?: readonly EngineDescriptor[];
   analyze(
     fen: string,
-    opts?: AnalyzeOptions,
+    opts?: MaiaAnalyzeOptions,
   ): AsyncIterable<EngineInfo> & { readonly bestMove?: Promise<BestMove | null> };
   /** Releases the server session and closes the connection. */
   dispose(): Promise<void>;
 }
+
+/** Analysis options of a Maia query: the engine options plus `analyze.policyMoves` (ADR-024). */
+export type MaiaAnalyzeOptions = AnalyzeOptions & { policyMoves?: readonly string[] };
 
 /** Client factory: a fresh, not yet loaded client for `engineId` (`maia-1500`). */
 export type CreateMaiaClient = (engineId: string) => MaiaClient | Promise<MaiaClient>;
@@ -245,6 +279,8 @@ export type HintRunStatus =
 export interface HintRunOptions {
   createClient: CreateMaiaClient;
   onHint(hint: MaiaHint): void;
+  /** Called once per attempted job (answered or skipped), after `onHint` (progress). */
+  onJobDone?(job: HintJob): void;
   signal?: AbortSignal;
   /** Backoff before each retry after `no_capacity`/`rate_limited` (ms). */
   retryDelaysMs?: readonly number[];
@@ -302,9 +338,11 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** One 1-node Maia search; resolves with the policy of the last `info` carrying one. */
-async function queryPolicy(client: MaiaClient, fen: string): Promise<PolicyEntry[] | undefined> {
+async function queryPolicy(client: MaiaClient, job: HintJob): Promise<PolicyEntry[] | undefined> {
   let policy: PolicyEntry[] | undefined;
-  for await (const info of client.analyze(fen, {})) {
+  const opts: MaiaAnalyzeOptions =
+    job.policyMoves && job.policyMoves.length > 0 ? { policyMoves: job.policyMoves } : {};
+  for await (const info of client.analyze(job.fenBefore, opts)) {
     if (info.policy && info.policy.length > 0) policy = info.policy;
   }
   return policy;
@@ -388,7 +426,7 @@ export async function runHintJobs(
           }
           lastSent = now();
           try {
-            const policy = await withTimeout(queryPolicy(client, job.fenBefore), timeoutMs);
+            const policy = await withTimeout(queryPolicy(client, job), timeoutMs);
             const hint = policy ? hintFromPolicy(job, policy) : undefined;
             if (hint && !aborted()) opts.onHint(hint);
             break;
@@ -419,6 +457,7 @@ export async function runHintJobs(
             break; // per-position rejection (invalid_request, limit_exceeded, …): skip the job
           }
         }
+        if (!aborted()) opts.onJobDone?.(job);
       }
       await release();
       return undefined;

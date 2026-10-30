@@ -422,6 +422,20 @@ describe('RemoteEngineClient limits and options', () => {
     expect(socket().ofType('analyze')[0]).toMatchObject({ searchId: 1, movetime: 1_000 });
   });
 
+  it('forwards policyMoves (ADR-024); none or an empty list sends no field; too many are rejected', async () => {
+    const { client, socket } = await loaded();
+    client.analyze(START, { policyMoves: ['e2e4', 'd2d4'] });
+    client.analyze(START, { policyMoves: [] });
+    client.analyze(START, {});
+    const [a, b, c] = socket().ofType('analyze');
+    expect(a).toMatchObject({ policyMoves: ['e2e4', 'd2d4'] });
+    expect(b).not.toHaveProperty('policyMoves');
+    expect(c).not.toHaveProperty('policyMoves');
+    await expect(
+      collect(client.analyze(START, { policyMoves: ['a2a3', 'a2a4', 'b2b3', 'b2b4', 'c2c3'] })),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+  });
+
   it('setOptions maps Threads/Hash/MultiPV onto the next analyze and rejects other options', async () => {
     const { client, socket } = await loaded();
     await client.setOptions({ Threads: 2, hash: '64', MultiPV: 3 });

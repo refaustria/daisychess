@@ -17,6 +17,7 @@ import {
   strongerPreset,
   type ReviewPreset,
   type ReviewSummary,
+  type StoredReviewRecord,
 } from '@daisychess/engine-core';
 import type { PositionResult } from './BatchAnalyzer';
 import type { MoveDetails } from './details';
@@ -56,7 +57,12 @@ export interface StoredReview {
   engine: ReviewEngineInfo;
   createdAt: number;
   version: number;
+  /** Maia Elo estimate per side (ADR-024 §5), added once the estimate run finished. */
+  elo?: StoredElo;
 }
+
+/** The record's optional Elo estimates (ADR-024 §5); the fallback is never stored. */
+export type StoredElo = NonNullable<StoredReviewRecord['elo']>;
 
 export interface StoredPosition {
   /** `<optionsKey>|<fen>` */

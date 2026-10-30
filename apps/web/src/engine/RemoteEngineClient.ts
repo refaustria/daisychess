@@ -506,8 +506,13 @@ export class RemoteEngineClient implements AnalysisEngine {
   /**
    * Analyzes `fen` on the server; yields `info` updates (White-POV scores) and completes on
    * `bestmove`. A running analysis is replaced (its iterator completes once the server confirms).
+   * `policyMoves` (ADR-024, policy engines only) asks for those moves' policy entries in the final
+   * `info.policy` besides the top 5.
    */
-  analyze(fen: string, opts: AnalyzeOptions = {}): AnalysisHandle {
+  analyze(
+    fen: string,
+    opts: AnalyzeOptions & { policyMoves?: readonly string[] } = {},
+  ): AnalysisHandle {
     const welcome = this.welcome;
     const engine = this.engine;
     if (this.disposed)
@@ -539,6 +544,8 @@ export class RemoteEngineClient implements AnalysisEngine {
       ...(opts.movetime !== undefined && { movetime: opts.movetime }),
       ...(threads !== undefined && { threads }),
       ...(hash !== undefined && { hash }),
+      ...(opts.policyMoves !== undefined &&
+        opts.policyMoves.length > 0 && { policyMoves: [...opts.policyMoves] }),
     };
     const valid = ClientMessageSchema.safeParse(msg);
     if (!valid.success) {

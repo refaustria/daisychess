@@ -10,7 +10,7 @@ import type { MaiaHint } from './hints';
 export const MAIA_HINT_DB_NAME = 'daisychess-maia-hints';
 /** Schema version: bumping it drops all stored hints of older versions. */
 export const MAIA_HINT_CACHE_VERSION = 1;
-export const MAX_STORED_HINTS = 5000;
+export const MAX_STORED_HINTS = 20_000;
 
 export const hintId = (gameKey: string, ply: number, rating: number): string =>
   `${gameKey}|${ply}|${rating}`;
