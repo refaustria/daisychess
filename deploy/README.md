@@ -127,6 +127,54 @@ curl -sI -H 'Origin: https://evil.example' https://play.daisychess.org/puzzles/v
 # no Access-Control-Allow-Origin
 ```
 
+## Elo calibration
+
+The review's offline Elo fallback (ADR-024 §5) maps a side's mean win-probability loss to a
+rating through `apps/web/src/review/data/eloCalibration.json`. The table is fitted on one lichess
+monthly database dump by `apps/web/scripts/calibrate-elo.mjs`; this is an owner-run step like
+the puzzle pipeline, never run in CI. Run it on the host, then commit the result:
+
+```bash
+deploy/calibrate-elo.sh --range 2000000000            # ranged 2 GB of last month's dump (≈ 25 min)
+deploy/calibrate-elo.sh --month 2026-09 --range 2000000000 --dry-run   # print the table only
+```
+
+What it does:
+
+1. Fetches `https://database.lichess.org/standard/sha256sums.txt` and the digest of
+   `lichess_db_standard_rated_YYYY-MM.pgn.zst` (`--month`, default the previous month; a month
+   lichess does not list fails).
+2. Downloads into `${PUZZLE_CACHE_DIR:-~/.cache/daisychess/puzzles}`:
+   - `--range BYTES`: only the first BYTES (`curl -r`, resumed from the cached prefix). A prefix
+     cannot be verified against the digest of the whole dump; that digest is recorded with the
+     prefix and in `SOURCE.md`, and a cached prefix of another dump version is discarded. A
+     server that ignores the range fails the run.
+   - without `--range`: the whole dump (≈ 29 GB for 2026-09 — **more than the host's free disk**,
+     so use `--range`), resumable, verified fail-closed against the listed digest on every run.
+     Both refuse to start when the download would leave less than `FREE_SPACE_MARGIN_MB` (2048) free.
+3. Builds engine-core (`pnpm install --frozen-lockfile` first unless `--no-install`) and runs the
+   script: it streams the dump (`zlib.createZstdDecompress` on Node ≥ 22.15, else the `zstd` CLI
+   as a child process — Node 24 on the host has zlib zstd, nothing to install), keeps rated
+   standard games with lichess's `[%eval]` annotations and established ratings of both players
+   (`RatingDiff` present), replays them with chess.js in worker threads (`CALIBRATE_JOBS`, default
+   cores − 1, at most 8), reproduces the app's review (`reviewGame`) and Elo position selection
+   (`selectEloPlies`, book end as in `openingFocus.ts`), and fits per speed class an isotonic
+   regression of rating on mean loss (≤ 24 knots, residual sd). Classes with fewer than
+   `CALIBRATE_MIN_SAMPLES` (1000) samples are left out (the app uses the pooled `unknown` curve).
+   It prints the counts and the table (rating at 1/2/4/6/8/12/16 % mean loss per class).
+4. Writes `eloCalibration.json` and `SOURCE.md` to `apps/web/src/review/data/`
+   (`ELO_CALIBRATION_OUT=<path>` writes elsewhere) and prints the next steps: commit both files,
+   redeploy the web app (`deploy/deploy-web.sh`).
+
+Measured on the first 8 MB of the 2026-09 dump (2 546 evaluated and eligible games, 10.5 % of the 24 231 read,
+8 threads): ≈ 450 games/s, peak RSS ≈ 0.9 GB. A 2 GB range holds ≈ 6 M games, ≈ 600 k of them
+evaluated: ≈ 25 minutes and ≈ 1.2 M samples (`--limit GAMES` stops earlier; 100 k games are
+plenty for the table). `--limit`, `--dry-run` and the direct call also work:
+`node apps/web/scripts/calibrate-elo.mjs --input <file.pgn.zst|file.pgn> --out <json> [--month YYYY-MM] [--sample <bytes>] [--limit <games>] [--sha256 <hex>]`.
+
+The committed table until the first real run is **provisional** (`source.month: "provisional"`,
+fitted on that 8 MB sample; the app calls the estimate rough).
+
 ## Engine server
 
 Systemd unit `daisychess-server` (user `bojan`, `127.0.0.1:8580`), deployed on 2026-10-23.
