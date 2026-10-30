@@ -25,6 +25,18 @@ interface Claim {
   side: Side;
 }
 
+/** The latest game claim; shared by the ledger subscriber and {@link activeGameSources}. */
+let claim: Claim | undefined;
+
+/**
+ * The game sources that own the game whose headers object is `headers` (the board's game): the
+ * running or just finished engine / live / friend game that claimed it, else none. The claim is
+ * kept up to date by {@link installLedger}.
+ */
+export function activeGameSources(headers: GameState['headers']): GameSources {
+  return claim && claim.headers === headers ? { [claim.source]: claim.side } : {};
+}
+
 export interface LedgerHooks {
   now: () => number;
   names: () => string[];
@@ -72,7 +84,7 @@ function newlyDone(s: ReviewState, prev: ReviewState): boolean {
  */
 export function installLedger(overrides: Partial<LedgerHooks> = {}): () => void {
   const hooks = { ...defaultHooks(), ...overrides };
-  let claim: Claim | undefined = runningClaim(useGameStore.getState().headers);
+  claim = runningClaim(useGameStore.getState().headers);
 
   const capture = (): void => {
     const c = runningClaim(useGameStore.getState().headers);
@@ -108,8 +120,7 @@ export function installLedger(overrides: Partial<LedgerHooks> = {}): () => void 
     if (g.moves !== s.reviewed || g.moves.length < MIN_CACHED_PLIES) return;
     // A human game never shows a review while it runs; be safe anyway.
     if (isLiveLocked(useLiveStore.getState()) || usePlayStore.getState().mode === 'playing') return;
-    const sources: GameSources =
-      claim && claim.headers === g.headers ? { [claim.source]: claim.side } : {};
+    const sources = activeGameSources(g.headers);
     const resolved = resolveUserSide(g.headers, sources, hooks.names());
     const batch = gameToBatch(g);
     void hooks.record({
