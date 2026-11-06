@@ -12,6 +12,7 @@ export interface ConfSpec {
 export const APP_CORS_VAR: string;
 export const EXPECTED_CORS_ORIGINS: string[];
 export const PUZZLE_LOCATIONS: Record<string, string>;
+export const ENDGAME_LOCATIONS: Record<string, string>;
 export const REPO_FILES: ConfSpec[];
 export function checkConf(
   name: string,

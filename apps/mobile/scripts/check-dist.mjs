@@ -20,6 +20,18 @@ export const DEFAULT_DIST = fileURLToPath(new URL('../../web/dist-mobile', impor
  */
 export const STARTER_MAX_BYTES = 1_000_000;
 
+/**
+ * Raw size limit of the bundled core endgame tables: TABLES_MAX_BYTES of @daisychess/endgames
+ * (ADR-025 §2). A literal for the same reason as STARTER_MAX_BYTES.
+ */
+export const TABLES_MAX_BYTES = 1_000_000;
+
+/** Core pack (WDL + DTZ) that `dist-mobile` must carry under `endgames/v1/` (ADR-025 §2). */
+export const CORE_TABLE_FILES = ['KQvK', 'KRvK', 'KPvK', 'KBBvK', 'KBNvK', 'KQvKP'].flatMap((n) => [
+  `endgames/v1/${n}.rtbw`,
+  `endgames/v1/${n}.rtbz`,
+]);
+
 export const DEFAULT_STARTER = fileURLToPath(
   new URL('../../web/src/puzzles/data/starter.json', import.meta.url),
 );
@@ -45,10 +57,17 @@ const ENGINE_FILE = /(^|\/)(stockfish-[^/]*\.(js|wasm))$/;
  * Pure part of the check (unit-tested): the file list, index.html and the expected meta policy.
  * `starterBytes`: raw size of the bundled puzzle starter (`null` = file missing; `undefined` = not
  * checked).
- * @param {{ files: string[], indexHtml: string, expectedCsp: string, totalBytes: number, starterBytes?: number | null }} input
+ * @param {{ files: string[], indexHtml: string, expectedCsp: string, totalBytes: number, starterBytes?: number | null, tablesBytes?: number }} input
  * @returns {string[]} errors (empty = ok)
  */
-export function checkDist({ files, indexHtml, expectedCsp, totalBytes, starterBytes }) {
+export function checkDist({
+  files,
+  indexHtml,
+  expectedCsp,
+  totalBytes,
+  starterBytes,
+  tablesBytes,
+}) {
   /** @type {string[]} */
   const errors = [];
   const engines = files.map((f) => ENGINE_FILE.exec(f)?.[2]).filter((f) => f !== undefined);
@@ -98,6 +117,16 @@ export function checkDist({ files, indexHtml, expectedCsp, totalBytes, starterBy
       `puzzle starter set is ${starterBytes} bytes, limit ${STARTER_MAX_BYTES} (ADR-023 §4)`,
     );
   }
+  if (tablesBytes !== undefined) {
+    for (const f of CORE_TABLE_FILES) {
+      if (!files.includes(f)) errors.push(`core endgame table missing: ${f} (no offline endgames)`);
+    }
+    if (tablesBytes > TABLES_MAX_BYTES) {
+      errors.push(
+        `core endgame tables are ${tablesBytes} bytes, limit ${TABLES_MAX_BYTES} (ADR-025 §2)`,
+      );
+    }
+  }
   return errors;
 }
 
@@ -138,6 +167,9 @@ async function main() {
     expectedCsp: csp.mobileMetaCsp(),
     totalBytes,
     starterBytes,
+    tablesBytes: files
+      .filter((f) => /^endgames\/v1\/[^/]+\.rtb[wz]$/.test(f))
+      .reduce((n, f) => n + statSync(join(dir, f)).size, 0),
   });
   const jsFiles = files.filter((f) => f.endsWith('.js'));
   const entrySrc = /<script[^>]*\ssrc="([^"]*)"/.exec(indexHtml)?.[1] ?? '';

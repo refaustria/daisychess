@@ -49,8 +49,8 @@ deploy/deploy-web.sh
 ```
 
 Runs `pnpm install --frozen-lockfile`, `pnpm --filter @daisychess/web build`,
-then `rsync -a --delete --exclude /portal/ --exclude /puzzles/ apps/web/dist/ /var/www/play.daisychess.org/`
-(`/puzzles/` belongs to `deploy/deploy-puzzles.sh`, see "Puzzle data"). No nginx reload needed.
+then `rsync -a --delete --exclude /portal/ --exclude /puzzles/ --exclude /endgames/ apps/web/dist/ /var/www/play.daisychess.org/`
+(`/puzzles/` belongs to `deploy/deploy-puzzles.sh`, see "Puzzle data"; `/endgames/` to `deploy/deploy-endgames.sh`, see "Endgame tables"). No nginx reload needed.
 Android App Links (ADR-022 §4): after the rsync it writes
 `/var/www/play.daisychess.org/.well-known/assetlinks.json` from `deploy/assetlinks.json.template` when
 `PLAY_SIGNING_SHA256` is set in the environment (Play Console, Setup, App signing, SHA-256 certificate
@@ -126,6 +126,42 @@ curl -sI -H 'Origin: https://app.daisychess.org' https://play.daisychess.org/puz
 curl -sI -H 'Origin: https://evil.example' https://play.daisychess.org/puzzles/v1/index.json
 # no Access-Control-Allow-Origin
 ```
+
+## Endgame tables
+
+Syzygy tablebase files (ADR-025 §2; generated data by Ronald de Man, mirrored by lichess) are static
+files under `/var/www/play.daisychess.org/endgames/v1/<NAME>.rtbw|rtbz`. Two packs, listed with
+size and sha256 in `packages/endgames/tables.manifest.json`:
+
+- **core** (WDL + DTZ of KQvK, KRvK, KPvK, KBBvK, KBNvK, KQvKP, 953 kB): committed in
+  `apps/web/public/endgames/v1/`, so it ships inside `dist` and `dist-mobile`.
+- **rook** (KRPvKR WDL, 16.4 MB): never bundled; the Endgames tab downloads it on demand from
+  `https://play.daisychess.org/endgames/v1/` into IndexedDB.
+
+`location /endgames/v1/` in `deploy/nginx/play.daisychess.org.conf` serves them like the puzzle
+shards: `try_files $uri =404`, `Cache-Control: public, max-age=31536000, immutable`,
+`application/octet-stream`, no gzip, the full header group with `$daisychess_csp`, CORP
+`cross-origin`, `Access-Control-Allow-Origin $daisychess_app_cors` and `Vary: Origin`. Any other
+`/endgames/` path is a real 404. `scripts/check-csp.mjs` (part of `pnpm test`) enforces all of this.
+Reload nginx once after installing the config (`nginx -t && systemctl reload nginx`).
+
+```bash
+deploy/deploy-endgames.sh             # download the rook pack, verify, publish
+deploy/deploy-endgames.sh --dry-run   # download and verify, print the file list, write nothing
+```
+
+What it does: builds `@daisychess/endgames` (`pnpm install --frozen-lockfile` first unless
+`--no-install`), runs `packages/endgames/scripts/fetch-tables.mjs --pack rook --out
+${ENDGAME_CACHE_DIR:-~/.cache/daisychess/endgames}` (resumable, sha256 fail-closed), verifies size and
+sha256 of every manifest file again (core files from the repo, rook from the cache) and rsyncs them
+into `${ENDGAME_ROOT:-/var/www/play.daisychess.org/endgames/v1}` **without `--delete`**. Run it once,
+and again only when the manifest changes. `deploy/deploy-web.sh` excludes `/endgames/` from its
+`--delete`, so a web deploy removes neither the rook pack nor the core files.
+
+Check: `curl -sI -H 'Origin: https://app.daisychess.org' https://play.daisychess.org/endgames/v1/KRPvKR.rtbw`
+returns 200 with the `immutable` cache header and `Access-Control-Allow-Origin: https://app.daisychess.org`;
+with `Origin: https://evil.example` the CORS header is absent. `apps/mobile/scripts/check-dist.mjs`
+asserts that the core tables are present in `dist-mobile` and sum to at most 1,000,000 bytes.
 
 ## Elo calibration
 

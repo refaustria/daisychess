@@ -63,6 +63,24 @@ describe('nginx CSP check', () => {
     );
   });
 
+  it('requires the endgame table location with CORS, CORP and octet-stream (ADR-025 §2)', () => {
+    const play = read(playSpec.file);
+    const noCors = play.replace(
+      /(location \/endgames\/v1\/ \{[\s\S]*?)\n\s*add_header Access-Control-Allow-Origin \$daisychess_app_cors always;/,
+      '$1',
+    );
+    expect(noCors).not.toBe(play);
+    expect(checkConf('x', noCors, playSpec).errors.join('\n')).toMatch(
+      /location \/endgames\/v1\/: needs `add_header Access-Control-Allow-Origin/,
+    );
+    const noType = play.replace(/\n\s*default_type application\/octet-stream;/, '');
+    expect(checkConf('x', noType, playSpec).errors.join('\n')).toMatch(/octet-stream/);
+    const gone = play.replace('location /endgames/v1/ {', 'location /endgames/v2/ {');
+    expect(checkConf('x', gone, playSpec).errors.join('\n')).toMatch(
+      /no `location \/endgames\/v1\/`/,
+    );
+  });
+
   it('fails when a vhost uses a foreign policy or declares a map (duplicate in nginx)', () => {
     const play = read(playSpec.file);
     expect(

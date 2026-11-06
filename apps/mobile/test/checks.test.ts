@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { checkDist, checkLicenceChunk, STARTER_MAX_BYTES } from '../scripts/check-dist.mjs';
+import {
+  checkDist,
+  checkLicenceChunk,
+  CORE_TABLE_FILES,
+  STARTER_MAX_BYTES,
+  TABLES_MAX_BYTES,
+} from '../scripts/check-dist.mjs';
 import { checkSmokeResult, findSmokeResult } from '../scripts/check-smoke-log.mjs';
 
 const CSP = "default-src 'self'; script-src 'self'";
@@ -16,6 +22,31 @@ const ok = {
   expectedCsp: CSP,
   totalBytes: 3e6,
 };
+
+describe('checkDist core endgame tables (ADR-025 §2)', () => {
+  const base = {
+    files: ['index.html', ...ENGINE, ...CORE_TABLE_FILES],
+    indexHtml: html(meta),
+    expectedCsp: CSP,
+    totalBytes: 3e6,
+  };
+
+  it('accepts the complete core pack up to the limit and skips the check when not measured', () => {
+    expect(checkDist({ ...base, tablesBytes: 953_000 })).toEqual([]);
+    expect(checkDist({ ...base, tablesBytes: TABLES_MAX_BYTES })).toEqual([]);
+    expect(checkDist(ok)).toEqual([]);
+  });
+
+  it('reports a missing table and an oversized pack', () => {
+    const files = base.files.filter((f) => f !== 'endgames/v1/KRvK.rtbz');
+    expect(checkDist({ ...base, files, tablesBytes: 900_000 })).toEqual([
+      'core endgame table missing: endgames/v1/KRvK.rtbz (no offline endgames)',
+    ]);
+    expect(checkDist({ ...base, tablesBytes: TABLES_MAX_BYTES + 1 })).toEqual([
+      'core endgame tables are 1000001 bytes, limit 1000000 (ADR-025 §2)',
+    ]);
+  });
+});
 
 describe('checkDist', () => {
   it('accepts a lite-single build with the CSP meta first', () => {

@@ -17,6 +17,10 @@
 // CORP; the map `$daisychess_app_cors` (daisychess-common.conf) must echo exactly
 // MOBILE_APP_ORIGINS of apps/web/csp.config.mjs and default to "".
 //
+// Endgame tables (ADR-025 §2) follow the same rules: `location /endgames/v1/` (immutable) with the
+// full header group, CORP `cross-origin`, the CORS header and `Vary: Origin`; it must also serve
+// octet-stream (`default_type application/octet-stream`).
+//
 // Usage: node scripts/check-csp.mjs [extra nginx conf ...]   (e.g. the live files)
 // Extra files are checked for map values and for known variables. Prints the expected
 // `default "...";` line on mismatch, ready to paste.
@@ -40,6 +44,14 @@ export const PUZZLE_LOCATIONS = {
   '/puzzles/v1/shards/': 'public, max-age=31536000, immutable',
   '= /puzzles/v1/index.json': 'public, max-age=3600',
 };
+
+/** The endgame table location (ADR-025 §2): same header group and CORS rule as the puzzle data. */
+export const ENDGAME_LOCATIONS = {
+  '/endgames/v1/': 'public, max-age=31536000, immutable',
+};
+
+/** Every location of the app vhost that sends the CORS header. */
+const CORS_LOCATIONS = { ...PUZZLE_LOCATIONS, ...ENDGAME_LOCATIONS };
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -138,7 +150,7 @@ function checkPuzzleCors(name, conf, spec) {
   const groups = headerGroups(conf);
   const found = new Set();
   for (const g of groups) {
-    const cache = PUZZLE_LOCATIONS[g.head];
+    const cache = CORS_LOCATIONS[g.head];
     const acao = headerValues(g.text, 'Access-Control-Allow-Origin');
     const corp = headerValues(g.text, 'Cross-Origin-Resource-Policy');
     if (cache === undefined) {
@@ -178,9 +190,14 @@ function checkPuzzleCors(name, conf, spec) {
     }
     if (!/\btry_files\s+\$uri\s+=404\s*;/.test(g.text))
       errors.push(`${where}: needs \`try_files $uri =404;\``);
+    if (
+      g.head === '/endgames/v1/' &&
+      !/\bdefault_type\s+application\/octet-stream\s*;/.test(g.text)
+    )
+      errors.push(`${where}: needs \`default_type application/octet-stream;\``);
   }
   if (spec.puzzles) {
-    for (const loc of Object.keys(PUZZLE_LOCATIONS)) {
+    for (const loc of Object.keys(CORS_LOCATIONS)) {
       if (!found.has(loc)) errors.push(`${name}: no \`location ${loc}\` with its own header group`);
     }
   }

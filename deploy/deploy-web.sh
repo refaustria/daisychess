@@ -18,10 +18,12 @@ if [[ ! -f apps/web/dist/index.html ]]; then
   exit 1
 fi
 
-# /portal/ belongs to deploy/deploy-portal.sh and /puzzles/ to deploy/deploy-puzzles.sh (ADR-023):
-# keep both out of this --delete. assetlinks.json is generated below (not part of the build), so
+# /portal/ belongs to deploy/deploy-portal.sh, /puzzles/ to deploy/deploy-puzzles.sh (ADR-023) and
+# /endgames/ to deploy/deploy-endgames.sh (ADR-025; it also holds the rook pack, which is not in
+# dist): keep all three out of this --delete. assetlinks.json is generated below (not part of the build), so
 # keep an already deployed one.
-rsync -a --delete --exclude /portal/ --exclude /puzzles/ --exclude /.well-known/assetlinks.json \
+rsync -a --delete --exclude /portal/ --exclude /puzzles/ --exclude /endgames/ \
+  --exclude /.well-known/assetlinks.json \
   apps/web/dist/ "$WEB_ROOT"/
 
 # Android App Links (ADR-022 §4): /.well-known/assetlinks.json names the Play *app signing*
