@@ -26,7 +26,7 @@ Data controller: **INCEPTUM e.U. (owner Bojan Savicevic)**, **Brunellengasse 1/3
 | Portal login sessions | operators | Keep you logged in | 30 days or until logout |
 | Game reviews and position evaluations in the review store (a review may carry the "played like" rating estimate of each side) | nobody in particular | Re-use of finished analyses | Until evicted by the size limit |
 | Application log (journal): token id, node id, connection id, error events, a **daily-salted hash** of the client address | players, operators | Operating and debugging the service | See the retention row below |
-| Web server access log: client IP address, time, request path (no query string, no body), status, `Origin` and User-Agent | everyone who visits | Security (abuse detection, fail2ban) | Stock log rotation, **14 days by default on the current host (deploy README)**
+| Web server access log: client IP address, time, request path (no query string, no body), status, `Origin`, the origin of the referring site (e.g. reddit.com, no full address) and User-Agent | everyone who visits | Security (abuse detection, fail2ban) | Stock log rotation, **14 days by default on the current host (deploy README)**
 
 Notes:
 

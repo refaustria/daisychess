@@ -25,6 +25,13 @@ class Classifier(unittest.TestCase):
         self.assertEqual((r["ip"], r["path"], r["status"], r["ts"]), ("1.2.3.4", "/a b", 200, "2026-10-30 00:31"))
         self.assertIsNone(v.parse_line("garbage"))
 
+    def test_parse_both_formats(self):
+        old = line()
+        new = old.replace(' ua="', ' ref="https://www.reddit.com" ua="')
+        self.assertEqual(v.parse_line(old)["ref"], "-")
+        r = v.parse_line(new)
+        self.assertEqual((r["ref"], r["ua"], r["origin"]), ("https://www.reddit.com", BROWSER, "-"))
+
     def test_crawler(self):
         self.assertEqual(cls(line(ua="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")), "crawler")
         self.assertEqual(cls(line(ua="curl/8.4.0")), "crawler")

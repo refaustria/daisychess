@@ -12,14 +12,18 @@ OUT_DIR="${2:-/var/www/daisychess-stats}"
 # Optional country database (geoip-update.sh); reports work without it.
 GEOIP_DB="${GEOIP_DB:-/var/lib/daisychess-stats/dbip-country-lite.mmdb}"
 VISITORS_PY="${VISITORS_PY:-$(dirname "$(readlink -f "$0")")/visitors.py}"
+USAGE_PY="${USAGE_PY:-$(dirname "$(readlink -f "$0")")/usage.py}"
+# Own IPs left out of usage.html: one per line in this optional file (see deploy/README.md).
+EXCLUDE_IPS_FILE="${EXCLUDE_IPS_FILE:-/etc/daisychess-stats/exclude-ips}"
 
 # nginx log_format `daisychess` (deploy/nginx/daisychess-common.conf):
 #   1.2.3.4 [30/Oct/2026:00:31:40 +0100] "GET /index.html HTTP/1.1" 200 5438 rt=0.000 urt=- origin="-" ua="…"
 # %h host, %d:%t date:time (%^] skips the zone), %m %U %H request, %s status, %b bytes, %T request
-# time (rt=), %^ skips urt= ("-" or "0.010, 0.002" after a retry), %R puts the Origin header in the
-# referrer slot (panel "Referring sites": capacitor://app.daisychess.org = iOS app,
-# https://app.daisychess.org = Android app, https://play.daisychess.org = web), %u user agent.
-LOG_FORMAT='%h [%d:%t %^] "%m %U %H" %s %b rt=%T urt=%^ origin="%R" ua="%u"'
+# time (rt=), %^ skips urt= ("-" or "0.010, 0.002" after a retry) and the Origin, %R puts the referrer
+# origin (ref=, scheme + host only) in the referrer slot (panel "Referring sites"), %u user agent.
+# App versus web (the Origin header) is reported by usage.html. Since GoAccess cannot take an optional
+# field and counts non-matching lines as invalid, emit_logs rewrites older lines without ref= to ref="-".
+LOG_FORMAT='%h [%d:%t %^] "%m %U %H" %s %b rt=%T urt=%^ origin="%^" ref="%R" ua="%u"'
 DATE_FORMAT='%d/%b/%Y'
 TIME_FORMAT='%H:%M:%S'
 
@@ -43,7 +47,16 @@ emit_logs() {
       *.gz) zcat -- "$f" ;;
       *) cat -- "$f" ;;
     esac
-  done
+  done | normalize_ref
+}
+
+# Old log lines (before ref= was logged) get ref="-"; lines that already have it pass unchanged.
+# The ua field is last and may contain anything, so only the part before ` ua="` is inspected.
+normalize_ref() {
+  # The first expression also collapses "urt=0.010, 0.002" (retries, contains spaces) to "urt=-" so the
+  # skipped field is always one token.
+  sed -E -e 's/ urt=[^"]* origin="/ urt=- origin="/' \
+    -e '/ origin="[^"]*" ref="/! s/( origin="[^"]*") ua="/\1 ref="-" ua="/'
 }
 
 geo_args=()
@@ -88,6 +101,16 @@ if python3 "$VISITORS_PY" --log-dir "$LOG_DIR" --out "$tmp_dir/visitors.html" --
   links+="      <li><a href=\"visitors.html\">Visitors</a> - every IP with country and class (crawler, scanner, likely human, unknown)</li>"$'\n'
 else
   echo "visitors.py failed, keeping the previous visitors.html" >&2
+fi
+
+# Active browsers, returning visitors and feature use (play.daisychess.org logs). Same failure rule.
+if python3 "$USAGE_PY" --log-dir "$LOG_DIR" --out "$tmp_dir/usage.html" --mmdb "$GEOIP_DB" \
+    --exclude-file "$EXCLUDE_IPS_FILE" --generated "$generated"; then
+  chmod 0644 "$tmp_dir/usage.html"
+  mv -f "$tmp_dir/usage.html" "$OUT_DIR/usage.html"
+  links+="      <li><a href=\"usage.html\">Usage</a> - daily active browsers, returning visitors, which features are used</li>"$'\n'
+else
+  echo "usage.py failed, keeping the previous usage.html" >&2
 fi
 
 cat >"$tmp_dir/index.html" <<HTML

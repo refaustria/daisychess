@@ -28,7 +28,7 @@ MONTHS = {m: i for i, m in enumerate(
 
 LINE_RE = re.compile(
     r'^(?P<ip>\S+) \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<path>.*) (?P<proto>\S+)" '
-    r'(?P<status>\d{3}) (?P<bytes>\d+|-) rt=\S+ urt=.*? origin="(?P<origin>.*?)" ua="(?P<ua>.*)"$')
+    r'(?P<status>\d{3}) (?P<bytes>\d+|-) rt=\S+ urt=.*? origin="(?P<origin>.*?)" (?:ref="(?P<ref>.*?)" )?ua="(?P<ua>.*)"$')
 TIME_RE = re.compile(r'^(\d\d)/(\w{3})/(\d{4}):(\d\d):(\d\d)')
 
 KNOWN_BOT_RE = re.compile(
@@ -69,7 +69,7 @@ def parse_line(line: str, site: str = "") -> dict | None:
         return None
     return {
         "ip": m["ip"], "site": site, "method": m["method"], "path": m["path"],
-        "status": int(m["status"]), "origin": m["origin"], "ua": m["ua"],
+        "status": int(m["status"]), "origin": m["origin"], "ua": m["ua"], "ref": m["ref"] or "-",
         "ts": f"{t[3]}-{MONTHS[t[2]]:02d}-{t[1]} {t[4]}:{t[5]}",
     }
 

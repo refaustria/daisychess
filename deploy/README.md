@@ -445,8 +445,14 @@ sudo systemctl restart fail2ban && sudo fail2ban-client status daisychess-ws && 
 Owner-only [GoAccess](https://goaccess.io) reports at `https://daisychess.org/stats/` (basic auth), one per
 site (`daisychess.org`, `play.daisychess.org`, `hub.daisychess.org`), regenerated hourly from the nginx
 access logs (`/var/log/nginx/*.access.log` plus the rotated `.N` / `.N.gz`, so at most 14 days). The
-"Referring sites" panel shows the `Origin` header: `capacitor://app.daisychess.org` (iOS app),
-`https://app.daisychess.org` (Android app), `https://play.daisychess.org` (web). No GoAccess database
+"Referring sites" panel shows the origin (scheme + host, never a path or query) of the `Referer` header,
+i.e. where visitors come from; the nginx `log_format daisychess` carries it as `ref="…"` (map
+`$daisychess_ref_origin` in `deploy/nginx/daisychess-common.conf`; reinstall that file and reload nginx).
+Lines written before `ref=` existed stay in the 14-day logs: `visitors.py` and `usage.py` accept both
+formats, and `goaccess-report.sh` rewrites old lines to `ref="-"` before piping them to GoAccess (GoAccess has
+no optional fields and would count them as invalid). App versus web (the `Origin` header:
+`capacitor://app.daisychess.org` iOS, `https://app.daisychess.org` Android) is reported on `usage.html`
+instead. No GoAccess database
 is kept, and the reports are static HTML with all scripts and styles inline. Privacy: legitimate
 interest, see `apps/site/privacy/index.html` section 5.
 
@@ -455,7 +461,7 @@ sudo apt install goaccess apache2-utils python3-maxminddb
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin --groups adm daisychess-stats
 sudo install -d -o daisychess-stats -g www-data -m 0750 /var/www/daisychess-stats
 sudo install -D -m 0755 deploy/stats/goaccess-report.sh /usr/local/lib/daisychess/goaccess-report.sh
-sudo install -m 0755 deploy/stats/visitors.py deploy/stats/geoip-update.sh /usr/local/lib/daisychess/
+sudo install -m 0755 deploy/stats/visitors.py deploy/stats/usage.py deploy/stats/geoip-update.sh /usr/local/lib/daisychess/
 sudo install -m 0644 deploy/stats/daisychess-stats.service deploy/stats/daisychess-stats.timer \
   deploy/stats/daisychess-geoip.service deploy/stats/daisychess-geoip.timer /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -489,6 +495,26 @@ human: browser plus assets, WebSocket upgrade or app origin; unknown: browser, H
 parties. GoAccess keeps crawlers in (no `--ignore-crawlers`) so totals are complete and the Browsers panel has a
 "Crawlers" category; the human estimate lives in `visitors.html`. Classifier tests:
 `python3 deploy/stats/test_visitors.py` (also run by `pnpm test` in `apps/site` when python3 exists).
+
+**Usage page.** `usage.py` (installed next to `visitors.py`, which it imports) writes `usage.html` from the
+`play.daisychess.org` logs only: daily active browsers (an IP that loaded `/assets/index-<hash>.js` or sent
+an app `Origin`), new versus returning per day, returning visitors (2+ and 4+ days), app versus web, and a
+feature table (browsers and share of active browsers over 14 days / 7 days / 24 hours) plus a per-IP table
+with country, first/last seen, days active and features. Features come from the lazy chunks
+`/assets/<Name>-<hash>.js` (`PlayPanel`, `OpeningsPanel`, `PuzzlesPanel`, `EndgamesPanel`, `LivePanel`,
+`FriendPanel`, `ReviewPanel`, `ExplorerPanel`, `SettingsPanel`, `MistakesPanel`), `/puzzles/v1/shards`,
+non-core endgame tables (`/endgames/v1/*.rtbw|rtbz` of the rook pack; `--manifest
+packages/endgames/tables.manifest.json` overrides the built-in list) and `/ws` upgrades (status 101).
+A "Where visitors come from" table lists the referrer origin of each active browser's first request of the
+day (own hosts ignored; reddit/google/X/... grouped by an alias map in `usage.py`; "Direct / unknown" for
+no referrer) for 24 hours / 7 days / 14 days, counted in browser-days; `?ref=` tags are invisible because
+the log has no query strings.
+**Caveat:** the browser caches lazy chunks, so a feature is counted on its first use per browser per deploy,
+not on every use; browsers are IPs (shared or changing addresses skew the numbers). Known bots, non-`Mozilla`
+user agents and statuses other than 200/206/304/101 are ignored. The owner's own IPs are left out via
+`--exclude-ip` or, for the hourly run, one IP per line (`#` comments) in the optional file
+`/etc/daisychess-stats/exclude-ips` (`sudo install -d /etc/daisychess-stats`, then create the file, readable by
+group `adm`). Tests: `python3 -m unittest discover -s deploy/stats`.
 
 ## Certificate renewal
 
