@@ -439,6 +439,22 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@20.19.43)(jsdom@25.0.1(supports-color@7.2.0))(supports-color@7.2.0)(tsx@4.23.15)
 
+  packages/endgames:
+    dependencies:
+      chess.js:
+        specifier: ^1.4.0
+        version: 1.4.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.43
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@20.19.43)(jsdom@25.0.1(supports-color@7.2.0))(supports-color@7.2.0)(tsx@4.23.15)
+
   packages/engine-core:
     dependencies:
       zod:

@@ -159,6 +159,9 @@ export default defineConfig(({ mode }) => ({
       '@daisychess/puzzles': fileURLToPath(
         new URL('../../packages/puzzles/src/index.ts', import.meta.url),
       ),
+      '@daisychess/endgames': fileURLToPath(
+        new URL('../../packages/endgames/src/index.ts', import.meta.url),
+      ),
     },
   },
   server: { port: 5180, strictPort: true, headers: isolation },
