@@ -68,6 +68,18 @@
   color: var(--eval-bar-white);
 }
 
+/* "tablebase" under an exact label (ADR-025 §4). */
+.caption {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.45rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  opacity: 0.85;
+}
+
 .stale {
   opacity: 0.5;
 }

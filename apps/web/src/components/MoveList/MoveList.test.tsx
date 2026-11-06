@@ -85,3 +85,92 @@ describe('MoveList review badges', () => {
     act(() => useReviewStore.setState({ status: 'idle', summary: undefined }));
   });
 });
+
+describe('MoveList tablebase badge (ADR-025 §4)', () => {
+  const KQK_PGN = '[SetUp "1"]\n[FEN "8/8/8/8/8/2k5/8/KQ6 w - - 0 1"]\n\n1. Qb3+ Kxb3';
+  const reviewedMove = (ply: number, san: string, uci: string, mover: 'white' | 'black') => ({
+    ply,
+    san,
+    uci,
+    mover,
+    evalBefore: { cp: 0 },
+    evalAfter: { cp: 0 },
+    winProbBefore: 50,
+    winProbAfter: 50,
+    winProbLoss: ply === 1 ? 50 : 0,
+    classification: ply === 1 ? ('blunder' as const) : ('best' as const),
+  });
+  const verdict = (uci: string, san: string, kind: 'thrown' | 'only' | 'kept') => ({
+    uci,
+    san,
+    before: kind === 'thrown' ? ('win' as const) : ('draw' as const),
+    after: 'draw' as const,
+    kind,
+    keepers: kind === 'only' ? [uci] : ['b1e1'],
+  });
+
+  it('shows TB with data-tb, title and aria-label for plies with a verdict of the shown review', async () => {
+    const { useReviewStore } = await import('../../review/reviewStore');
+    act(() => {
+      useGameStore.getState().loadPgn(KQK_PGN);
+    });
+    const moves = useGameStore.getState().moves;
+    const counts = {
+      best: 0,
+      excellent: 0,
+      good: 0,
+      inaccuracy: 0,
+      mistake: 0,
+      blunder: 0,
+      forced: 0,
+    };
+    const summary = {
+      white: { accuracy: 10, counts },
+      black: { accuracy: 90, counts },
+      moves: [reviewedMove(1, 'Qb3+', 'b1b3', 'white'), reviewedMove(2, 'Kxb3', 'c3b3', 'black')],
+    };
+    const { container } = render(<MoveList />);
+    act(() => useReviewStore.setState({ status: 'done', summary, reviewed: moves }));
+    expect(container.querySelector('[data-tb]')).toBeNull();
+    act(() =>
+      useReviewStore.setState({
+        tablebase: {
+          status: 'done',
+          missed: 0,
+          reviewed: moves,
+          verdicts: { 1: verdict('b1b3', 'Qb3+', 'thrown'), 2: verdict('c3b3', 'Kxb3', 'only') },
+        },
+      }),
+    );
+    const thrown = container.querySelector('[data-tb="thrown"]')!;
+    expect(thrown.textContent).toBe('TB');
+    expect(thrown.getAttribute('title')).toBe('Tablebase: throws away the win');
+    expect(thrown.getAttribute('aria-label')).toBe('Tablebase: throws away the win');
+    // Next to the class glyph of the same move.
+    expect(thrown.previousElementSibling?.getAttribute('data-class')).toBe('blunder');
+    const only = container.querySelector('[data-tb="only"]')!;
+    expect(only.getAttribute('title')).toBe('Tablebase: only move');
+    // The move buttons keep their names.
+    expect(screen.getByRole('button', { name: '1. Qb3+' })).toBeTruthy();
+
+    // An overlay of another review, or a verdict of another move: no badge.
+    act(() =>
+      useReviewStore.setState({
+        tablebase: { ...useReviewStore.getState().tablebase!, reviewed: [] },
+      }),
+    );
+    expect(container.querySelector('[data-tb]')).toBeNull();
+    act(() =>
+      useReviewStore.setState({
+        tablebase: {
+          status: 'done',
+          missed: 0,
+          reviewed: moves,
+          verdicts: { 1: verdict('b1d1', 'Qd1', 'kept') },
+        },
+      }),
+    );
+    expect(container.querySelector('[data-tb]')).toBeNull();
+    act(() => useReviewStore.getState().reset());
+  });
+});

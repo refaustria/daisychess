@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { CLASS_INFO } from '../../review/format';
 import { useReviewStore } from '../../review/reviewStore';
+import { tbBadgeTitle, tbDisplayKind } from '../../review/tablebaseOverlay';
 import { gameStatus, useGameStore, type MoveRecord } from '../../store/gameStore';
 import { useOpening } from '../../openings/useOpening';
 import styles from './MoveList.module.css';
@@ -41,6 +42,12 @@ export function MoveList() {
   const goTo = useGameStore((s) => s.goTo);
   const state = useGameStore();
   const reviewed = useReviewStore((s) => (s.status === 'done' ? s.summary : undefined));
+  // Tablebase overlay of the shown review (ADR-025 §4): only when it belongs to this review.
+  const tbVerdicts = useReviewStore((s) =>
+    s.status === 'done' && s.tablebase && s.tablebase.reviewed === s.reviewed
+      ? s.tablebase.verdicts
+      : undefined,
+  );
   const opening = useOpening();
   const currentRef = useRef<HTMLButtonElement | null>(null);
 
@@ -66,6 +73,9 @@ export function MoveList() {
         ? found
         : undefined;
     const info = r ? CLASS_INFO[r.classification] : undefined;
+    const tbFound = r ? tbVerdicts?.[m.ply] : undefined;
+    const tb = tbFound && tbFound.uci === r?.uci ? tbFound : undefined;
+    const tbTitle = tb ? tbBadgeTitle(tb) : undefined;
     return (
       <button
         type="button"
@@ -84,6 +94,17 @@ export function MoveList() {
             title={`${info.label} (−${Math.round(r.winProbLoss)}% win probability)`}
           >
             {info.glyph}
+          </span>
+        )}
+        {tb && (
+          <span
+            className={styles.tb}
+            data-tb={tbDisplayKind(tb)}
+            title={tbTitle}
+            role="img"
+            aria-label={tbTitle}
+          >
+            TB
           </span>
         )}
       </button>

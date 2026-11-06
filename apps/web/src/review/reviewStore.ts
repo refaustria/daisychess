@@ -38,6 +38,7 @@ import {
   type StoredReview,
   type StoredReviewSource,
 } from './reviewCache';
+import { installTablebaseOverlay, type TbOverlay } from './tablebaseOverlay';
 import { ServerReviewEngine, type RemoteReviewClient } from './serverReviewEngine';
 import {
   fetchServerPositions,
@@ -109,6 +110,11 @@ export interface ReviewState {
   reviewed?: GameState['moves'];
   /** Set when the shown result is stored in the review cache (see {@link StoredReviewInfo}). */
   stored?: StoredReviewInfo;
+  /**
+   * Tablebase overlay of the shown review (ADR-025 §4, `tablebaseOverlay.ts`): derived from the
+   * FENs after the review is done, never part of the stored record.
+   */
+  tablebase?: TbOverlay;
 }
 
 export interface StartMeta {
@@ -1032,3 +1038,6 @@ export const useReviewStore = create<ReviewStore>()((set, get) => ({
 
   dismissAutoNotice: () => set({ autoNotice: false }),
 }));
+
+// Tablebase verdicts for the plies with ≤ 7 pieces, after every done review (ADR-025 §4).
+installTablebaseOverlay(useReviewStore);

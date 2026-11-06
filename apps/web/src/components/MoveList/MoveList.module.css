@@ -100,6 +100,32 @@
   font-weight: 700;
 }
 
+/* Tablebase verdict next to the class glyph (ADR-025 §4). */
+.tb {
+  margin-left: 0.2rem;
+  padding: 0 0.2rem;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.6em;
+  font-weight: 700;
+  line-height: 1.3;
+  vertical-align: 0.1em;
+  color: var(--text-muted);
+}
+
+.tb[data-tb='thrown'] {
+  color: var(--danger);
+}
+
+.tb[data-tb='only'] {
+  color: var(--success);
+}
+
+.current .tb {
+  color: inherit;
+}
+
 .opening {
   display: flex;
   align-items: baseline;

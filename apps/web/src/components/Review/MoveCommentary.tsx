@@ -3,6 +3,8 @@ import { explainMove, findJump, type MoveDetail, type MoveDetails } from '../../
 import { CLASS_INFO } from '../../review/format';
 import { alternativesText } from '../../review/openingFocus';
 import { useOpeningFocus } from '../../review/useOpeningFocus';
+import { useReviewStore } from '../../review/reviewStore';
+import { tbCommentaryText, tbDisplayKind, tbVerdictAt } from '../../review/tablebaseOverlay';
 import { isTimeTrouble, moveTime, timeUsedText } from '../../review/timeUsage';
 import { hintLines, levelSource } from '../../maia/hintText';
 import { useMaiaHint } from '../../maia/hintStore';
@@ -57,6 +59,17 @@ export function MaiaHintLine({ detail, timeTrouble }: { detail: MoveDetail; time
   );
 }
 
+/** The tablebase line of the move (ADR-025 §4), when the review's overlay has a verdict. */
+export function TablebaseLine({ detail }: { detail: MoveDetail }) {
+  const v = useReviewStore((s) => tbVerdictAt(s, detail.ply));
+  if (!v || v.uci !== detail.playedUci.trim().toLowerCase()) return null;
+  return (
+    <p className={styles.maiaHint} data-testid="move-card-tb" data-tb={tbDisplayKind(v)}>
+      {tbCommentaryText(v, detail.fenBefore)}
+    </p>
+  );
+}
+
 function Body({ detail }: { detail: MoveDetail }) {
   const preview = usePreviewStore((s) => s.start);
   const info = CLASS_INFO[detail.classification];
@@ -105,6 +118,7 @@ function Body({ detail }: { detail: MoveDetail }) {
         {detail.swing} for {detail.mover === 'white' ? 'White' : 'Black'})
       </p>
       <p data-testid="move-card-text">{explainMove(detail)}</p>
+      <TablebaseLine detail={detail} />
       <MaiaHintLine detail={detail} timeTrouble={time.trouble} />
     </>
   );

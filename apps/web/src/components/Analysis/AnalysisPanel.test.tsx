@@ -9,6 +9,7 @@ import {
   type EngineInstanceState,
 } from '../../store/analysisStore';
 import { usePreviewStore } from '../../store/previewStore';
+import { resetTablebaseStore, useTablebaseStore } from '../../endgames/tablebaseStore';
 import { AnalysisPanel, FULL_BUILD_CONFIRMED_KEY, formatNps, scoreTone } from './AnalysisPanel';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -89,6 +90,41 @@ describe('AnalysisPanel', () => {
       '1. e4 e5 2. Nf3',
     );
     expect(within(rows[1] as HTMLElement).getByTestId('analysis-eval').textContent).toBe('-0.80');
+  });
+
+  it('shows the tablebase panel under the engine lines for a looked-up position (ADR-025 §4)', () => {
+    const KQK = '8/8/8/8/8/2k5/8/KQ6 w - - 0 1';
+    useAnalysisStore.setState({ fen: KQK });
+    single({
+      ...browserInstance,
+      lines: [{ multipv: 1, score: { cp: 900 }, depth: 20, pv: ['b1e1'] }],
+    });
+    useTablebaseStore.setState({
+      current: {
+        fen: KQK,
+        status: 'done',
+        answer: { pos: { fen: KQK, category: 'win', dtm: 17, moves: [] }, source: 'lichess' },
+      },
+    });
+    try {
+      render(<AnalysisPanel />);
+      const panel = screen.getByTestId('analysis-panel');
+      const tb = within(panel).getByTestId('tablebase-panel');
+      const lines = within(panel).getByTestId('analysis-lines');
+      // Under the engine lines.
+      expect(lines.compareDocumentPosition(tb) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(within(tb).getByTestId('tablebase-head').textContent).toBe(
+        'Tablebase (lichess): White wins \u2014 mate in 9',
+      );
+      // The start position (32 pieces) has no tablebase panel.
+      cleanup();
+      useAnalysisStore.setState({ fen: START });
+      single();
+      render(<AnalysisPanel />);
+      expect(screen.queryByTestId('tablebase-panel')).toBeNull();
+    } finally {
+      resetTablebaseStore();
+    }
   });
 
   it('renders nothing when the engine is off', () => {

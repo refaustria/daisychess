@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildMoveDetails } from '../../review/details';
-import { gameToBatch } from '../../review/reviewStore';
+import { gameToBatch, useReviewStore } from '../../review/reviewStore';
 import { SCHOLAR_TIMED_PGN, scholarSummary } from '../../review/testFixtures';
 import { useGameStore } from '../../store/gameStore';
 import { usePreviewStore } from '../../store/previewStore';
@@ -127,5 +127,74 @@ describe('MoveCommentary with clock data (M22-1)', () => {
     act(() => useGameStore.getState().goTo(6));
     expect(screen.queryByTestId('move-card-time')).toBeNull();
     expect(screen.queryByTestId('time-trouble-badge')).toBeNull();
+  });
+});
+
+describe('MoveCommentary tablebase line (ADR-025 §4)', () => {
+  afterEach(() => useReviewStore.getState().reset());
+
+  const thrown = {
+    uci: 'g8f6',
+    san: 'Nf6',
+    before: 'draw' as const,
+    after: 'loss' as const,
+    kind: 'thrown' as const,
+    keepers: ['g7g6'],
+    dtmAfter: 3,
+  };
+
+  it('one line per move with a verdict of the shown review', () => {
+    setup();
+    const reviewed = useGameStore.getState().moves;
+    // The overlay lives only on a done review (the runner clears it otherwise).
+    act(() => useReviewStore.setState({ status: 'done', summary: scholarSummary(), reviewed }));
+    act(() =>
+      useReviewStore.setState({
+        tablebase: {
+          status: 'running',
+          missed: 0,
+          reviewed,
+          verdicts: {
+            6: thrown,
+            4: { ...thrown, uci: 'b8c6', san: 'Nc6', kind: 'kept', after: 'draw', keepers: [] },
+          },
+        },
+      }),
+    );
+    act(() => useGameStore.getState().goTo(6));
+    const line = screen.getByTestId('move-card-tb');
+    expect(line.dataset.tb).toBe('thrown');
+    expect(line.textContent).toBe(
+      'Tablebase: Nf6 loses \u2014 after it the position is lost (mate in 2); g6 was the only move that holds the draw.',
+    );
+    act(() => useGameStore.getState().goTo(4));
+    expect(screen.getByTestId('move-card-tb').textContent).toBe('Tablebase draw after Nc6.');
+    act(() => useGameStore.getState().goTo(5));
+    expect(screen.queryByTestId('move-card-tb')).toBeNull();
+  });
+
+  it('nothing for an overlay of another review or a verdict of another move', () => {
+    setup();
+    const reviewed = useGameStore.getState().moves;
+    // The overlay lives only on a done review (the runner clears it otherwise).
+    act(() => useReviewStore.setState({ status: 'done', summary: scholarSummary(), reviewed }));
+    act(() =>
+      useReviewStore.setState({
+        tablebase: { status: 'done', missed: 0, reviewed: [], verdicts: { 6: thrown } },
+      }),
+    );
+    act(() => useGameStore.getState().goTo(6));
+    expect(screen.queryByTestId('move-card-tb')).toBeNull();
+    act(() =>
+      useReviewStore.setState({
+        tablebase: {
+          status: 'done',
+          missed: 0,
+          reviewed,
+          verdicts: { 6: { ...thrown, uci: 'g7g6' } },
+        },
+      }),
+    );
+    expect(screen.queryByTestId('move-card-tb')).toBeNull();
   });
 });

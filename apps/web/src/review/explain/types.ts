@@ -1,7 +1,9 @@
+import type { TbVerdict } from '@daisychess/endgames';
 import type { MoveDetail } from '../details';
 
 /** Which rule produced an explanation (ADR-024 §4), in priority order. */
 export type ExplainRule =
+  | 'tb_thrown'
   | 'mate_allowed'
   | 'mate_missed'
   | 'piece_hangs'
@@ -12,6 +14,7 @@ export type ExplainRule =
   | 'eval_drop';
 
 export const EXPLAIN_RULES: readonly ExplainRule[] = [
+  'tb_thrown',
   'mate_allowed',
   'mate_missed',
   'piece_hangs',
@@ -35,6 +38,12 @@ export interface ExplainInput {
   reply?: ExplainReply;
   /** M22 time-trouble flag of the move. */
   timeTrouble?: boolean;
+  /**
+   * Tablebase verdict of the move (ADR-025 §4, review overlay). A `thrown` verdict of the played
+   * move makes `tb_thrown` the explanation (an exact verdict beats every heuristic). `dtmAfter`:
+   * distance to mate after the move, from the opponent's point of view (signed plies).
+   */
+  tb?: TbVerdict & { dtmAfter?: number };
 }
 
 export type ArrowBrush = 'green' | 'red' | 'yellow';
@@ -60,7 +69,11 @@ export interface Explanation {
   headline: string;
   /** 1–3 sentences, ≤ 280 characters together. */
   sentences: string[];
-  /** Steppable line: the punishment line for mate_allowed/piece_hangs/fork_allowed/material_lost, else the best line. */
+  /**
+   * Steppable line: the punishment line for mate_allowed/piece_hangs/fork_allowed/material_lost,
+   * else the best line (for tb_thrown: the engine line when it starts with the best tablebase
+   * move, else that move alone).
+   */
   line?: ExplainLine;
   arrows: ExplainArrow[];
 }

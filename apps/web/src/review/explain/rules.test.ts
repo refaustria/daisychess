@@ -13,6 +13,7 @@ import {
   pieceHangs,
   replayBoard,
   sanLine,
+  tbThrown,
   unitsLost,
 } from './rules';
 import { inputOf, legalLine, RULE_CASES, type CaseSpec } from './testPositions';
@@ -184,5 +185,39 @@ describe('predicates', () => {
   it('buildContext rejects unreadable positions', () => {
     const input = inputOf(caseNamed('eval_drop: 2. a3'));
     expect(buildContext({ ...input, detail: { ...input.detail, fenAfter: 'x' } })).toBeUndefined();
+  });
+});
+
+describe('tbThrown', () => {
+  const input = inputOf(RULE_CASES.find((c) => c.rule === 'tb_thrown')!);
+
+  it('reads the verdict: results, best keeper in SAN, only move, mate after', () => {
+    expect(tbThrown(buildContext(input)!)).toEqual({
+      rule: 'tb_thrown',
+      before: 'win',
+      after: 'draw',
+      keeper: { uci: 'b1e1', san: 'Qe1+' },
+      only: false,
+    });
+    const loss = { ...input.tb!, after: 'loss' as const, dtmAfter: -3, keepers: ['b1e1'] };
+    expect(tbThrown(buildContext({ ...input, tb: loss })!)).toMatchObject({
+      only: true,
+      mateIn: 2,
+    });
+  });
+
+  it('is undefined without a verdict, for kept/only and for a verdict of another move', () => {
+    const { tb, ...plain } = input;
+    expect(tbThrown(buildContext(plain)!)).toBeUndefined();
+    expect(tbThrown(buildContext({ ...input, tb: { ...tb!, kind: 'kept' } })!)).toBeUndefined();
+    const other = buildContext({ ...input, tb: { ...tb!, uci: 'a1a2' } })!;
+    expect(other.tb).toBeUndefined();
+    expect(tbThrown(other)).toBeUndefined();
+  });
+
+  it('no keeper readable: no keeper in the finding', () => {
+    const f = tbThrown(buildContext({ ...input, tb: { ...input.tb!, keepers: ['h1h8'] } })!);
+    expect(f).toMatchObject({ rule: 'tb_thrown', only: true });
+    expect(f && 'keeper' in f).toBe(false);
   });
 });

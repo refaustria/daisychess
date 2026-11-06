@@ -1,0 +1,98 @@
+/* Tablebase panel under the engine lines (ADR-025 §4). */
+.panel {
+  border-top: 1px solid var(--border);
+  padding: 0.4rem 0.75rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.head {
+  margin: 0 0 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.status {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.moves {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.moves th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 0.1rem 0.3rem;
+}
+
+.moves td {
+  padding: 0.05rem 0.3rem;
+  border-top: 1px solid var(--border);
+}
+
+.num,
+.moves th.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.move {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.1rem 0.25rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.move:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.move:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.move:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.result {
+  font-weight: 600;
+}
+
+.result[data-result='win'] {
+  color: var(--success);
+}
+
+.result[data-result='draw'] {
+  color: var(--text-muted);
+}
+
+.result[data-result='loss'] {
+  color: var(--danger);
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -104,6 +104,20 @@ export function sentencesFor(
   const first = shown.sans[0];
 
   switch (f.rule) {
+    case 'tb_thrown': {
+      const mate = f.mateIn !== undefined ? ` (mate in ${f.mateIn})` : '';
+      const head =
+        f.before === 'win'
+          ? `${played} throws away the win: ${
+              f.after === 'draw'
+                ? 'the position is a tablebase draw after it.'
+                : `a tablebase loss after it${mate}.`
+            }`
+          : `${played} loses: a tablebase loss after it${mate}.`;
+      if (!f.keeper) return [head];
+      const keeps = f.before === 'win' ? 'keeps it' : 'holds the draw';
+      return [head, `${f.keeper.san} ${keeps}${f.only ? ' (only move)' : ''}.`];
+    }
     case 'mate_allowed':
     case 'mate_missed': {
       const line = quote(Math.min(SENTENCE_LINE_PLIES, 2 * f.mateIn - 1));

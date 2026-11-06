@@ -33,6 +33,13 @@ function shownLine(
   ctx: RuleContext,
   input: ExplainInput,
 ): ShownLine & { punish: boolean } {
+  if (f.rule === 'tb_thrown') {
+    // The engine line when it starts with the best tablebase move, else that move alone.
+    const engine = lineOf(input.detail);
+    const fromEngine = !f.keeper || engine[0] === f.keeper.uci;
+    const ucis = fromEngine ? engine : [f.keeper!.uci];
+    return { fen: ctx.best.fen, sans: sanLine(ctx.best.fen, ucis), punish: false };
+  }
   const punish = PUNISH_LINE_RULES.has(f.rule);
   const line = punish ? ctx.punish : ctx.best;
   const ucis = punish ? (input.reply ? lineOf(input.reply) : []) : lineOf(input.detail);
@@ -43,8 +50,9 @@ function shownLine(
 /** Best move green, played move red, the threat yellow (a circle for a threatened unit). */
 function arrowsOf(f: Finding, ctx: RuleContext): ExplainArrow[] {
   const arrows: ExplainArrow[] = [];
-  const best = ctx.best.moves[0];
-  if (best && best.lan !== ctx.played?.lan) arrows.push({ uci: best.lan, brush: 'green' });
+  // tb_thrown: the best move that keeps the result is the green arrow (ADR-025 §4).
+  const green = f.rule === 'tb_thrown' ? f.keeper?.uci : ctx.best.moves[0]?.lan;
+  if (green && green !== ctx.played?.lan) arrows.push({ uci: green, brush: 'green' });
   if (ctx.played) arrows.push({ uci: ctx.played.lan, brush: 'red' });
   const threat = ctx.punish.moves[0];
   switch (f.rule) {
@@ -66,9 +74,9 @@ function arrowsOf(f: Finding, ctx: RuleContext): ExplainArrow[] {
 }
 
 /**
- * Rule-based explanation of a mistake (ADR-024 §4): the first of the eight rules that applies
- * (mate_allowed → mate_missed → piece_hangs → fork_allowed → material_lost → missed_capture →
- * missed_tactic → eval_drop), its sentences, a steppable line and board arrows. Pure and
+ * Rule-based explanation of a mistake (ADR-024 §4): the first of the nine rules that applies
+ * (tb_thrown with `input.tb` (ADR-025 §4) → mate_allowed → mate_missed → piece_hangs →
+ * fork_allowed → material_lost → missed_capture → missed_tactic → eval_drop), its sentences, a steppable line and board arrows. Pure and
  * offline; the punishment line is `details[ply + 1]`, passed by the caller as `reply`.
  */
 export function explainMistake(input: ExplainInput): Explanation {

@@ -279,6 +279,8 @@ export interface RuleContext {
   evalIfBest: Score;
   /** Material balance (mover POV) before the move. */
   balanceBefore: number;
+  /** Tablebase verdict of the played move (only when it judges this very move). */
+  tb?: NonNullable<ExplainInput['tb']>;
 }
 
 /** The engine line of a detail: `bestLine`, else the lone best move. */
@@ -295,7 +297,11 @@ export function buildContext(input: ExplainInput): RuleContext | undefined {
   if (!before || !after || !best || !punish) return undefined;
   const moverColor = colorOf(detail.mover);
   const played = applyUci(new Chess(detail.fenBefore), detail.playedUci, moverColor);
+  // A verdict of another move (stale overlay) is ignored.
+  const tb =
+    input.tb && input.tb.uci === detail.playedUci.trim().toLowerCase() ? input.tb : undefined;
   return {
+    ...(tb ? { tb } : {}),
     mover: detail.mover,
     moverColor,
     oppColor: other(moverColor),
@@ -315,6 +321,18 @@ export function buildContext(input: ExplainInput): RuleContext | undefined {
 // Findings: what a rule found, the data the wording turns into sentences.
 
 export type Finding =
+  | {
+      rule: 'tb_thrown';
+      /** The mover's tablebase result before and after the move. */
+      before: 'win' | 'draw' | 'loss';
+      after: 'win' | 'draw' | 'loss';
+      /** The best move that keeps `before` (SAN and UCI), when it can be read. */
+      keeper?: { uci: string; san: string };
+      /** Exactly one legal move keeps the result. */
+      only: boolean;
+      /** Mate in N for the opponent after the move (a thrown result that now loses). */
+      mateIn?: number;
+    }
   | { rule: 'mate_allowed'; mateIn: number }
   | { rule: 'mate_missed'; mateIn: number }
   | {
@@ -493,8 +511,32 @@ export function missedTactic(ctx: RuleContext): Finding | undefined {
   return gainCp >= TACTIC_THRESHOLD_CP ? { rule: 'missed_tactic', gainCp } : undefined;
 }
 
+/**
+ * 0. The tablebase says the played move threw the result away (win → draw/loss, draw → loss).
+ * First in the order: an exact verdict beats every heuristic (ADR-025 §4).
+ */
+export function tbThrown(ctx: RuleContext): Finding | undefined {
+  const tb = ctx.tb;
+  if (!tb || tb.kind !== 'thrown') return undefined;
+  const keeperUci = tb.keepers[0];
+  const keeperSan = keeperUci ? sanLine(ctx.best.fen, [keeperUci], 1)[0] : undefined;
+  const mateIn =
+    tb.after === 'loss' && tb.dtmAfter !== undefined && tb.dtmAfter !== 0
+      ? Math.ceil(Math.abs(tb.dtmAfter) / 2)
+      : undefined;
+  return {
+    rule: 'tb_thrown',
+    before: tb.before,
+    after: tb.after,
+    ...(keeperUci && keeperSan ? { keeper: { uci: keeperUci, san: keeperSan } } : {}),
+    only: tb.keepers.length === 1,
+    ...(mateIn !== undefined ? { mateIn } : {}),
+  };
+}
+
 /** Predicates in priority order; `eval_drop` is the default. */
 export const RULES: readonly [ExplainRule, (ctx: RuleContext) => Finding | undefined][] = [
+  ['tb_thrown', tbThrown],
   ['mate_allowed', mateAllowed],
   ['mate_missed', mateMissed],
   ['piece_hangs', pieceHangs],

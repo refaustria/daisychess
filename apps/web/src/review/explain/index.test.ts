@@ -41,6 +41,76 @@ describe('explainMistake: one position per rule (Stockfish lines, checked with c
   });
 });
 
+describe('explainMistake: tb_thrown (ADR-025 §4)', () => {
+  const c = RULE_CASES.find((x) => x.rule === 'tb_thrown')!;
+  const base = inputOf(c);
+  const tb = base.tb!;
+
+  it('is first in the priority order', () => {
+    expect(EXPLAIN_RULES[0]).toBe('tb_thrown');
+    expect(RULES[0]![0]).toBe('tb_thrown');
+  });
+
+  it('beats the heuristics, keeps the engine headline, keeper green and played red', () => {
+    const e = explainMistake(base);
+    expect(e.rule).toBe('tb_thrown');
+    expect(e.headline).toBe('1. Qb3+?? Blunder (−40%)');
+    expect(e.arrows).toEqual([
+      { uci: 'b1e1', brush: 'green' },
+      { uci: 'b1b3', brush: 'red' },
+    ]);
+    // The engine line starts with the best tablebase move: it is the steppable line.
+    expect(e.line).toMatchObject({ fen: c.fen, label: 'Best line' });
+    expect(e.line!.sans.slice(0, 2)).toEqual(['Qe1+', 'Kd3']);
+  });
+
+  it('says "(only move)" when exactly one move keeps the result', () => {
+    const e = explainMistake({ ...base, tb: { ...tb, keepers: ['b1e1'] } });
+    expect(e.sentences).toEqual([
+      'Qb3+ throws away the win: the position is a tablebase draw after it.',
+      'Qe1+ keeps it (only move).',
+    ]);
+  });
+
+  it('a keeper other than the engine move: green arrow and a one-move line', () => {
+    const e = explainMistake({ ...base, tb: { ...tb, keepers: ['b1d1', 'b1e1'] } });
+    expect(e.sentences[1]).toBe('Qd1 keeps it.');
+    expect(e.arrows[0]).toEqual({ uci: 'b1d1', brush: 'green' });
+    expect(e.line?.sans).toEqual(['Qd1']);
+  });
+
+  it('win → loss and draw → loss quote the mate after the move', () => {
+    const toLoss = explainMistake({ ...base, tb: { ...tb, after: 'loss', dtmAfter: 45 } });
+    expect(toLoss.sentences[0]).toBe(
+      'Qb3+ throws away the win: a tablebase loss after it (mate in 23).',
+    );
+    const drawn = explainMistake({
+      ...base,
+      tb: { ...tb, before: 'draw', after: 'loss', dtmAfter: 45, keepers: ['b1e1'] },
+    });
+    expect(drawn.sentences).toEqual([
+      'Qb3+ loses: a tablebase loss after it (mate in 23).',
+      'Qe1+ holds the draw (only move).',
+    ]);
+    const noDtm = explainMistake({ ...base, tb: { ...tb, before: 'draw', after: 'loss' } });
+    expect(noDtm.sentences[0]).toBe('Qb3+ loses: a tablebase loss after it.');
+  });
+
+  it('kept/only verdicts and verdicts of another move do not fire', () => {
+    expect(explainMistake({ ...base, tb: { ...tb, kind: 'kept', after: 'win' } }).rule).not.toBe(
+      'tb_thrown',
+    );
+    expect(explainMistake({ ...base, tb: { ...tb, kind: 'only', after: 'win' } }).rule).not.toBe(
+      'tb_thrown',
+    );
+    expect(explainMistake({ ...base, tb: { ...tb, uci: 'b1d1' } }).rule).not.toBe('tb_thrown');
+    // Without the verdict the heuristics decide as before.
+    const { tb: _, ...plain } = base;
+    void _;
+    expect(explainMistake(plain).rule).toBe('mate_missed');
+  });
+});
+
 describe('explainMistake: the hanging-knight blunder', () => {
   const c = RULE_CASES.find((x) => x.name.startsWith('piece_hangs: 3. Nxe5'))!;
   const input = inputOf(c);

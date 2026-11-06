@@ -153,6 +153,56 @@ describe('tourStore', () => {
     expect(card.text).toMatch(/^3\.\.\. Nf6\?\? Blunder .*: better was g6$/);
   });
 
+  it('uses the finished tablebase overlay of the review (M32-7): stops and tb_thrown card', async () => {
+    side = 'black';
+    finishReview();
+    // Set after `done` (the overlay runner clears a review without eligible plies at `done`).
+    const verdict = {
+      uci: 'g8f6',
+      san: 'Nf6',
+      before: 'draw' as const,
+      after: 'loss' as const,
+      kind: 'thrown' as const,
+      keepers: ['g7g6'],
+    };
+    useReviewStore.setState({
+      tablebase: { status: 'done', verdicts: { 6: verdict }, missed: 0 },
+    });
+    await running();
+    tour().skip();
+    tour().skip();
+    expect(ply()).toBe(6);
+    const card = tour().card;
+    if (card?.kind !== 'mistake') throw new Error('mistake card expected');
+    // tb_thrown (first rule) wins over mate_allowed; the keeper is the green arrow.
+    expect(card.explanation?.arrows[0]).toEqual({ uci: 'g7g6', brush: 'green' });
+    expect(card.explanation?.sentences).toEqual([
+      'Nf6 loses: a tablebase loss after it.',
+      'g6 holds the draw (only move).',
+    ]);
+  });
+
+  it('a kept tablebase verdict removes the engine mistake stop; a running overlay is ignored', async () => {
+    side = 'black';
+    const kept = {
+      uci: 'g8f6',
+      san: 'Nf6',
+      before: 'draw' as const,
+      after: 'draw' as const,
+      kind: 'kept' as const,
+      keepers: ['g8f6', 'g7g6'],
+    };
+    finishReview();
+    useReviewStore.setState({ tablebase: { status: 'running', verdicts: { 6: kept }, missed: 0 } });
+    await running();
+    expect(tour().total).toBe(2);
+    tour().stop();
+    useTourStore.setState({ started: new Set() });
+    useReviewStore.setState({ tablebase: { status: 'done', verdicts: { 6: kept }, missed: 0 } });
+    await tour().start();
+    expect(tour().total).toBe(1);
+  });
+
   it('stops on navigation the tour did not cause', async () => {
     finishReview();
     await running();

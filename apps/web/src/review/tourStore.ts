@@ -25,6 +25,7 @@ import { openingStopCard } from './openingStop';
 import { endgameStopCard, tbAfterPly, type GameResult } from './endgameStop';
 import { gameKey as reviewGameKey } from './reviewCache';
 import { gameToBatch, useReviewStore } from './reviewStore';
+import { doneVerdicts } from './tablebaseOverlay';
 import { timeTroublePlies } from './timeUsage';
 import {
   buildSchedule,
@@ -104,7 +105,8 @@ export function setTourUserSide(fn: UserSideResolver | undefined): void {
 }
 
 type TablebaseSource = () => Readonly<Record<number, TbVerdict>> | undefined;
-let tablebaseSource: TablebaseSource | undefined;
+/** Default: the finished overlay of the shown review (`reviewStore.tablebase`, M32-7). */
+let tablebaseSource: TablebaseSource | undefined = () => doneVerdicts(useReviewStore.getState());
 
 /**
  * Hook for the tablebase overlay (M32-7, ADR-025 section 4): returns the verdicts by ply once the
@@ -201,6 +203,7 @@ function mistakeCard(
   text: string,
   details: MoveDetails,
   trouble: ReadonlySet<number>,
+  tb: TbVerdict | undefined,
 ): TourCard {
   const card: MistakeCard = { kind: 'mistake', ply: step.ply, text };
   const maia = hintShortText(maiaHintAt(step.ply));
@@ -212,6 +215,7 @@ function mistakeCard(
         detail,
         reply: details[step.ply + 1],
         timeTrouble: trouble.has(step.ply),
+        ...(tb ? { tb } : {}),
       });
     } catch {
       // The plain text stays.
@@ -382,7 +386,7 @@ export const useTourStore = create<TourStore>()((set, get) => ({
             card = endgameCard(step.ply, game, moveDetails, tablebase, textFor);
           } else if (step.stop === 'mistake') {
             const plain = text || stepText({ ...step, kind: 'mistake' }, moveDetails, trouble);
-            card = mistakeCard(step, plain, moveDetails, trouble);
+            card = mistakeCard(step, plain, moveDetails, trouble, tablebase?.[step.ply]);
           }
           set({ reached: stopNumber(schedule, i), text, card });
         },

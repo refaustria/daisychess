@@ -31,6 +31,8 @@ export interface CaseSpec {
   reply: string[];
   classification?: MoveClass;
   winProbLoss?: number;
+  /** Tablebase verdict of the played move (ADR-025 §4). */
+  tb?: ExplainInput['tb'];
 }
 
 /** Ply of the move played in `fen` (1-based, from the move number and side to move). */
@@ -74,6 +76,7 @@ export function inputOf(spec: CaseSpec): ExplainInput {
       bestLineMoves: replySans,
       evalBeforeWhite: spec.evalAfter,
     },
+    ...(spec.tb ? { tb: spec.tb } : {}),
   };
 }
 
@@ -85,6 +88,31 @@ export interface RuleCase extends CaseSpec {
 }
 
 export const RULE_CASES: RuleCase[] = [
+  {
+    // K+Q vs K is a win; after Qb3+ Kxb3 only the kings are left (a draw).
+    name: 'tb_thrown: Qb3+?? throws away the K+Q vs K win',
+    rule: 'tb_thrown',
+    fires: ['tb_thrown', 'mate_missed', 'piece_hangs'],
+    fen: '8/8/8/8/8/2k5/8/KQ6 w - - 0 1',
+    played: 'b1b3',
+    best: ['b1e1', 'c3d3', 'a1b2', 'd3d4', 'b2c2', 'd4d5', 'c2d3', 'd5c5'],
+    evalBefore: { mate: 9 },
+    evalAfter: { cp: 0 },
+    reply: ['c3b3'],
+    tb: {
+      uci: 'b1b3',
+      san: 'Qb3+',
+      before: 'win',
+      after: 'draw',
+      kind: 'thrown',
+      keepers: ['b1e1', 'b1b2', 'b1d1'],
+      dtmBefore: 17,
+    },
+    sentences: [
+      'Qb3+ throws away the win: the position is a tablebase draw after it.',
+      'Qe1+ keeps it.',
+    ],
+  },
   {
     name: 'mate_allowed: 3... Nf6?? allows Qxf7#',
     rule: 'mate_allowed',

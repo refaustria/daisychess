@@ -41,6 +41,7 @@ import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import { usePreviewStore } from '../../store/previewStore';
 import { useBackHandler } from '../../platform/backButton';
 import styles from './AnalysisPanel.module.css';
+import { TablebasePanel } from './TablebasePanel';
 
 export const DEPTH_OPTIONS = [10, 14, 18, 22, 26, 30, 0];
 
@@ -658,6 +659,7 @@ export function AnalysisPanel() {
           ) : (
             body
           )}
+          {!terminal && <TablebasePanel fen={fen} />}
         </>
       )}
     </section>

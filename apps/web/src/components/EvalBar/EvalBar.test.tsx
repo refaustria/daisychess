@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import type { TbPosition } from '@daisychess/endgames';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { EvalBar, evalDisplay } from './EvalBar';
+import { resetTablebaseStore, useTablebaseStore } from '../../endgames/tablebaseStore';
+import { useAnalysisStore } from '../../store/analysisStore';
+import { ConnectedEvalBar, EvalBar, evalDisplay } from './EvalBar';
 
 afterEach(cleanup);
 
@@ -76,5 +79,108 @@ describe('EvalBar', () => {
     expect(fill().style.height).toBe('2%');
     rerender(<EvalBar orientation="black" score={{ mate: -2 }} />);
     expect(label().className).toMatch(/bottom/);
+  });
+});
+
+describe('evalDisplay with a tablebase result (ADR-025 §4)', () => {
+  it('exact share, M<n> or TB, the caption and the aria text', () => {
+    expect(
+      evalDisplay({ cp: 120 }, null, 'x', { result: 'white', mateIn: 14, exact50: true }),
+    ).toEqual({
+      share: 100,
+      label: 'M14',
+      aria: 'Tablebase: White wins, mate in 14',
+      caption: 'tablebase',
+    });
+    expect(
+      evalDisplay(null, null, 'x', { result: 'black', mateIn: 3, exact50: true }),
+    ).toMatchObject({
+      share: 0,
+      label: '-M3',
+      aria: 'Tablebase: Black wins, mate in 3',
+    });
+    expect(
+      evalDisplay({ cp: 300 }, null, 'x', { result: 'white', dtz: 9, exact50: true }),
+    ).toMatchObject({
+      share: 100,
+      label: 'TB',
+      aria: 'Tablebase: White wins',
+    });
+    expect(evalDisplay({ cp: 300 }, null, 'x', { result: 'draw', exact50: true })).toEqual({
+      share: 50,
+      label: 'TB',
+      aria: 'Tablebase: draw',
+      caption: 'tablebase',
+    });
+    expect(evalDisplay(null, null, 'x', { result: 'draw', exact50: false })).toMatchObject({
+      aria: 'Tablebase: draw (50-move rule)',
+    });
+    // A finished game still shows its result; null keeps the engine score.
+    expect(evalDisplay(null, 'stalemate', 'x', { result: 'white', exact50: true })).toMatchObject({
+      label: '½-½',
+    });
+    expect(evalDisplay({ cp: 30 }, null, 'x', null)).toMatchObject({ label: '+0.30' });
+  });
+
+  it('renders the caption and marks the bar', () => {
+    render(
+      <EvalBar
+        orientation="white"
+        score={{ cp: 50 }}
+        tablebase={{ result: 'draw', exact50: true }}
+        stale
+      />,
+    );
+    const bar = screen.getByTestId('eval-bar');
+    expect(bar.getAttribute('aria-label')).toBe('Tablebase: draw');
+    expect(bar.dataset.tablebase).toBe('true');
+    expect(screen.getByTestId('eval-caption').textContent).toBe('tablebase');
+    expect(label().textContent).toBe('TBtablebase');
+    // An exact result is never shown as stale.
+    expect(label().className).not.toMatch(/stale/);
+  });
+});
+
+describe('ConnectedEvalBar with the tablebase store', () => {
+  const KQK = '8/8/8/8/8/2k5/8/KQ6 w - - 0 1';
+  const POS: TbPosition = { fen: KQK, category: 'win', dtm: 17, moves: [] };
+
+  afterEach(() => {
+    resetTablebaseStore();
+    useAnalysisStore.setState({ enabled: false });
+  });
+
+  it('the exact value of the analysis FEN wins over the engine score', () => {
+    useAnalysisStore.setState({ enabled: true, fen: KQK, terminal: null });
+    useTablebaseStore.setState({
+      current: { fen: KQK, status: 'done', answer: { pos: POS, source: 'local' } },
+    });
+    render(<ConnectedEvalBar />);
+    expect(screen.getByTestId('eval-bar').getAttribute('aria-label')).toBe(
+      'Tablebase: White wins, mate in 9',
+    );
+    expect(label().textContent).toBe('M9tablebase');
+    // An answer for another FEN is not used.
+    act(() =>
+      useTablebaseStore.setState({
+        current: {
+          fen: '8/8/8/8/8/2k5/8/K1Q5 w - - 0 1',
+          status: 'done',
+          answer: { pos: POS, source: 'local' },
+        },
+      }),
+    );
+    expect(screen.getByTestId('eval-bar').dataset.tablebase).toBeUndefined();
+  });
+
+  it('nothing from the tablebase while the analysis is off', () => {
+    useAnalysisStore.setState({ enabled: false, fen: KQK, terminal: null });
+    useTablebaseStore.setState({
+      current: { fen: KQK, status: 'done', answer: { pos: POS, source: 'local' } },
+    });
+    render(<ConnectedEvalBar />);
+    expect(screen.getByTestId('eval-bar').getAttribute('aria-label')).toBe(
+      'Evaluation unavailable',
+    );
   });
 });
