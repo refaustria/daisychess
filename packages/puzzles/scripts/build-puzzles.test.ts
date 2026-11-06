@@ -22,6 +22,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PuzzleIndexSchema, ShardSchema, StarterSchema } from '../src/schemas.js';
 import { STARTER_MAX_BYTES } from '../src/curation.js';
 import {
+  DEFAULT_BAND_THEME_FLOOR,
+  DEFAULT_STARTER_THEME_FLOOR,
   buildPuzzles,
   illegalRows,
   parseArgs,
@@ -80,6 +82,25 @@ const opts = (o: Partial<BuildOptions>): BuildOptions => ({
 const quiet = () => {};
 
 describe('parseArgs', () => {
+  it('parses --band-theme-floor and --starter-theme-floor (repeatable, comma lists)', () => {
+    const o = parseArgs([
+      '--input',
+      'a',
+      '--dry-run',
+      '--band-theme-floor',
+      'rookEndgame=5,pawnEndgame=7',
+      '--band-theme-floor',
+      'rookEndgame=0',
+      '--starter-theme-floor',
+      'queenEndgame=3',
+    ]);
+    expect(o.bandThemeFloor).toEqual({ rookEndgame: 0, pawnEndgame: 7 });
+    expect(o.starterThemeFloor).toEqual({ queenEndgame: 3 });
+    expect(() => parseArgs(['--input', 'a', '--dry-run', '--band-theme-floor', 'rook'])).toThrow(
+      /theme=count/,
+    );
+  });
+
   it('reads every flag', () => {
     expect(
       parseArgs([
@@ -304,6 +325,30 @@ describe('buildPuzzles on the fixture', () => {
     expect(readFileSync(join(tmp, 'det-b/s.json'))).toEqual(
       readFileSync(join(tmp, 'det-a/s.json')),
     );
+  });
+
+  it('floors default to the six endgame types and are overridable', async () => {
+    expect(DEFAULT_BAND_THEME_FLOOR).toEqual({
+      pawnEndgame: 150,
+      knightEndgame: 150,
+      bishopEndgame: 150,
+      rookEndgame: 150,
+      queenEndgame: 150,
+      queenRookEndgame: 150,
+    });
+    expect(Object.values(DEFAULT_STARTER_THEME_FLOOR)).toEqual(Array(6).fill(60));
+    // On the 300-row fixture the quota keeps every hard-filtered row: floors change nothing.
+    const base = await buildPuzzles(opts({ dryRun: true }), quiet);
+    const big = await buildPuzzles(
+      opts({
+        dryRun: true,
+        bandThemeFloor: { rookEndgame: 5 },
+        starterThemeFloor: { rookEndgame: 5 },
+      }),
+      quiet,
+    );
+    expect(big.curated).toBe(base.curated);
+    expect(big.starter.rows).toBe(base.starter.rows);
   });
 
   it('--dry-run writes nothing', async () => {

@@ -58,10 +58,26 @@ export interface CurationOptions {
   quotaPerBand: number;
   /** Every theme is topped up to at least this many rows (most played first). */
   themeFloor: number;
+  /**
+   * Per-theme floors that override `themeFloor` for the named themes (the starter uses it for the
+   * endgame types).
+   */
+  themeFloors?: Record<string, number>;
+  /**
+   * Per-band top-up, applied after the global theme floor: every band holds at least this many
+   * rows of each named theme (most played first), as far as the band has them.
+   */
+  bandThemeFloor?: Record<string, number>;
   /** Bands considered (inclusive); rows of other bands are ignored. Default 500…2900. */
   minBand?: number;
   maxBand?: number;
 }
+
+/** Floor of one theme: its entry in `themeFloors`, else `themeFloor`. */
+const floorOf = (
+  opts: Pick<CurationOptions, 'themeFloor' | 'themeFloors'>,
+  theme: string,
+): number => opts.themeFloors?.[theme] ?? opts.themeFloor;
 
 /** The selection with per-theme counts (internal state of the curation). */
 function select(puzzles: readonly CsvPuzzle[], opts: CurationOptions): Map<string, CsvPuzzle> {
@@ -87,12 +103,28 @@ function select(puzzles: readonly CsvPuzzle[], opts: CurationOptions): Map<strin
     for (const t of p.themes) counts.set(t, (counts.get(t) ?? 0) + 1);
   const allThemes = [...new Set(pool.flatMap((p) => p.themes))].sort();
   for (const theme of allThemes) {
-    if ((counts.get(theme) ?? 0) >= opts.themeFloor) continue;
+    const floor = floorOf(opts, theme);
+    if ((counts.get(theme) ?? 0) >= floor) continue;
     for (const p of pool) {
-      if ((counts.get(theme) ?? 0) >= opts.themeFloor) break;
+      if ((counts.get(theme) ?? 0) >= floor) break;
       if (chosen.has(p.id) || !p.themes.includes(theme)) continue;
       chosen.set(p.id, p);
       for (const t of p.themes) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+  }
+  for (const theme of Object.keys(opts.bandThemeFloor ?? {}).sort()) {
+    const floor = opts.bandThemeFloor?.[theme] ?? 0;
+    if (!(floor > 0)) continue;
+    const inBand = new Map<number, number>();
+    for (const p of chosen.values())
+      if (p.themes.includes(theme))
+        inBand.set(bandOf(p.rating), (inBand.get(bandOf(p.rating)) ?? 0) + 1);
+    for (const p of pool) {
+      const b = bandOf(p.rating);
+      if ((inBand.get(b) ?? 0) >= floor) continue;
+      if (chosen.has(p.id) || !p.themes.includes(theme)) continue;
+      chosen.set(p.id, p);
+      inBand.set(b, (inBand.get(b) ?? 0) + 1);
     }
   }
   return chosen;
@@ -115,6 +147,8 @@ export interface StarterOptions {
   size: number;
   quotaPerBand: number;
   themeFloor: number;
+  /** Per-theme starter floors overriding `themeFloor` (e.g. the six endgame types). */
+  themeFloors?: Record<string, number>;
   /** Bands (inclusive): 600…2500 = ratings 600–2599. */
   minBand: number;
   maxBand: number;
@@ -152,7 +186,7 @@ export function pickStarter(
     // Most played first: scanning from the end finds the least played removable row.
     for (const list of bands.values()) list.sort(byPlays);
     const removable = (p: CsvPuzzle): boolean =>
-      p.themes.every((t) => (counts.get(t) ?? 0) > opts.themeFloor);
+      p.themes.every((t) => (counts.get(t) ?? 0) > floorOf(opts, t));
     let excess = chosen.size - opts.size;
     while (excess > 0) {
       const order = [...bands.entries()].sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);

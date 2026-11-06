@@ -91,6 +91,47 @@ describe('selectCurated', () => {
     }
   });
 
+  describe('bandThemeFloor', () => {
+    // Two bands; rook rows are the least played ones, so the quota drops them.
+    const makePool = (): CsvPuzzle[] => {
+      const out: CsvPuzzle[] = [];
+      for (const r of [1500, 1600]) {
+        for (let i = 0; i < 4; i++) out.push(mk(r + i, 900 - i));
+        for (let i = 0; i < 4; i++) out.push(mk(r + 10 + i, 50 - i, ['rookEndgame']));
+      }
+      out.push(mk(1700, 10, ['rookEndgame'])); // band with a single rook row
+      return out;
+    };
+    const fixed = makePool(); // ids come from a counter: build once
+    const pool = (): CsvPuzzle[] => fixed;
+    const rooks = (rows: CsvPuzzle[], band: number): CsvPuzzle[] =>
+      rows.filter((p) => p.themes.includes('rookEndgame') && bandOf(p.rating) === band);
+
+    it('adds exactly the missing most-played rows per band, only where needed', () => {
+      const base = { quotaPerBand: 5, themeFloor: 0 };
+      const off = selectCurated(pool(), base);
+      const on = selectCurated(pool(), { ...base, bandThemeFloor: { rookEndgame: 2 } });
+      expect(selectCurated(pool(), { ...base, bandThemeFloor: {} })).toEqual(off);
+      expect(rooks(off, 1500)).toHaveLength(1); // quota 5: 4 plain + 1 rook
+      expect(rooks(on, 1500)).toHaveLength(2);
+      expect(rooks(on, 1600)).toHaveLength(2);
+      expect(rooks(on, 1700)).toHaveLength(1); // the band has only one
+      const added = on.filter((p) => !off.some((q) => q.id === p.id));
+      expect(added).toHaveLength(2);
+      // Most played first: the 50-play row of each band was already in, so 49 is added.
+      expect(added.every((p) => p.nbPlays === 49)).toBe(true);
+      // Nothing is added when the band already holds the floor.
+      expect(selectCurated(pool(), { ...base, bandThemeFloor: { rookEndgame: 1 } })).toEqual(off);
+    });
+
+    it('ignores non-positive floors', () => {
+      const base = { quotaPerBand: 5, themeFloor: 0 };
+      expect(selectCurated(pool(), { ...base, bandThemeFloor: { rookEndgame: 0 } })).toEqual(
+        selectCurated(pool(), base),
+      );
+    });
+  });
+
   it('defaults to the production quotas', () => {
     const hard = fixturePuzzles.filter(hardFilter);
     expect(selectCurated(hard)).toHaveLength(hard.length);
@@ -115,6 +156,23 @@ describe('pickStarter', () => {
   it('cannot trim below what the theme floors need', () => {
     const pool = [mk(1000, 10, ['a']), mk(1100, 10, ['b']), mk(1200, 10, ['c'])];
     expect(pickStarter(pool, { size: 1, quotaPerBand: 1, themeFloor: 1 })).toHaveLength(3);
+  });
+
+  it('themeFloors override themeFloor per theme, also when trimming', () => {
+    const pool: CsvPuzzle[] = [];
+    for (let b = 600; b <= 800; b += 100)
+      for (let i = 0; i < 10; i++) pool.push(mk(b + i, 1000 - i));
+    for (let i = 0; i < 8; i++) pool.push(mk(1000 + i, 5 + i, ['rookEndgame']));
+    const rook = (rows: CsvPuzzle[]) => rows.filter((p) => p.themes.includes('rookEndgame'));
+    const base = { quotaPerBand: 3, themeFloor: 1, minBand: 600, maxBand: 1000 };
+    expect(rook(pickStarter(pool, { ...base, size: 100 }))).toHaveLength(3);
+    expect(
+      rook(pickStarter(pool, { ...base, size: 100, themeFloors: { rookEndgame: 6 } })),
+    ).toHaveLength(6);
+    // Trimming to a tiny size keeps the 6 rook rows the floor needs.
+    expect(
+      rook(pickStarter(pool, { ...base, size: 1, themeFloors: { rookEndgame: 6 } })),
+    ).toHaveLength(6);
   });
 
   it('runs on the fixture with the defaults', () => {

@@ -1,5 +1,8 @@
 // Types for build-puzzles.mjs (imported by build-puzzles.test.ts).
 export const DEFAULT_SOURCE: string;
+export const ENDGAME_THEMES: string[];
+export const DEFAULT_BAND_THEME_FLOOR: Record<string, number>;
+export const DEFAULT_STARTER_THEME_FLOOR: Record<string, number>;
 
 export interface BuildOptions {
   input: string;
@@ -12,6 +15,10 @@ export interface BuildOptions {
   builtAt?: string;
   /** Worker threads of the legality check (default {@link defaultJobs}). */
   jobs?: number;
+  /** Per-band theme floors merged over {@link DEFAULT_BAND_THEME_FLOOR}. */
+  bandThemeFloor?: Record<string, number>;
+  /** Starter theme floors merged over {@link DEFAULT_STARTER_THEME_FLOOR}. */
+  starterThemeFloor?: Record<string, number>;
   dryRun: boolean;
   zstdCli: boolean;
 }

@@ -20,6 +20,9 @@
 //
 // --sample <bytes>  reads only the first <bytes> of the input (a ranged partial download); the
 //                   truncated end of the zstd stream and the last, partial line are tolerated.
+// --band-theme-floor <theme=n[,theme=n…]>   per-band floor of a theme in the curated set (repeatable;
+//                   merged over the default 150 for the six endgame types; 0 switches one off).
+// --starter-theme-floor <theme=n[,…]>       same for the starter (default 60 for the six types).
 // --dry-run         runs everything and prints the counts, writes nothing.
 // --sha256 <hex>    expected digest of the input (fail-closed; not allowed with --sample).
 // --zstd-cli        use the `zstd` CLI even when zlib.createZstdDecompress exists (tests).
@@ -50,12 +53,40 @@ const MAX_ROUNDS = 5;
 /** Below this many rows the legality check runs inline (worker start-up is not worth it). */
 const MIN_PARALLEL_ROWS = 4000;
 
+/** ADR-025 §7: the six lichess endgame types, floors per band (curated) and in the starter. */
+export const ENDGAME_THEMES = [
+  'pawnEndgame',
+  'knightEndgame',
+  'bishopEndgame',
+  'rookEndgame',
+  'queenEndgame',
+  'queenRookEndgame',
+];
+export const DEFAULT_BAND_THEME_FLOOR = Object.fromEntries(ENDGAME_THEMES.map((t) => [t, 150]));
+export const DEFAULT_STARTER_THEME_FLOOR = Object.fromEntries(ENDGAME_THEMES.map((t) => [t, 60]));
+
+/**
+ * `theme=n[,theme=n…]` merged into `into`.
+ * @param {Record<string, number>} into
+ */
+function addFloors(
+  /** @type {Record<string, number>} */ into,
+  /** @type {string} */ v,
+  /** @type {string} */ flag,
+) {
+  for (const part of v.split(',')) {
+    const m = /^([A-Za-z][A-Za-z0-9]*)=(\d{1,6})$/.exec(part);
+    if (!m) throw new UsageError(`${flag} needs theme=count (got "${part}")`);
+    into[m[1]] = Number(m[2]);
+  }
+}
+
 /** Worker threads for the legality check: cores − 1, at most 8. */
 export const defaultJobs = () => Math.max(1, Math.min(8, availableParallelism() - 1));
 
 const USAGE = `usage: build-puzzles.mjs --input <file.csv.zst|file.csv> (--out <dir> | --dry-run)
        [--starter <starter.json>] [--sample <bytes>] [--sha256 <hex>] [--source <url>]
-       [--last-modified <text>] [--built-at <iso>] [--jobs <n>] [--zstd-cli]`;
+       [--last-modified <text>] [--built-at <iso>] [--jobs <n>] [--zstd-cli]\n       [--band-theme-floor <theme=n,…>] [--starter-theme-floor <theme=n,…>]`;
 
 export class UsageError extends Error {}
 
@@ -110,6 +141,12 @@ export function parseArgs(argv) {
         o.jobs = Number(v);
         break;
       }
+      case '--band-theme-floor':
+        addFloors((o.bandThemeFloor ??= {}), value(i++, a), a);
+        break;
+      case '--starter-theme-floor':
+        addFloors((o.starterThemeFloor ??= {}), value(i++, a), a);
+        break;
       case '--dry-run':
         o.dryRun = true;
         break;
@@ -434,7 +471,11 @@ export async function buildPuzzles(o, log = console.log) {
   for (let round = 1; ; round++) {
     if (round > MAX_ROUNDS)
       throw new Error(`selection still had illegal rows after ${MAX_ROUNDS} rounds`);
-    curatedMeta = P.selectCurated(kept, { quotaPerBand: 16_000, themeFloor: 600 });
+    curatedMeta = P.selectCurated(kept, {
+      quotaPerBand: 16_000,
+      themeFloor: 600,
+      bandThemeFloor: { ...DEFAULT_BAND_THEME_FLOOR, ...o.bandThemeFloor },
+    });
     const need = new Set(curatedMeta.filter((p) => !full.has(p.id)).map((p) => p.id));
     if (need.size === 0) break;
     /** @type {CsvPuzzle[]} */
@@ -509,7 +550,9 @@ export async function buildPuzzles(o, log = console.log) {
   const indexJson = JSON.stringify(index);
 
   // Starter + daily pool.
-  const starterRows = P.pickStarter(curated);
+  const starterRows = P.pickStarter(curated, {
+    themeFloors: { ...DEFAULT_STARTER_THEME_FLOOR, ...o.starterThemeFloor },
+  });
   const daily = P.pickDailyPool(starterRows);
   const starter = P.StarterSchema.parse(
     P.buildStarter({ dataset: sha256, puzzles: starterRows, daily }),
