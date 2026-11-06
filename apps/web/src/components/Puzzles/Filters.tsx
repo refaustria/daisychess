@@ -1,4 +1,11 @@
-import { openingFamily, themesByGroup, themeLabel } from '@daisychess/puzzles';
+import {
+  ENDGAME_THEMES,
+  isEndgameTheme,
+  openingFamily,
+  themesByGroup,
+  themeLabel,
+  type EndgameTheme,
+} from '@daisychess/puzzles';
 import { useEffect, useId, useState } from 'react';
 import { loadFilterOptions, type FilterOptions } from '../../puzzles/filterOptions';
 import { usePuzzleStore } from '../../puzzles/puzzleStore';
@@ -8,11 +15,24 @@ import styles from './PuzzlesPanel.module.css';
 const label = (tag: string, count: number): string =>
   `${tag.replace(/_/g, ' ')} (${count.toLocaleString('en')})`;
 
+const ENDGAME_LABELS: Record<EndgameTheme, string> = {
+  endgame: 'Endgames only',
+  pawnEndgame: 'Pawn endgames',
+  knightEndgame: 'Knight endgames',
+  bishopEndgame: 'Bishop endgames',
+  rookEndgame: 'Rook endgames',
+  queenEndgame: 'Queen endgames',
+  queenRookEndgame: 'Queen and rook endgames',
+};
+
+type FilterValue = { theme?: string; endgame?: EndgameTheme; opening?: string };
+
 /** Puzzles tab: theme, opening family and variation selects plus "Keep puzzles for offline use". */
 export function Filters() {
   const filter = usePuzzleStore((s) => s.filter);
   const [options, setOptions] = useState<FilterOptions | null>(null);
   const themeId = useId();
+  const endgameId = useId();
   const familyId = useId();
   const variationId = useId();
 
@@ -24,9 +44,10 @@ export function Filters() {
     };
   }, []);
 
-  const set = (next: { theme?: string; opening?: string }) => {
-    const f: { theme?: string; opening?: string } = {};
+  const set = (next: FilterValue) => {
+    const f: FilterValue = {};
     if (next.theme) f.theme = next.theme;
+    if (isEndgameTheme(next.endgame)) f.endgame = next.endgame;
     if (next.opening) f.opening = next.opening;
     usePuzzleStore.getState().setFilter(f);
   };
@@ -40,18 +61,26 @@ export function Filters() {
       ) ?? tag)
     : '';
   const family = families.find((f) => f.tag === familyTag);
+  const endgames = new Map(options?.endgames.map((t) => [t.tag, t.count]));
   const counts = new Map(options?.themes.map((t) => [t.tag, t.count]));
   const groups = themesByGroup(options ? options.themes.map((t) => t.tag) : undefined);
 
   return (
-    <details className={styles.filters} open={Boolean(filter.theme || filter.opening)}>
+    <details
+      className={styles.filters}
+      open={Boolean(filter.theme || filter.endgame || filter.opening)}
+    >
       <summary>
         Filters
-        {(filter.theme || filter.opening) && (
+        {(filter.theme || filter.endgame || filter.opening) && (
           <span className={styles.active} data-testid="puzzle-filter-active">
             {' '}
             ·{' '}
-            {[filter.theme && themeLabel(filter.theme), filter.opening?.replace(/_/g, ' ')]
+            {[
+              filter.theme && themeLabel(filter.theme),
+              filter.endgame && ENDGAME_LABELS[filter.endgame],
+              filter.opening?.replace(/_/g, ' '),
+            ]
               .filter(Boolean)
               .join(', ')}
           </span>
@@ -82,6 +111,33 @@ export function Filters() {
               ))}
             </optgroup>
           ))}
+        </select>
+
+        <label htmlFor={endgameId} className={styles.label}>
+          Endgames
+        </label>
+        <select
+          id={endgameId}
+          className={styles.select}
+          value={filter.endgame ?? ''}
+          onChange={(e) =>
+            set({
+              ...filter,
+              endgame: isEndgameTheme(e.target.value) ? e.target.value : undefined,
+            })
+          }
+        >
+          <option value="">All puzzles</option>
+          {ENDGAME_THEMES.map((key) => {
+            const count = endgames.get(key);
+            return (
+              <option key={key} value={key}>
+                {count === undefined
+                  ? ENDGAME_LABELS[key]
+                  : `${ENDGAME_LABELS[key]} (${count.toLocaleString('en')})`}
+              </option>
+            );
+          })}
         </select>
 
         <label htmlFor={familyId} className={styles.label}>
@@ -122,7 +178,7 @@ export function Filters() {
           ))}
         </select>
       </div>
-      {(filter.theme || filter.opening) && (
+      {(filter.theme || filter.endgame || filter.opening) && (
         <button type="button" onClick={() => usePuzzleStore.getState().setFilter({})}>
           Clear filters
         </button>

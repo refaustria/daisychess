@@ -87,8 +87,16 @@ export {
   rushPlan,
 } from './selection.js';
 export type { Difficulty, PuzzleFilter, RatingWindow, RushOptions } from './selection.js';
-export { THEME_GROUPS, THEMES, themeInfo, themeLabel, themesByGroup } from './themes.js';
-export type { ThemeGroup, ThemeInfo } from './themes.js';
+export {
+  ENDGAME_THEMES,
+  isEndgameTheme,
+  THEME_GROUPS,
+  THEMES,
+  themeInfo,
+  themeLabel,
+  themesByGroup,
+} from './themes.js';
+export type { EndgameTheme, ThemeGroup, ThemeInfo } from './themes.js';
 export { openingTag, openingFamily, openingTagsForName } from './openings.js';
 export {
   MIN_BEST_WIN_PROB,

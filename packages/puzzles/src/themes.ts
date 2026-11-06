@@ -250,6 +250,24 @@ export const THEMES: readonly ThemeInfo[] = [
   t('superGM', 'special', 'Super GM games', 'From games of the world’s best players.'),
 ];
 
+/** Endgame types a puzzle filter can name (ADR-025 §7), `endgame` meaning any of them. */
+export const ENDGAME_THEMES = [
+  'endgame',
+  'pawnEndgame',
+  'knightEndgame',
+  'bishopEndgame',
+  'rookEndgame',
+  'queenEndgame',
+  'queenRookEndgame',
+] as const;
+
+export type EndgameTheme = (typeof ENDGAME_THEMES)[number];
+
+/** True when `v` is one of {@link ENDGAME_THEMES}. */
+export function isEndgameTheme(v: unknown): v is EndgameTheme {
+  return typeof v === 'string' && (ENDGAME_THEMES as readonly string[]).includes(v);
+}
+
 const byKey = new Map(THEMES.map((th) => [th.key, th]));
 
 /** Theme info of a key, or undefined for a key we do not know (a newer dump). */

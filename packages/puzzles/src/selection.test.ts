@@ -50,6 +50,15 @@ describe('matchesFilter', () => {
     expect(matchesFilter(p, { opening: 'Sicilian_Defense_Open', theme: 'fork' })).toBe(true);
     expect(matchesFilter(p, { opening: 'Sicilian_Defense_Najdorf_Variation' })).toBe(false);
   });
+  it('ANDs the endgame type with the theme', () => {
+    const e = puzzle('e', 1500, ['fork', 'endgame', 'rookEndgame']);
+    expect(matchesFilter(e, { endgame: 'endgame' })).toBe(true);
+    expect(matchesFilter(e, { endgame: 'rookEndgame' })).toBe(true);
+    expect(matchesFilter(e, { endgame: 'pawnEndgame' })).toBe(false);
+    expect(matchesFilter(e, { endgame: 'rookEndgame', theme: 'fork' })).toBe(true);
+    expect(matchesFilter(e, { endgame: 'rookEndgame', theme: 'pin' })).toBe(false);
+    expect(matchesFilter(p, { endgame: 'endgame' })).toBe(false);
+  });
 });
 
 const entry = (
@@ -91,6 +100,19 @@ describe('shardWeight', () => {
     expect(shardWeight(index, s, { opening: 'Sicilian_Defense_Open' })).toBe(30);
     expect(shardWeight(index, s, { opening: 'Sicilian_Defense_Open', theme: 'mate' })).toBe(20);
     expect(shardWeight(index, s, { opening: 'French_Defense' })).toBe(0);
+  });
+  it('takes the minimum of the endgame and theme counts', () => {
+    const idx: PuzzleIndex = {
+      ...index,
+      themes: ['fork', 'rookEndgame', 'endgame'],
+      shards: [entry(1400, 100, { 0: 50, 1: 20, 2: 80 })],
+    };
+    const s = idx.shards[0]!;
+    expect(shardWeight(idx, s, { endgame: 'rookEndgame' })).toBe(20);
+    expect(shardWeight(idx, s, { endgame: 'endgame' })).toBe(80);
+    expect(shardWeight(idx, s, { endgame: 'endgame', theme: 'fork' })).toBe(50);
+    expect(shardWeight(idx, s, { endgame: 'rookEndgame', theme: 'fork' })).toBe(20);
+    expect(shardWeight(idx, s, { endgame: 'pawnEndgame' })).toBe(0);
   });
 });
 

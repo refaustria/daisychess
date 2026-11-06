@@ -3,7 +3,7 @@
  * number of puzzles, from the stored index when there is one (the whole dataset), else from the
  * bundled starter. Also the size hint of "Keep puzzles for offline use".
  */
-import { openingFamily, openingTagsForName } from '@daisychess/puzzles';
+import { ENDGAME_THEMES, openingFamily, openingTagsForName } from '@daisychess/puzzles';
 
 export interface CountedTag {
   tag: string;
@@ -16,6 +16,8 @@ export interface FamilyOption extends CountedTag {
 
 export interface FilterOptions {
   themes: CountedTag[];
+  /** Puzzle counts per endgame type (ADR-025 §7), in {@link ENDGAME_THEMES} order; 0 when absent. */
+  endgames: CountedTag[];
   families: FamilyOption[];
   /** The counts come from the index (all shards), not just the bundled starter. */
   fromIndex: boolean;
@@ -44,6 +46,12 @@ export function groupOpenings(
   return list.sort((a, b) => a.tag.localeCompare(b.tag));
 }
 
+/** The endgame types with their counts taken from the theme counts. */
+export function endgameCounts(themes: readonly CountedTag[]): CountedTag[] {
+  const by = new Map(themes.map((t) => [t.tag, t.count]));
+  return ENDGAME_THEMES.map((tag) => ({ tag, count: by.get(tag) ?? 0 }));
+}
+
 /** Loads the options (never throws; empty lists when nothing is reachable). */
 export async function loadFilterOptions(): Promise<FilterOptions> {
   try {
@@ -57,7 +65,12 @@ export async function loadFilterOptions(): Promise<FilterOptions> {
         .map((tag, i) => ({ tag, count: index.counts.openings[i] ?? 0 }))
         .filter((t) => t.count > 0);
       const families = index.families.map((i) => index.openings[i]!);
-      return { themes, families: groupOpenings(tags, families), fromIndex: true };
+      return {
+        themes,
+        endgames: endgameCounts(themes),
+        families: groupOpenings(tags, families),
+        fromIndex: true,
+      };
     }
   } catch {
     // Fall through to the starter.
@@ -71,9 +84,14 @@ export async function loadFilterOptions(): Promise<FilterOptions> {
     const sorted = tags.map((t) => t.tag).sort((a, b) => a.length - b.length);
     const families: string[] = [];
     for (const t of sorted) if (!openingFamily(t, families)) families.push(t);
-    return { themes, families: groupOpenings(tags, families), fromIndex: false };
+    return {
+      themes,
+      endgames: endgameCounts(themes),
+      families: groupOpenings(tags, families),
+      fromIndex: false,
+    };
   } catch {
-    return { themes: [], families: [], fromIndex: false };
+    return { themes: [], endgames: [], families: [], fromIndex: false };
   }
 }
 

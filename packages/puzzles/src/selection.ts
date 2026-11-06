@@ -1,11 +1,14 @@
+import type { EndgameTheme } from './themes.js';
 import { openingFamily } from './openings.js';
 import { BAND_SIZE, MAX_BAND, type Puzzle, type PuzzleIndex, type ShardEntry } from './schemas.js';
 
 export type Difficulty = 'easier' | 'normal' | 'harder';
 
-/** Puzzle filter: one theme key and/or one opening tag (family or variation). */
+/** Puzzle filter: one theme key, one endgame type and/or one opening tag (family or variation). */
 export interface PuzzleFilter {
   theme?: string;
+  /** Endgame type (ADR-025 §7); AND-combined with `theme`. */
+  endgame?: EndgameTheme;
   opening?: string;
 }
 
@@ -41,6 +44,7 @@ export function matchesFilter(
   filter: PuzzleFilter = {},
 ): boolean {
   if (filter.theme && !puzzle.themes.includes(filter.theme)) return false;
+  if (filter.endgame && !puzzle.themes.includes(filter.endgame)) return false;
   if (filter.opening && !puzzle.openings.includes(filter.opening)) return false;
   return true;
 }
@@ -66,6 +70,10 @@ export function shardWeight(
   let weight = shard.count;
   if (filter.theme) {
     const t = index.themes.indexOf(filter.theme);
+    weight = Math.min(weight, t < 0 ? 0 : (shard.themes[t] ?? 0));
+  }
+  if (filter.endgame) {
+    const t = index.themes.indexOf(filter.endgame);
     weight = Math.min(weight, t < 0 ? 0 : (shard.themes[t] ?? 0));
   }
   if (filter.opening) {

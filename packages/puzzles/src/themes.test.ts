@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { THEME_GROUPS, THEMES, themeInfo, themeLabel, themesByGroup } from './themes.js';
+import {
+  ENDGAME_THEMES,
+  isEndgameTheme,
+  THEME_GROUPS,
+  THEMES,
+  themeInfo,
+  themeLabel,
+  themesByGroup,
+} from './themes.js';
 import { fixturePuzzles } from '../test/fixture.js';
 
 /** Every theme key of the 2026-10 lichess dump (sampled 238,566 rows). */
@@ -45,5 +53,17 @@ describe('themesByGroup', () => {
       ['length', ['short']],
       ['special', ['newThing']],
     ]);
+  });
+});
+
+describe('ENDGAME_THEMES', () => {
+  it('are known phase themes and recognised by isEndgameTheme', () => {
+    expect(ENDGAME_THEMES).toHaveLength(7);
+    for (const k of ENDGAME_THEMES) {
+      expect(themeInfo(k)?.group).toBe('phase');
+      expect(isEndgameTheme(k)).toBe(true);
+    }
+    expect(isEndgameTheme('fork')).toBe(false);
+    expect(isEndgameTheme(7)).toBe(false);
   });
 });

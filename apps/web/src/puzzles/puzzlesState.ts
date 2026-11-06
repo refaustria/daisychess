@@ -12,6 +12,7 @@
 import {
   GLICKO_DEFAULT,
   glicko2Update,
+  isEndgameTheme,
   type Difficulty,
   type Puzzle,
   type PuzzleFilter,
@@ -120,7 +121,12 @@ export function parsePuzzlesState(raw: string | null): PuzzlesState {
   if (isObj(v.filter)) {
     const theme = text(v.filter.theme);
     const opening = text(v.filter.opening);
-    state.filter = { ...(theme ? { theme } : {}), ...(opening ? { opening } : {}) };
+    const endgame = isEndgameTheme(v.filter.endgame) ? v.filter.endgame : undefined;
+    state.filter = {
+      ...(theme ? { theme } : {}),
+      ...(endgame ? { endgame } : {}),
+      ...(opening ? { opening } : {}),
+    };
   }
   state.daily = parseDaily(v.daily);
   if (isObj(v.rush))

@@ -62,6 +62,14 @@ describe('parsePuzzlesState', () => {
     expect(parsePuzzlesState(serializePuzzlesState(s))).toEqual(s);
   });
 
+  it('keeps a valid endgame filter and drops unknown values without a version bump', () => {
+    const ok = JSON.stringify({ v: 1, filter: { theme: 'fork', endgame: 'rookEndgame' } });
+    expect(parsePuzzlesState(ok).filter).toEqual({ theme: 'fork', endgame: 'rookEndgame' });
+    const bad = JSON.stringify({ v: 1, filter: { endgame: 'fork', theme: 'pin' } });
+    expect(parsePuzzlesState(bad).filter).toEqual({ theme: 'pin' });
+    expect(parsePuzzlesState(JSON.stringify({ v: 1, filter: { endgame: 3 } })).filter).toEqual({});
+  });
+
   it('repairs invalid parts one by one', () => {
     const raw = JSON.stringify({
       v: 1,

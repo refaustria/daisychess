@@ -56,6 +56,12 @@ describe('openWithFilter', () => {
     expect(usePuzzleStore.getState().status).toBe('running');
   });
 
+  it('accepts an endgame filter', async () => {
+    await usePuzzleStore.getState().openWithFilter({ endgame: 'rookEndgame' });
+    expect(seen).toEqual([{ endgame: 'rookEndgame' }]);
+    expect(usePuzzleStore.getState().filter).toEqual({ endgame: 'rookEndgame' });
+  });
+
   it('shows the empty state when nothing matches', async () => {
     result = null;
     await usePuzzleStore.getState().openWithFilter({ theme: 'mateIn1' });
