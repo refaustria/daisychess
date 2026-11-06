@@ -1,6 +1,7 @@
 import { evalBarShare, formatScore, type Score } from '@daisychess/engine-core';
 import { tbScoreHint, type TbScoreHint } from '@daisychess/endgames';
 import { useEffect, useMemo, useRef } from 'react';
+import { useLessonStore } from '../../endgames/lessonSession';
 import { useTablebaseStore } from '../../endgames/tablebaseStore';
 import { selectPrimary, useAnalysisStore, type TerminalKind } from '../../store/analysisStore';
 import { useGameStore, type Orientation } from '../../store/gameStore';
@@ -151,7 +152,9 @@ export function ConnectedEvalBar() {
   else if (best) last.current = best;
   const score = active ? (best ?? (terminal ? null : last.current)) : null;
   // The exact value wins over the engine score for the same FEN (the lines still show).
-  const tablebase = useAnalysisTablebase(fen, enabled);
+  // Not while an endgame lesson runs: the lesson must not show the answer.
+  const lessonRunning = useLessonStore((s) => s.status === 'running');
+  const tablebase = useAnalysisTablebase(fen, enabled && !lessonRunning);
   return (
     <EvalBar
       score={score}

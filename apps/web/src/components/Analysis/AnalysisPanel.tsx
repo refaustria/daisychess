@@ -41,6 +41,7 @@ import { OpenSettingsButton } from '../Settings/OpenSettingsButton';
 import { usePreviewStore } from '../../store/previewStore';
 import { useBackHandler } from '../../platform/backButton';
 import styles from './AnalysisPanel.module.css';
+import { useLessonStore } from '../../endgames/lessonSession';
 import { TablebasePanel } from './TablebasePanel';
 
 export const DEPTH_OPTIONS = [10, 14, 18, 22, 26, 30, 0];
@@ -373,6 +374,7 @@ function CompareChip({ descriptor, instance, fen, active, onSelect }: CompareChi
  * Rendered only while analysis is enabled.
  */
 export function AnalysisPanel() {
+  const lessonRunning = useLessonStore((s) => s.status === 'running');
   const enabled = useAnalysisStore((s) => s.enabled);
   const enabledEngines = useAnalysisStore((s) => s.enabledEngines);
   const instances = useAnalysisStore((s) => s.instances);
@@ -419,8 +421,7 @@ export function AnalysisPanel() {
   const override: EngineSettingsOverride | undefined = engineSettings[activeKey];
   const settings = override ? { ...defaults, ...override } : defaults;
   const activeDescriptor = descriptors.find((d) => d.key === activeKey);
-  const maxThreads =
-    remote && limits ? limits.maxThreads : maxWasmThreads(env);
+  const maxThreads = remote && limits ? limits.maxThreads : maxWasmThreads(env);
   const maxLines = remote && limits ? Math.min(MAX_MULTIPV, limits.maxMultipv) : MAX_MULTIPV;
   const maxDepth = remote && limits ? limits.maxDepth : Infinity;
   // The server clamps to its limits; show what will actually run.
@@ -480,10 +481,10 @@ export function AnalysisPanel() {
       {inst.status === 'error' &&
         (isAuthError(inst.backendError ?? inst.error) ||
           isTokenFixText(inst.backendError ?? inst.error ?? '')) && (
-        <p className={styles.authHint} data-testid="auth-hint">
-          <OpenSettingsButton className={styles.linkButton} />
-        </p>
-      )}
+          <p className={styles.authHint} data-testid="auth-hint">
+            <OpenSettingsButton className={styles.linkButton} />
+          </p>
+        )}
     </>
   ) : (
     <ol className={styles.lines} data-testid="analysis-lines">
@@ -659,7 +660,7 @@ export function AnalysisPanel() {
           ) : (
             body
           )}
-          {!terminal && <TablebasePanel fen={fen} />}
+          {!terminal && !lessonRunning && <TablebasePanel fen={fen} />}
         </>
       )}
     </section>

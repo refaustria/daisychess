@@ -101,6 +101,15 @@ afterEach(() => {
 });
 
 describe('resolveTablebase: refusals', () => {
+  it("purpose 'trainer' under off: local tables only, lichess never asked", async () => {
+    useSettingsStore.getState().set({ tablebase: 'off' });
+    const r = await resolveTablebase(KQK, { purpose: 'trainer' });
+    expect(r.ok && r.answer.source).toBe('local');
+    const miss = await resolveTablebase(KQPKQ, { purpose: 'trainer' });
+    expect(miss.ok).toBe(false);
+    expect(lichess.probe).not.toHaveBeenCalled();
+  });
+
   it('setting off: nothing is asked', async () => {
     useSettingsStore.getState().set({ tablebase: 'off' });
     expect(await resolveTablebase(KQK)).toEqual({ ok: false, reason: 'off' });

@@ -44,7 +44,7 @@ import {
   localCoverage,
   opponentPolicyFor,
   resolveTablebase,
-  tablebaseProbe,
+  trainerProbe,
   type ProbeOptions,
   type TbAnswer,
   type TbResolution,
@@ -56,7 +56,7 @@ export * from './lessonSession';
  * Endgame lesson session (ADR-025 §6): drives the game store (position, the opponent's moves,
  * orientation) and the board (`movableColor` via `components/Endgames/useEndgameBoard.ts`)
  * around the pure reducer `lessonState` of `@daisychess/endgames`. The tablebase comes from
- * `tablebaseStore` (cache → local tables → lichess, per the setting); the opponent is
+ * `tablebaseStore` (cache → local tables → lichess, per the setting; under `off` the lessons use local tables only); the opponent is
  * `opponentMove` with the policy of the answer's source (`dtz`, or `wdlTrappy` for WDL-only
  * local tables).
  *
@@ -67,9 +67,6 @@ export * from './lessonSession';
 
 /** The opponent replies after this pause (ADR-025 §6). */
 export const REPLY_DELAY_MS = 300;
-
-export const OFF_TEXT =
-  'Endgame lessons need the tablebase, which is switched off in Settings → Endgames.';
 
 export const packText = (pack: OptInPack): string =>
   `Needs the rook endgames download (${formatBytes(packSize(pack))}) to play offline.`;
@@ -93,7 +90,7 @@ export interface LessonDeps {
 const defaultDeps = (): LessonDeps => ({
   lessons: LESSONS,
   resolve: resolveTablebase,
-  probe: tablebaseProbe,
+  probe: trainerProbe,
   coverage: localCoverage,
   opponentMove: packageOpponentMove,
   setting: () => useSettingsStore.getState().tablebase,
@@ -205,7 +202,7 @@ function endWithMessage(text: string, needsPack?: OptInPack): void {
 function missText(r: Extract<TbResolution, { ok: false }>): string {
   switch (r.reason) {
     case 'off':
-      return OFF_TEXT;
+      return 'Lesson ended: the tablebase is not available.';
     case 'locked':
       return `Lesson ended: ${lockText(humanGameLockReason()) ?? 'a game started'}.`;
     case 'needs-download':
@@ -222,7 +219,10 @@ async function answerFor(fen: string): Promise<TbResolution> {
   const signal = sessionCtl?.signal;
   for (let tries = 0; ; tries++) {
     try {
-      const r = await deps.resolve(fen, signal ? { signal } : {});
+      const r = await deps.resolve(
+        fen,
+        signal ? { signal, purpose: 'trainer' } : { purpose: 'trainer' },
+      );
       if (r.ok) {
         answers.set(fen, r.answer);
         if (get().source !== r.answer.source) set({ source: r.answer.source });
@@ -453,11 +453,6 @@ const actions: LessonActions = {
     });
     releaseAnalysis ??= pauseAnalysis(isSession);
     const setting = deps.setting();
-    if (setting === 'off') {
-      teardown();
-      set({ status: 'idle', message: OFF_TEXT });
-      return false;
-    }
     let cov: LocalCoverage;
     try {
       cov = await deps.coverage(lesson.fen);

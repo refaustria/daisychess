@@ -184,7 +184,8 @@ export function TablebaseField({ onResetProgress = resetEndgameProgress }: Table
         Exact results for endgames with up to 7 pieces in the analysis, the review and the lessons.
         With lichess, those positions are sent to tablebase.lichess.ovh: lichess sees the position
         and your IP address, nothing else. The tables on this device cover the basic endgames;
-        nothing is looked up during live, room or engine games.
+        nothing is looked up during live, room or engine games. Off switches the lookups in the
+        analysis and review off; the endgame lessons still use the tables on this device.
       </p>
       <RookPack />
       <ResetProgress onReset={onResetProgress} />

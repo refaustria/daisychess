@@ -23,7 +23,6 @@ import {
   lessonMarks,
   lessonMovableColor,
   lessonStatusLine,
-  OFF_TEXT,
   packText,
   resetLessonStore,
   resultText,
@@ -369,10 +368,10 @@ describe('source selection and refusals', () => {
     expect(useGameStore.getState().moves).toHaveLength(0);
   });
 
-  it('setting off refuses with a pointer to Settings', async () => {
+  it('setting off still runs lessons on local tables (never lichess)', async () => {
     installKit(kit, 'off');
-    expect(await s().start(KQK.id)).toBe(false);
-    expect(s().message).toBe(OFF_TEXT);
+    expect(await s().start(KQK.id)).toBe(true);
+    expect(s().source).toBe('local');
   });
 
   it('no start during a human game', async () => {

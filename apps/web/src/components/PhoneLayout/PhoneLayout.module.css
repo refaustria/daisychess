@@ -186,7 +186,8 @@
   inset: 0;
   z-index: 50;
   background: rgba(20, 16, 8, 0.35);
-  animation: fade 0.15s ease-out;
+  /* Fades the dim only: opacity on the scrim would also fade the menu inside it (axe contrast). */
+  animation: dim 0.15s ease-out;
 }
 
 /* The More sheet leaves the tab bar visible (and usable) below it. */
@@ -279,7 +280,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
-  animation: fade 0.12s ease-out;
+  /* Slide only, no opacity: text keeps its full contrast from the first frame (WCAG AA, axe). */
+  animation: nudge 0.12s ease-out;
 }
 
 .menuGroup {
@@ -318,16 +320,21 @@
   border-color: var(--accent);
 }
 
-@keyframes fade {
+@keyframes dim {
   from {
-    opacity: 0;
+    background-color: transparent;
+  }
+}
+
+@keyframes nudge {
+  from {
+    transform: translateY(6px);
   }
 }
 
 @keyframes rise {
   from {
     transform: translateY(24px);
-    opacity: 0;
   }
 }
 

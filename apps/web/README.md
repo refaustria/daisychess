@@ -6,7 +6,7 @@ Vite + React 18 + TypeScript frontend. Product overview: [`../../README.md`](../
 
 ```
 src/
-  App.tsx            layout, tabs (Moves / Play / Import / Review / Puzzles / Settings; Review and Settings are lazy)
+  App.tsx            layout, tabs (Moves / Play / Import / Review / Puzzles / Endgames / Settings; Review and Settings are lazy)
   components/        Board (chessground), Controls (keys, FEN), MoveList, Import, Analysis
                      (engine panel, tabs, compare strip), EvalBar, EngineToggle, ThemeToggle,
                      Review, Settings; each with a CSS module and tests
@@ -55,6 +55,10 @@ Shared logic (protocol, UCI parser, win probability, move classification) lives 
 ### Your mistakes
 
 `puzzles/gameLedger.ts` + `installLedger.ts` record reviewed games (store `games`, <= 500) with the user's side (`userSide.ts`, "My names" in Settings, ask-once prompt); `mistakeGenerator.ts` turns the missed tactics into puzzles with engine searches (`mistakeStore.ts`, store `mistakes`, spaced-repetition schedule, scan markers so handled candidates are not searched again); `components/Puzzles/MistakesPanel.tsx` is the UI (Train due, Find puzzles in my games, list with Open game and delete). Tests: component and scripted-engine unit tests, `e2e/puzzle-mistakes.spec.ts` (seeded store, side prompt, training) and `e2e/puzzle-mistakes-generate.spec.ts` (load a PGN with a missed Qxf7#, review, generate with the real browser engine, solve). Opt-in native-engine test: `DAISYCHESS_SLOW_TESTS=1`.
+
+## Endgames
+
+`src/endgames/` is the web layer of `packages/endgames` (`@daisychess/endgames`: material and family detection, tablebase types, Syzygy reader, lessons reducer): `lichessTablebase.ts` (rate-limited client), `tbCache.ts` (IndexedDB `daisychess-endgames`), `tbWorker.ts` + `localTablebase.ts` (Syzygy in a Worker), `tablePacks.ts` (core tables bundled under `public/endgames/v1/`, 801 kB; the rook pack, 20.9 MB, downloaded from `/endgames/v1/`), `tablebaseStore.ts` (one entry point: cache, local tables, lichess; `purpose: 'trainer'` also works under the setting `off`), `reviewTablebase.ts` (review overlay), `lessonStore.ts` / `lessonSession.ts` / `endgamesProgress.ts` (trainer). UI: `src/components/Endgames/` (course, lesson), `components/Analysis/TablebasePanel.tsx`, `Settings/TablebaseField.tsx`. e2e: `e2e/endgames-tab.spec.ts` (trainer), `review-endgame.spec.ts`, `puzzles-endgame.spec.ts` (the tablebase origin is mocked with `page.route`).
 
 ## Clocks and time controls (Play vs Engine)
 

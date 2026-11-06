@@ -5,7 +5,7 @@
  * the Endgames tab.
  *
  * Source order of {@link resolveTablebase}:
- * 1. refused: setting `off`, a live/room/engine game running (`humanGameLockReason()`, fair
+ * 1. refused: setting `off` (not for `purpose: 'trainer'`, which then uses local tables only), a live/room/engine game running (`humanGameLockReason()`, fair
  *    play), or the position is not eligible (more than 7 pieces, castling rights, invalid FEN);
  * 2. the position cache (IndexedDB `tb`: lichess answers, keyed by FEN without the move number);
  * 3. the local Syzygy tables when every table of the position's closure is bundled or downloaded
@@ -84,6 +84,11 @@ export type TbResolution =
 
 export interface ProbeOptions {
   signal?: AbortSignal;
+  /**
+   * `trainer`: the endgame lessons. The setting `off` then behaves like `local` (bundled and
+   * downloaded tables only, never lichess); analysis and review stay off.
+   */
+  purpose?: 'trainer';
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -162,9 +167,9 @@ function packOf(missing: readonly string[]): OptInPack | undefined {
 }
 
 /** The immediate refusal for `fen`, if any (no I/O). */
-function refusal(fen: string): TbMissReason | null {
+function refusal(fen: string, purpose?: 'trainer'): TbMissReason | null {
   const { setting, lock } = d();
-  if (setting() === 'off') return 'off';
+  if (setting() === 'off' && purpose !== 'trainer') return 'off';
   if (lock() !== null) return 'locked';
   if (!tablebaseEligible(fen)) return 'ineligible';
   return null;
@@ -175,7 +180,7 @@ export async function resolveTablebase(
   fen: string,
   opts: ProbeOptions = {},
 ): Promise<TbResolution> {
-  const refused = refusal(fen);
+  const refused = refusal(fen, opts.purpose);
   if (refused) return { ok: false, reason: refused };
   const { lichess, local, cache, setting, lock } = d();
   const { ctl, done } = track(opts.signal);
@@ -247,6 +252,11 @@ export async function probeTablebase(
 
 /** The `TablebaseProbe` for `opponentMove` and other package functions. */
 export const tablebaseProbe: TablebaseProbe = { probe: (fen) => probeTablebase(fen) };
+
+/** The probe of the trainer's opponent: like {@link tablebaseProbe}, but works under `off`. */
+export const trainerProbe: TablebaseProbe = {
+  probe: (fen) => probeTablebase(fen, { purpose: 'trainer' }),
+};
 
 /**
  * The trainer's opponent policy for an answer (ADR-025 §6): `dtz` with DTZ data (lichess, or

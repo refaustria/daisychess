@@ -72,6 +72,8 @@ cached immutably) and `index.json` (cached 1 h). The web app fetches them from i
 mobile apps from `https://play.daisychess.org/puzzles/v1/` (CORS for the app origins only). Without
 the files the app falls back to the bundled starter set (`apps/web/src/puzzles/data/starter.json`).
 
+Endgame floors (M32-9): `build-puzzles.mjs` now guarantees 150 puzzles per band for each endgame theme (`pawnEndgame`, `knightEndgame`, `bishopEndgame`, `rookEndgame`, `queenEndgame`, `queenRookEndgame`) and 60 per theme in the starter. They apply automatically on the next monthly run (flags `--band-theme-floor`, `--starter-theme-floor`); nothing to configure.
+
 Run by hand after each monthly lichess dump (owner decision, ADR-023 addendum):
 
 ```bash
