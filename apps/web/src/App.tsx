@@ -26,7 +26,7 @@ import { usePhoneLayout } from './components/PhoneLayout/usePhoneLayout';
 import { PlayerBar, useBoardPlayers } from './components/PlayerBar/PlayerBar';
 import { usePlayMovableColor } from './components/Play/usePlayBoard';
 import { installAutoReview } from './review/autoReview';
-import { installReviewTour, useTourStore } from './review/tourStore';
+import { installReviewTour, setEndgameTrainHandler, useTourStore } from './review/tourStore';
 import { installRoomRoute } from './room/roomStore';
 import { useRoomStatus } from './room/useRoomStatus';
 import { useReviewStore } from './review/reviewStore';
@@ -34,6 +34,8 @@ import { selectPrimary, useAnalysisStore } from './store/analysisStore';
 import { usePreviewStore } from './store/previewStore';
 import { useDrillArrows, useDrillMovableColor } from './components/Openings/useDrillBoard';
 import { usePuzzleMovableColor, usePuzzleShapes } from './components/Puzzles/usePuzzleBoard';
+import { useEndgameMovableColor, useEndgameShapes } from './components/Endgames/useEndgameBoard';
+import { openEndgames } from './endgames/navigate';
 import { useUiStore, type TabId } from './store/uiStore';
 import {
   currentFen,
@@ -53,6 +55,9 @@ const OpeningsPanel = lazy(() =>
 );
 const PuzzlesPanel = lazy(() =>
   import('./components/Puzzles/PuzzlesPanel').then((m) => ({ default: m.PuzzlesPanel })),
+);
+const EndgamesPanel = lazy(() =>
+  import('./components/Endgames/EndgamesPanel').then((m) => ({ default: m.EndgamesPanel })),
 );
 const LivePanel = lazy(() =>
   import('./components/Live/LivePanel').then((m) => ({ default: m.LivePanel })),
@@ -79,6 +84,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'play', label: 'Play' },
   { id: 'openings', label: 'Openings' },
   { id: 'puzzles', label: 'Puzzles' },
+  { id: 'endgames', label: 'Endgames' },
   { id: 'live', label: 'Live' },
   { id: 'friend', label: 'Friend' },
   { id: 'import', label: 'Import' },
@@ -167,7 +173,8 @@ function ConnectedBoard() {
   );
   const drillArrows = useDrillArrows();
   const puzzleShapes = usePuzzleShapes();
-  const shapes = useMemo(
+  const endgameShapes = useEndgameShapes();
+  const otherShapes = useMemo(
     () =>
       puzzleShapes.length > 0
         ? puzzleShapes
@@ -205,15 +212,19 @@ function ConnectedBoard() {
       hover,
     ],
   );
+  // A running endgame lesson comes first in both chains (ADR-025 §6).
+  const shapes = endgameShapes.length > 0 ? endgameShapes : otherShapes;
   const playMovable = usePlayMovableColor();
   const drillMovable = useDrillMovableColor();
   const puzzleMovable = usePuzzleMovableColor();
-  const movableColor =
+  const endgameMovable = useEndgameMovableColor();
+  const trainerMovable =
     puzzleMovable !== undefined
       ? puzzleMovable
       : drillMovable !== undefined
         ? drillMovable
         : playMovable;
+  const movableColor = endgameMovable !== undefined ? endgameMovable : trainerMovable;
   return <Board shapes={shapes} previewFen={previewFen} movableColor={movableColor} />;
 }
 
@@ -247,12 +258,17 @@ export function App() {
   useEffect(() => installReviewTour(), []);
   // `#/room/<id>` links open the Friend tab (on load and on hash changes).
   useEffect(() => installRoomRoute(), []);
+  // The tour's endgame card offers "Train this endgame" (opens the Endgames tab on the group).
+  useEffect(() => {
+    setEndgameTrainHandler(openEndgames);
+    return () => setEndgameTrainHandler(undefined);
+  }, []);
   const tabsRef = useRef<HTMLDivElement>(null);
   // Phone portrait: action bar under the board, bottom tab bar, "⋯" menu (M29-6).
   const phone = usePhoneLayout();
-  // Phone + Puzzles tab (puzzles, rush, mistake training): the panel has its own status line, so
-  // the general one is not rendered at all (no duplicate aria-live announcement).
-  const hideStatus = phone && tab === 'puzzles';
+  // Phone + Puzzles tab (puzzles, rush, mistake training) or Endgames tab: the panel has its own
+  // status line, so the general one is not rendered at all (no duplicate aria-live announcement).
+  const hideStatus = phone && (tab === 'puzzles' || tab === 'endgames');
   useBoardKeys();
   // The tab row scrolls horizontally on narrow panels: keep the active tab visible (only the row
   // scrolls, never the page, unlike scrollIntoView).
@@ -342,6 +358,7 @@ export function App() {
               {tab === 'play' && <PlayPanel />}
               {tab === 'openings' && <OpeningsPanel />}
               {tab === 'puzzles' && <PuzzlesPanel />}
+              {tab === 'endgames' && <EndgamesPanel />}
               {tab === 'live' && <LivePanel />}
               {tab === 'friend' && <FriendPanel />}
               {tab === 'review' && <ReviewPanel />}

@@ -5,6 +5,7 @@ export type TabId =
   | 'play'
   | 'openings'
   | 'puzzles'
+  | 'endgames'
   | 'live'
   | 'friend'
   | 'import'

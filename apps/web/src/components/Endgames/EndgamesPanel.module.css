@@ -1,0 +1,229 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem 0.25rem;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.panel p {
+  margin: 0;
+}
+
+.panel button {
+  min-height: 36px;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.panel button:focus-visible,
+.sanInput:focus-visible,
+.groupTitle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.panel button:disabled,
+.sanInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.panel .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.intro,
+.note,
+.meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.badge {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 0.35em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.groupTitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+}
+
+.groupFocus .groupTitle {
+  color: var(--accent-ink);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel .item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 36px;
+  padding: 0.3rem 0.6rem;
+  border-color: transparent;
+  border-radius: var(--radius);
+  text-align: left;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.markDone {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.markDue {
+  padding: 0 0.4em;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+
+.markNew {
+  color: var(--text-muted);
+}
+
+.tag {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.text {
+  line-height: 1.45;
+}
+
+.status {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.statusBad {
+  border-color: var(--danger);
+}
+
+.statusGood {
+  border-color: var(--success);
+}
+
+.message {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.hints {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.hints li + li {
+  margin-top: 0.2rem;
+}
+
+.sanForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.sanInput {
+  flex: 1 1 8rem;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.card progress {
+  width: 100%;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}

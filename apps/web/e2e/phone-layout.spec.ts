@@ -280,10 +280,10 @@ for (const size of SIZES) {
       const sheet = page.getByRole('dialog', { name: 'More' });
       await expect(sheet).toBeVisible();
       await expect(more).toHaveAttribute('aria-expanded', 'true');
-      for (const t of ['Live', 'Friend', 'Import', 'Explorer', 'Settings']) {
+      for (const t of ['Endgames', 'Live', 'Friend', 'Import', 'Explorer', 'Settings']) {
         await expect(sheet.getByRole('button', { name: t, exact: true })).toBeVisible();
       }
-      await expect(sheet.getByRole('button', { name: 'Live' })).toBeFocused();
+      await expect(sheet.getByRole('button', { name: 'Endgames' })).toBeFocused();
       if (size.width === 390) {
         await checkA11y(page, `more sheet ${tag}`);
         await shot(page, 'more-sheet-390x844-light');

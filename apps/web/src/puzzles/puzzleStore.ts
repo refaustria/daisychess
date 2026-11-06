@@ -29,6 +29,7 @@ import {
   type PuzzleRatingState,
 } from './puzzlesState';
 import { useDrillStore } from '../trainer/drillState';
+import { stopEndgameLesson } from '../endgames/navigate';
 
 /*
  * Puzzle solver session (ADR-023 §6): drives the game store (position, the app's moves,
@@ -488,6 +489,7 @@ const actions: PuzzleActions = {
     }
     // A running drill ends first (it would read the new position as "another position loaded").
     useDrillStore.getState().stop();
+    stopEndgameLesson();
     teardown(true);
     options = opts;
     settled = false;

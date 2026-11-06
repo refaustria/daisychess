@@ -19,6 +19,7 @@ import { pauseAnalysis } from '../engine/analysisPause';
 import { currentFen, useGameStore, type Orientation } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { usePuzzleStore } from '../puzzles/puzzleStore';
+import { stopEndgameLesson } from '../endgames/navigate';
 import { formatEval, judgeDeviation, resolveSan, sideToMove, terminalScore } from './drill';
 import {
   useDrillStore,
@@ -645,6 +646,7 @@ const actions: DrillActions = {
     }
     // A running puzzle ends silently (before the board is reset under its watcher).
     usePuzzleStore.getState().stop();
+    stopEndgameLesson();
     teardown();
     failedPlies = new Set();
     evalCache.clear();

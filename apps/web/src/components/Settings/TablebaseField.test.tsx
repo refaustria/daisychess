@@ -13,6 +13,7 @@ import { configureTbCache, storedTableNames } from '../../endgames/tbCache';
 import { useSettingsStore } from '../../store/settingsStore';
 import { SettingsPanel } from './SettingsPanel';
 import { ROOK_PACK_SIZE, TABLEBASE_LABEL, TablebaseField } from './TablebaseField';
+import { ENDGAMES_KEY } from '../../endgames/endgamesProgress';
 
 const bytes = new Uint8Array(4000).fill(5);
 const MANIFEST: TablesManifest = {
@@ -77,7 +78,6 @@ describe('TablebaseField', () => {
       expect(screen.getByTestId('tb-pack-status').textContent).toMatch(/Not downloaded/),
     );
     expect(screen.queryByTestId('tb-pack-delete')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Reset endgame progress' })).toBeNull();
   });
 
   it('downloads with progress, then offers Delete; delete resets the local tables', async () => {
@@ -145,10 +145,23 @@ describe('TablebaseField', () => {
     expect(screen.queryByTestId('tb-pack-error')).toBeNull();
   });
 
-  it('shows "Reset endgame progress" when the trainer passes a handler', () => {
+  it('"Reset endgame progress" asks first, then calls the handler', () => {
     const reset = vi.fn();
     render(<TablebaseField onResetProgress={reset} />);
     fireEvent.click(screen.getByRole('button', { name: 'Reset endgame progress' }));
-    expect(reset).toHaveBeenCalled();
+    expect(reset).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset endgame progress' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, reset' }));
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Endgame progress was reset.')).toBeTruthy();
+  });
+
+  it('by default the reset clears the stored endgame progress', () => {
+    localStorage.setItem(ENDGAMES_KEY, '{"v":1,"lessons":{}}');
+    render(<TablebaseField />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset endgame progress' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, reset' }));
+    expect(localStorage.getItem(ENDGAMES_KEY)).toBeNull();
   });
 });

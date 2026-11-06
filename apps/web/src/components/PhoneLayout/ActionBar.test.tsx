@@ -22,6 +22,9 @@ import { useAnalysisStore } from '../../store/analysisStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUiStore } from '../../store/uiStore';
 import { useDrillStore } from '../../trainer/drillStore';
+import { initialLesson, lessonState } from '@daisychess/endgames';
+import { LESSONS } from '../../endgames/data/lessons';
+import { resetLessonStore, useLessonStore } from '../../endgames/lessonStore';
 import { ActionBar, barKind, type BarInput } from './ActionBar';
 
 const MATE: Puzzle = {
@@ -88,6 +91,7 @@ afterEach(() => {
   useReviewStore.setState({ summary: undefined, status: 'idle' });
   useResignConfirm.setState({ open: false });
   resetPuzzleStore(port());
+  resetLessonStore();
 });
 
 const bar = () => screen.getByTestId('action-bar');
@@ -113,6 +117,10 @@ describe('barKind', () => {
     expect(barKind({ ...BASE, tab: 'play', playMode: 'finished' })).toBe('play');
     expect(barKind({ ...BASE, tab: 'live', liveGame: 'finished' })).toBe('live');
     expect(barKind({ ...BASE, tab: 'live' })).toBe('analysis');
+    expect(barKind({ ...BASE, tab: 'endgames' })).toBe('analysis');
+    expect(barKind({ ...BASE, tab: 'endgames', lessonRunning: true })).toBe('endgames');
+    // Only the Endgames tab shows the lesson controls.
+    expect(barKind({ ...BASE, lessonRunning: true })).toBe('analysis');
   });
 
   it('a running game drives the bar of the plain tabs', () => {
@@ -268,7 +276,9 @@ describe('ActionBar', () => {
       expect(bar().getAttribute('data-kind')).toBe('review');
       expect(screen.queryByRole('button', { name: 'Next mistake' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Next move' })).toBeNull();
-      const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent);
+      const names = screen
+        .getAllByRole('button')
+        .map((b) => b.getAttribute('aria-label') ?? b.textContent);
       expect(names).toEqual(['Pause tour', 'Next', 'Stop tour']);
       expect(screen.getAllByTestId('tour-next')).toHaveLength(1);
       fireEvent.click(btn('Pause tour'));
@@ -392,5 +402,44 @@ describe('ActionBar', () => {
     fireEvent.click(btn('Next variation'));
     fireEvent.click(btn('Play on vs engine'));
     expect([repeat, next, playOn].every((f) => f.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('endgames: Hint · Take back · Stop only while a lesson runs', () => {
+    const hint = vi.fn(async () => undefined);
+    const takeBack = vi.fn();
+    const stop = vi.fn();
+    const start = lessonState(initialLesson(LESSONS[0]!), { type: 'start' });
+    useUiStore.setState({ activeTab: 'endgames' });
+    render(<ActionBar />);
+    expect(bar().getAttribute('data-kind')).toBe('analysis');
+    act(() =>
+      useLessonStore.setState({
+        status: 'running',
+        game: start,
+        thinking: false,
+        hint,
+        takeBack,
+        stop,
+      }),
+    );
+    expect(bar().getAttribute('data-kind')).toBe('endgames');
+    expect(btn('Hint').disabled).toBe(false);
+    // Nothing to take back before the first move.
+    expect(btn('Take back').disabled).toBe(true);
+    fireEvent.click(btn('Hint'));
+    fireEvent.click(btn('Stop lesson'));
+    expect(hint).toHaveBeenCalled();
+    expect(stop).toHaveBeenCalled();
+    const moved = lessonState(lessonState(start, { type: 'move', uci: 'b1b5' }), {
+      type: 'reply',
+      uci: 'e5e4',
+    });
+    act(() => useLessonStore.setState({ game: moved }));
+    fireEvent.click(btn('Take back'));
+    expect(takeBack).toHaveBeenCalled();
+    act(() => useLessonStore.setState({ thinking: true }));
+    expect(btn('Hint').disabled).toBe(true);
+    act(() => useLessonStore.setState({ status: 'done', thinking: false }));
+    expect(bar().getAttribute('data-kind')).toBe('analysis');
   });
 });

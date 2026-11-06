@@ -30,6 +30,7 @@ export const PRIMARY_TABS: { id: TabId; label: string; icon: Icon }[] = [
 ];
 
 export const MORE_TABS: { id: TabId; label: string }[] = [
+  { id: 'endgames', label: 'Endgames' },
   { id: 'live', label: 'Live' },
   { id: 'friend', label: 'Friend' },
   { id: 'import', label: 'Import' },

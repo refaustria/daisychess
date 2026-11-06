@@ -4,6 +4,7 @@ import { useLiveStore } from '../live/liveStore';
 import { usePlayStore } from '../play/playStore';
 import { useDrillStore } from '../trainer/drillStore';
 import { usePuzzleStore } from '../puzzles/puzzleStore';
+import { useLessonStore } from '../endgames/lessonStore';
 import { shouldKeepAwake, startKeepAwake } from './keepAwake';
 
 afterEach(() => {
@@ -11,6 +12,7 @@ afterEach(() => {
   useLiveStore.setState({ status: 'idle' });
   useDrillStore.setState({ status: 'idle' });
   usePuzzleStore.setState({ status: 'idle' });
+  useLessonStore.setState({ status: 'idle' });
 });
 
 describe('keep awake', () => {
@@ -30,6 +32,21 @@ describe('keep awake', () => {
     expect(shouldKeepAwake()).toBe(true);
     usePuzzleStore.setState({ status: 'done' });
     expect(shouldKeepAwake()).toBe(false);
+  });
+
+  it('follows the endgame lesson store', () => {
+    expect(shouldKeepAwake()).toBe(false);
+    const port = {
+      keepAwake: vi.fn(() => Promise.resolve()),
+      allowSleep: vi.fn(() => Promise.resolve()),
+    };
+    const stop = startKeepAwake(port);
+    useLessonStore.setState({ status: 'running' });
+    expect(shouldKeepAwake()).toBe(true);
+    expect(port.keepAwake).toHaveBeenCalledTimes(1);
+    useLessonStore.setState({ status: 'done' });
+    expect(port.allowSleep).toHaveBeenCalledTimes(1);
+    stop();
   });
 
   it('follows the puzzle store', () => {

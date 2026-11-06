@@ -72,10 +72,10 @@ describe('BottomTabs', () => {
     const sheet = screen.getByRole('dialog', { name: 'More' });
     expect(sheet.getAttribute('aria-modal')).toBe('true');
     expect(more().getAttribute('aria-expanded')).toBe('true');
-    const items = ['Live', 'Friend', 'Import', 'Explorer', 'Settings'];
+    const items = ['Endgames', 'Live', 'Friend', 'Import', 'Explorer', 'Settings'];
     expect(Array.from(sheet.querySelectorAll('button')).map((b) => b.textContent)).toEqual(items);
     // Focus moves into the sheet.
-    expect(document.activeElement?.textContent).toBe('Live');
+    expect(document.activeElement?.textContent).toBe('Endgames');
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(useUiStore.getState().activeTab).toBe('settings');
     expect(screen.queryByRole('dialog')).toBeNull();

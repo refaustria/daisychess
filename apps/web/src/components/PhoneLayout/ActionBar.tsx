@@ -24,13 +24,14 @@ import { useAnalysisStore } from '../../store/analysisStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUiStore, type PuzzleMode, type TabId } from '../../store/uiStore';
 import { useDrillStore } from '../../trainer/drillStore';
+import { LESSON_HINT_TITLE, useLessonStore } from '../../endgames/lessonSession';
 import { useTicker } from '../Live/LiveClock';
 import { HINT_TITLE } from '../Puzzles/PuzzlesPanel';
 import { usePuzzleActions } from '../Puzzles/usePuzzleActions';
 import styles from './PhoneLayout.module.css';
 
 export type BarKind =
-  'analysis' | 'puzzles' | 'rush' | 'mistakes' | 'review' | 'play' | 'live' | 'drill';
+  'analysis' | 'puzzles' | 'rush' | 'mistakes' | 'review' | 'play' | 'live' | 'drill' | 'endgames';
 
 export interface BarInput {
   tab: TabId;
@@ -39,6 +40,8 @@ export interface BarInput {
   mistakeSession: boolean;
   hasReview: boolean;
   drillShown: boolean;
+  /** An endgame lesson runs (M32-8); optional for callers from before the trainer. */
+  lessonRunning?: boolean;
   playMode: 'idle' | 'playing' | 'finished';
   /** A live game is shown by the Live panel (running, or finished with its result). */
   liveGame: 'none' | 'playing' | 'finished';
@@ -58,6 +61,8 @@ export function barKind(s: BarInput): BarKind {
       return s.hasReview ? 'review' : 'analysis';
     case 'openings':
       return s.drillShown ? 'drill' : 'analysis';
+    case 'endgames':
+      return s.lessonRunning ? 'endgames' : 'analysis';
     case 'live':
       return s.liveGame !== 'none' ? 'live' : 'analysis';
     case 'play':
@@ -413,6 +418,31 @@ function DrillBar() {
   );
 }
 
+/** Endgames tab while a lesson runs (ADR-025 §6): Hint · Take back · Stop. */
+function EndgamesBar() {
+  const userTurn = useLessonStore(
+    (s) => s.status === 'running' && s.game?.phase === 'user' && !s.thinking,
+  );
+  const canTakeBack = useLessonStore(
+    (s) =>
+      s.status === 'running' && s.game?.phase === 'user' && !s.thinking && s.game.played.length > 0,
+  );
+  const lesson = useLessonStore.getState;
+  return (
+    <>
+      <Btn disabled={!userTurn} title={LESSON_HINT_TITLE} onClick={() => void lesson().hint()}>
+        Hint
+      </Btn>
+      <Btn disabled={!canTakeBack} onClick={() => lesson().takeBack()}>
+        Take back
+      </Btn>
+      <Btn label="Stop lesson" onClick={() => lesson().stop()}>
+        Stop
+      </Btn>
+    </>
+  );
+}
+
 const BARS: Record<BarKind, () => ReactNode> = {
   analysis: () => <AnalysisBar />,
   puzzles: () => <PuzzleBar />,
@@ -422,6 +452,7 @@ const BARS: Record<BarKind, () => ReactNode> = {
   play: () => <PlayBar />,
   live: () => <LiveBar />,
   drill: () => <DrillBar />,
+  endgames: () => <EndgamesBar />,
 };
 
 /** The bar's current kind from the stores. */
@@ -437,6 +468,7 @@ export function useBarKind(): BarKind {
   const drillShown = useDrillStore(
     (s) => s.status === 'running' || (s.status === 'done' && s.summary !== undefined),
   );
+  const lessonRunning = useLessonStore((s) => s.status === 'running');
   const playMode = usePlayStore((s) => s.mode);
   const liveGame = useLiveStore((s) =>
     !s.game
@@ -454,6 +486,7 @@ export function useBarKind(): BarKind {
     mistakeSession,
     hasReview,
     drillShown,
+    lessonRunning,
     playMode,
     liveGame,
   });

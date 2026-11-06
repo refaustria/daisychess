@@ -1,4 +1,5 @@
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { resetEndgameProgress } from '../../endgames/endgamesProgress';
 import { formatBytes, packSize } from '../../endgames/tablePacks';
 import { useTablebaseStore } from '../../endgames/tablebaseStore';
 import {
@@ -98,11 +99,61 @@ function RookPack() {
 }
 
 export interface TablebaseFieldProps {
-  /** "Reset endgame progress" (wired by the endgame trainer, M32-8); hidden without a handler. */
+  /** "Reset endgame progress" (M32-8); default: clears `daisychess.endgames`. */
   onResetProgress?: () => void;
 }
 
-export function TablebaseField({ onResetProgress }: TablebaseFieldProps = {}) {
+/** "Reset endgame progress" with a confirmation step (like the puzzle data reset). */
+function ResetProgress({ onReset }: { onReset: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [done, setDone] = useState(false);
+  return (
+    <>
+      <div className={styles.tokenRow}>
+        {confirming ? (
+          <>
+            <button
+              type="button"
+              className={styles.reset}
+              data-testid="endgames-reset-confirm"
+              onClick={() => {
+                onReset();
+                setConfirming(false);
+                setDone(true);
+              }}
+            >
+              Yes, reset
+            </button>
+            <button type="button" className={styles.reset} onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className={styles.reset}
+            data-testid="endgames-reset"
+            onClick={() => {
+              setConfirming(true);
+              setDone(false);
+            }}
+          >
+            Reset endgame progress
+          </button>
+        )}
+      </div>
+      <p className={styles.help} role="status">
+        {confirming
+          ? 'This clears the done marks and the repetition schedule of every endgame lesson. It cannot be undone.'
+          : done
+            ? 'Endgame progress was reset.'
+            : 'Starts the endgame course over.'}
+      </p>
+    </>
+  );
+}
+
+export function TablebaseField({ onResetProgress = resetEndgameProgress }: TablebaseFieldProps) {
   const value = useSettingsStore((s) => s.tablebase);
   const set = useSettingsStore((s) => s.set);
   const id = useId();
@@ -136,11 +187,7 @@ export function TablebaseField({ onResetProgress }: TablebaseFieldProps = {}) {
         nothing is looked up during live, room or engine games.
       </p>
       <RookPack />
-      {onResetProgress && (
-        <button type="button" className={styles.reset} onClick={onResetProgress}>
-          Reset endgame progress
-        </button>
-      )}
+      <ResetProgress onReset={onResetProgress} />
     </div>
   );
 }
