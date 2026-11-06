@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import Fastify, { type FastifyInstance, type InjectOptions } from 'fastify';
 import { TOKEN_PATTERNS, type Limits } from '@daisychess/engine-core';
 import type { PortalSettings } from '../../config.js';
@@ -46,10 +46,13 @@ let registry: NodeRegistry;
 let app: FastifyInstance;
 let clock: number;
 let logs: string[];
-let links: { closeNode: ReturnType<typeof vi.fn>; evictShared: ReturnType<typeof vi.fn> };
+let links: {
+  closeNode: Mock<(nodeId: string, reason: string, message?: string) => boolean>;
+  evictShared: Mock<() => number>;
+};
 let conns: {
-  closeTokenConnections: ReturnType<typeof vi.fn>;
-  tokenConnections: ReturnType<typeof vi.fn>;
+  closeTokenConnections: Mock<(tokenId: string) => number>;
+  tokenConnections: Mock<(tokenId: string) => number>;
 };
 /** lichess tokens the fake lichess accepts → account. */
 let accounts: Map<string, { id: string; username: string }>;

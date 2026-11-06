@@ -241,7 +241,7 @@ Decisions (ADR-022): Capacitor 8 wrap of `apps/web` with bundled assets in `apps
 ## M28 — Maintenance after going public (2026-10-25)
 | ID | Task | Tier | Status |
 |---|---|---|---|
-| M28-1 | Upgrade Vitest 3 → ≥ 4.1.12 in all packages (dev-only advisories: vitest/@vitest/mocker path traversal + mock injection, tinypool prototype pollution); nothing shipped is affected | worker | todo (after M27, lockfile) |
+| M28-1 | Upgrade Vitest 3 → ≥ 4.1.12 in all packages (dev-only advisories: vitest/@vitest/mocker path traversal + mock injection, tinypool prototype pollution); nothing shipped is affected | worker | done (vitest 4.1.12 everywhere; glob/minimatch/uuid pinned via pnpm-workspace overrides; pnpm audit clean; @types/node added to web) |
 | M28-2 | Dependabot version updates config (`.github/dependabot.yml`, weekly, grouped), GitHub Actions minutes now free (public) | worker | todo |
 | M28-3 | Raise `engines.node` to `>=22.13` in all package.json files (CI already on 22/24) | worker | todo |
 | M28-4 | Operator account deletion: portal API `DELETE /api/portal/me` (revokes nodes/tokens, closes links/connections, deletes operator row, sessions, usage rows) + portal UI; PRIVACY.md already promises it | senior | todo (after M27-2) |

@@ -22,7 +22,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.12"
   },
   "dependencies": {
     "zod": "^4.6.7"
