@@ -42,9 +42,10 @@
           </div>
           <ul class="feature-list">
             <li data-reveal><h3>Automatic review</h3><p>Load or finish a game and a fast review starts on its own. Each move is classified from best to blunder, with accuracy for both sides, an evaluation graph and the key moments.</p></li>
-            <li data-reveal><h3>The better move, explained</h3><p>For every move you see what you played, what was better, the line behind it and how much the evaluation swung — with arrows on the board.</p></li>
-            <li data-reveal><h3>Guided tour</h3><p>Press play and DaisyChess walks through the game, pausing on great moves, mistakes and blunders with a short comment. Pause, skip, or just take over.</p></li>
-            <li data-reveal><h3>Opening focus</h3><p>See exactly where you left the opening book, what the book move was, and what leaving it cost.</p></li>
+            <li data-reveal><h3>The better move, explained</h3><p>For every move you see what you played, what was better, the line behind it and how much the evaluation swung — with arrows on the board. For mistakes and blunders, a short text says in plain words why the move was bad.</p></li>
+            <li data-reveal><h3>Guided tour</h3><p>Press play and DaisyChess walks through the game, pausing on great moves, mistakes and blunders with a short comment. The tour stops at the last book move and at each of your mistakes and blunders. Pause, skip, or just take over.</p></li>
+            <li data-reveal><h3>Opening focus</h3><p>See exactly where you left the opening book, what the book move was, and what leaving it cost. The tour names and describes the opening, from about 60 opening families.</p></li>
+            <li data-reveal><h3>Elo estimate</h3><p>Each review ends with an estimate of the strength you played at, such as "you played like ~1650". It is computed with Maia on the server, with an offline fallback when no server is available.</p></li>
             <li data-reveal><h3>Clock and time trouble</h3><p>Games with clock times show the time spent on every move, a clock graph, a per-player summary, and a badge on mistakes made in time trouble.</p></li>
             <li data-reveal><h3>What players at your level play</h3><p>For each mistake, Maia shows the move players of your rating most often choose there — so you know whether it was a typical slip or a rare one.</p></li>
             <li data-reveal><h3>Reviews remember</h3><p>Finished reviews are kept on your device, so a game you reviewed before opens instantly. With a server, reviews are shared across your devices, and a deeper review reuses what a quick one already found.</p></li>
@@ -76,15 +77,30 @@
             <li data-reveal><h3>300,000 lichess puzzles</h3><p>Puzzles from the public lichess puzzle database (CC0), sorted by difficulty and theme. Solve them by dragging or by typing the move, with hints and the full solution when you are stuck.</p></li>
             <li data-reveal><h3>Your own puzzle rating</h3><p>A Glicko-2 rating that adapts the difficulty to you. It lives in your browser; there is no account.</p></li>
             <li data-reveal><h3>Daily puzzle and Rush</h3><p>One puzzle a day with a streak, and 3 or 5 minute Puzzle Rush runs with three strikes.</p></li>
-            <li data-reveal><h3>Filter by theme or opening</h3><p>Forks, pins, mates in two, or only puzzles from the Sicilian. "Puzzles from this opening" in the openings trainer jumps straight there.</p></li>
+            <li data-reveal><h3>Filter by theme, opening or endgame</h3><p>Forks, pins, mates in two, only puzzles from the Sicilian, or by endgame type. "Puzzles from this opening" in the openings trainer jumps straight there.</p></li>
             <li data-reveal><h3>Puzzles from your own mistakes</h3><p>DaisyChess finds the tactics you missed in your reviewed games and turns them into puzzles that come back until you have them. Everything stays on your device.</p></li>
             <li data-reveal><h3>Works offline</h3><p>A starter set of 6,000 puzzles is built in, and you can keep more on the device.</p></li>
           </ul>
         </section>
 
-        <section class="feature-group" id="play" aria-labelledby="g4">
+        <section class="feature-group" id="endgames" aria-labelledby="g8">
           <div class="feature-group-head">
             <span class="num">05</span>
+            <h2 id="g8">Endgames</h2>
+            <p>Learn the endgames by playing them, against a perfect opponent.</p>
+          </div>
+          <ul class="feature-list">
+            <li data-reveal><h3>16 interactive lessons</h3><p>Basic mates: K+Q, K+R, two bishops, bishop and knight. King and pawn: opposition, key squares, the rule of the square, the rook pawn. Queen against pawn on the 7th. Rook endgames: Lucena, Philidor, Vancura, cut-off king, short-side defence, the a-pawn.</p></li>
+            <li data-reveal><h3>A perfect opponent</h3><p>You play against a tablebase, which never errs. Each lesson has a move budget, hints and takeback, and your progress is saved on your device.</p></li>
+            <li data-reveal><h3>Works offline</h3><p>The basic endgames work without a connection. The rook endgames are an optional download of about 21 MB.</p></li>
+            <li data-reveal><h3>Tablebases in analysis and review</h3><p>For positions with seven pieces or fewer, the eval bar shows the exact result and a panel lists win, draw or loss for every move. The review flags moves that threw away the win, and the guided tour stops where the endgame starts.</p></li>
+            <li data-reveal><h3>Online, local only, or off</h3><p>A setting decides where tablebase answers come from: online asks the lichess tablebase, local only uses what is on your device, off disables them.</p></li>
+          </ul>
+        </section>
+
+        <section class="feature-group" id="play" aria-labelledby="g4">
+          <div class="feature-group-head">
+            <span class="num">06</span>
             <h2 id="g4">Play</h2>
             <p>Against an engine, a human-like bot, a friend, or the whole of lichess.</p>
           </div>
@@ -99,7 +115,7 @@
 
         <section class="feature-group" id="import" aria-labelledby="g5">
           <div class="feature-group-head">
-            <span class="num">06</span>
+            <span class="num">07</span>
             <h2 id="g5">Import &amp; explore</h2>
             <p>Your games, and the games of everyone else.</p>
           </div>
@@ -112,7 +128,7 @@
 
         <section class="feature-group" id="yours" aria-labelledby="g6">
           <div class="feature-group-head">
-            <span class="num">07</span>
+            <span class="num">08</span>
             <h2 id="g6">Make it yours</h2>
             <p>Looks right on every screen, works the way you like.</p>
           </div>
