@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS,
   parseSettings,
   SETTINGS_KEY,
+  TABLEBASE_SETTINGS,
   useSettingsStore,
 } from './settingsStore';
 
@@ -100,6 +101,23 @@ describe('settingsStore', () => {
     useSettingsStore.getState().reset();
     expect(useSettingsStore.getState().reviewEngine).toBe('server');
     useSettingsStore.getState().set({ reviewEngine: 'auto' });
+  });
+
+  it('tablebase: defaults to online, persists, parses defensively, survives reset', () => {
+    expect(DEFAULT_SETTINGS.tablebase).toBe('online');
+    expect(TABLEBASE_SETTINGS).toEqual(['online', 'local', 'off']);
+    expect(useSettingsStore.getState().tablebase).toBe('online');
+    useSettingsStore.getState().set({ tablebase: 'off' });
+    expect(stored()).toMatchObject({ tablebase: 'off' });
+    expect(parseSettings(localStorage.getItem(SETTINGS_KEY)).tablebase).toBe('off');
+    expect(parseSettings(JSON.stringify({ tablebase: 'local' })).tablebase).toBe('local');
+    expect(parseSettings(JSON.stringify({ tablebase: 'cloud' })).tablebase).toBe('online');
+    expect(parseSettings(JSON.stringify({ tablebase: false })).tablebase).toBe('online');
+    expect(parseSettings(JSON.stringify({ sound: false })).tablebase).toBe('online');
+    useSettingsStore.getState().reset();
+    expect(useSettingsStore.getState().tablebase).toBe('off');
+    expect(stored()).toMatchObject({ tablebase: 'off' });
+    useSettingsStore.getState().set({ tablebase: 'online' });
   });
 
   it('applies board colours as CSS variables and tracks changes', () => {

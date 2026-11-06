@@ -24,6 +24,14 @@ export const REVIEW_ENGINE_PREFERENCES: readonly ReviewEnginePreference[] = [
   'server',
 ];
 
+/**
+ * Tablebase lookups (ADR-025 §2): `online` = local tables first, else the lichess tablebase API
+ * (positions with up to 7 pieces are sent to tablebase.lichess.ovh); `local` = the bundled and
+ * downloaded tables only, never the network; `off` = no tablebase anywhere.
+ */
+export type TablebaseSetting = 'online' | 'local' | 'off';
+export const TABLEBASE_SETTINGS: readonly TablebaseSetting[] = ['online', 'local', 'off'];
+
 export interface Settings {
   /** Preset id from ui-theme, or 'custom' when `customBoard` is used. */
   boardTheme: string;
@@ -53,6 +61,8 @@ export interface Settings {
   maiaHints: boolean;
   /** Maia level (1100…1900) for a side without a PGN rating (M23-3). */
   maiaRating: number;
+  /** Tablebase lookups (ADR-025 §2); kept by "Reset to defaults". */
+  tablebase: TablebaseSetting;
 }
 
 /** Maia levels offered for {@link Settings.maiaRating} (ADR-019). */
@@ -85,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   poolNoticeAccepted: false,
   maiaHints: true,
   maiaRating: 1500,
+  tablebase: 'online',
 };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -142,6 +153,12 @@ export function parseSettings(raw: string | null): Settings {
   if (typeof o.maiaRating === 'number' && MAIA_RATINGS.includes(o.maiaRating)) {
     out.maiaRating = o.maiaRating;
   }
+  if (
+    typeof o.tablebase === 'string' &&
+    (TABLEBASE_SETTINGS as readonly string[]).includes(o.tablebase)
+  ) {
+    out.tablebase = o.tablebase as TablebaseSetting;
+  }
   return out;
 }
 
@@ -167,7 +184,10 @@ interface SettingsActions {
   setCustomBoard: (c: { light: string; dark: string }) => void;
   /** Stores the engine server access token (trimmed; empty removes it). */
   setServerToken: (token: string) => void;
-  /** Resets the appearance settings; the server settings (access token, review engine) are kept. */
+  /**
+   * Resets the appearance settings; the server settings (access token, review engine) and the
+   * privacy choice for tablebase lookups are kept.
+   */
   reset: () => void;
 }
 
@@ -189,6 +209,7 @@ function pick(s: Settings): Settings {
     poolNoticeAccepted: s.poolNoticeAccepted,
     maiaHints: s.maiaHints,
     maiaRating: s.maiaRating,
+    tablebase: s.tablebase,
   };
   if (s.customBoard) out.customBoard = s.customBoard;
   return out;
@@ -216,6 +237,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
       serverToken: get().serverToken,
       reviewEngine: get().reviewEngine,
       poolNoticeAccepted: get().poolNoticeAccepted,
+      tablebase: get().tablebase,
       customBoard: undefined,
     });
     persist(pick(get()));

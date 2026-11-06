@@ -11,6 +11,11 @@ interface ImportMetaEnv {
    * the web build always uses its own origin's `/puzzles/v1/`.
    */
   readonly VITE_PUZZLES_URL?: string;
+  /**
+   * Downloadable endgame tables of the apps (ADR-025 §2): `https://play.daisychess.org/endgames/v1/`
+   * when unset; the web build always uses its own origin's `/endgames/v1/`.
+   */
+  readonly VITE_ENDGAMES_URL?: string;
   /** `1`: run the native smoke check on start (CI only, `src/platform/smoke.ts`). */
   readonly VITE_MOBILE_SMOKE?: string;
   /**

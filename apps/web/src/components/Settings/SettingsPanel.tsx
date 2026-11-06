@@ -23,6 +23,7 @@ import { AboutField } from './AboutField';
 import { ReviewCacheField } from './ReviewCacheField';
 import { PuzzleNamesField } from './PuzzleNamesField';
 import { PuzzleDataField } from './PuzzleDataField';
+import { TablebaseField } from './TablebaseField';
 import styles from './SettingsPanel.module.css';
 
 const HIGHLIGHT_LABEL: Record<HighlightStyle, string> = {
@@ -330,6 +331,7 @@ export function SettingsPanel() {
       <ReviewEngineField />
       <MaiaHintsField />
       <ReviewCacheField />
+      <TablebaseField />
       <PuzzleNamesField />
       <PuzzleDataField />
       <AboutField />

@@ -65,6 +65,14 @@ describe('mobileMetaCsp (M26-2 smoke server)', () => {
     expect(PRODUCTION_CSP).toBe(buildCsp());
   });
 
+  it('the lichess tablebase (ADR-025 §2) is in both the web and the mobile connect-src', () => {
+    expect(connect(PRODUCTION_CSP).split(' ')).toContain('https://tablebase.lichess.ovh');
+    expect(connect(store).split(' ')).toContain('https://tablebase.lichess.ovh');
+    expect(connect(mobileMetaCsp({})).split(' ')).toContain('https://tablebase.lichess.ovh');
+    // Only the API origin, no wildcard over lichess hosts.
+    expect(PRODUCTION_CSP).not.toMatch(/\*\.lichess/);
+  });
+
   it('adds only the loopback smoke server origin in a smoke build', () => {
     const p = mobileMetaCsp({
       VITE_MOBILE_SMOKE: '1',
