@@ -6,13 +6,13 @@ Regenerate with `deploy/deploy-puzzles.sh` after a new monthly lichess dump.
 | | |
 | --- | --- |
 | Source | <https://database.lichess.org/lichess_db_puzzle.csv.zst> (lichess.org puzzle database, CC0-1.0) |
-| sha256 | `76335bfa7d7c4a7f93c1366d81549e53951ebb79dd43d34904cab8f22d962f8d` |
-| Last-Modified | Fri, 02 Oct 2026 08:51:45 GMT |
-| Built | 2026-10-26T14:06:00.923Z |
-| Rows read | 6157341 |
-| Curated (shards) | 302770 |
-| Starter rows | 6000 (daily pool 666) |
-| Starter size | 878596 bytes |
+| sha256 | `7b0d235fa40cfd7fdb7df1fec56a96b3b6ee1496b32ed2eb05be90d0ebf94253` |
+| Last-Modified | Sun, 01 Nov 2026 07:57:40 GMT |
+| Built | 2026-11-06T13:02:16.982Z |
+| Rows read | 6193530 |
+| Curated (shards) | 306143 |
+| Starter rows | 6000 (daily pool 643) |
+| Starter size | 908520 bytes |
 
 Licence: the lichess puzzle database is released under CC0 1.0 (public domain dedication),
 <https://database.lichess.org/#puzzles>.
