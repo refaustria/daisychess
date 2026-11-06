@@ -1,0 +1,209 @@
+{
+  "format": 1,
+  "source": "https://tablebase.lichess.ovh/tables/standard/ (Syzygy 3-4-5 tables by Ronald de Man, lichess mirror)",
+  "tables": [
+    {
+      "name": "KQvK",
+      "kind": "wdl",
+      "bytes": 272,
+      "sha256": "517667dff787162dbb1ed9d5d6484d30ee854e686ee0675c08d99ecf045d2d50",
+      "pack": "core"
+    },
+    {
+      "name": "KRvK",
+      "kind": "wdl",
+      "bytes": 208,
+      "sha256": "386fbde73308e49a4207836922c68b30b664e83c5a37f7fa37305a15cd16f2f1",
+      "pack": "core"
+    },
+    {
+      "name": "KPvK",
+      "kind": "wdl",
+      "bytes": 7824,
+      "sha256": "02fd2bdcd92821c869458f019f63524def1c9e7a2862ca8d2b16dc7712b16183",
+      "pack": "core"
+    },
+    {
+      "name": "KBBvK",
+      "kind": "wdl",
+      "bytes": 58000,
+      "sha256": "3afa74fcfd6100df851c3b18ca255acd9d68c31c7c74cb02b2d5236ffd610ed6",
+      "pack": "core"
+    },
+    {
+      "name": "KBNvK",
+      "kind": "wdl",
+      "bytes": 7632,
+      "sha256": "76958da65bc243f2f0a16ceb83f1c00cbc4fb6d6e2f43d052c2f9d65bf16fee8",
+      "pack": "core"
+    },
+    {
+      "name": "KQvKP",
+      "kind": "wdl",
+      "bytes": 58064,
+      "sha256": "2f92788170e8a5c05608f44a47fd42f3f4fff372d0af64633c56bd081039d8f9",
+      "pack": "core"
+    },
+    {
+      "name": "KQvKQ",
+      "kind": "wdl",
+      "bytes": 16528,
+      "sha256": "571a85d86e635e48567997ea648fd1e90dde39c9b413b2fe968f5e7faeacfbb0",
+      "pack": "core"
+    },
+    {
+      "name": "KQvKR",
+      "kind": "wdl",
+      "bytes": 20496,
+      "sha256": "8cdbe3c8e098037875de5854c656f8afeadb8327c85b5b7b1cac81719afd3e2c",
+      "pack": "core"
+    },
+    {
+      "name": "KQvKB",
+      "kind": "wdl",
+      "bytes": 6672,
+      "sha256": "0c18bbcaec0e7c161d56392ff57a39258dd93acd0321e3bbb32f7c05636abeac",
+      "pack": "core"
+    },
+    {
+      "name": "KQvKN",
+      "kind": "wdl",
+      "bytes": 10064,
+      "sha256": "ba07bd47c6eaa20904b595f43e171c6fc70fcc056cb33696fe12ed254c546100",
+      "pack": "core"
+    },
+    {
+      "name": "KQvK",
+      "kind": "dtz",
+      "bytes": 5392,
+      "sha256": "f9ed147a057e0b15354690e20116f2d9443e57812272b1669055b17c884f092d",
+      "pack": "core"
+    },
+    {
+      "name": "KRvK",
+      "kind": "dtz",
+      "bytes": 7632,
+      "sha256": "d3abd58650d3f2d73978871c06f1acb9bef031f5b3de6b1818a8af414b266a67",
+      "pack": "core"
+    },
+    {
+      "name": "KPvK",
+      "kind": "dtz",
+      "bytes": 4176,
+      "sha256": "03be81a42aa1939ee455f1d0fd130f8f08c018f1209549c227e9393f73b6b9c4",
+      "pack": "core"
+    },
+    {
+      "name": "KBBvK",
+      "kind": "dtz",
+      "bytes": 136464,
+      "sha256": "5b38f0d651f01aa27705e88ab173381f8041eea723905abe3680b530a886e08d",
+      "pack": "core"
+    },
+    {
+      "name": "KBNvK",
+      "kind": "dtz",
+      "bytes": 461840,
+      "sha256": "5bfb242b6c60dc8bef99a5f9349fc94019e02457cd19680c3bb0464c7d0b341a",
+      "pack": "core"
+    },
+    {
+      "name": "KRPvKR",
+      "kind": "wdl",
+      "bytes": 16378576,
+      "sha256": "1100e6deaee14ca9a56b69441208462c02ef45b3f56daa3d75f687eb5cf12319",
+      "pack": "rook"
+    },
+    {
+      "name": "KRvKR",
+      "kind": "wdl",
+      "bytes": 12944,
+      "sha256": "797081b5b3fbac20c4baa5453d68bdae1425b63895f5c9a5ac5c68ea63a97712",
+      "pack": "rook"
+    },
+    {
+      "name": "KRvKP",
+      "kind": "wdl",
+      "bytes": 179408,
+      "sha256": "3968c2bfced3a5ecfbb54166ec13d4e7b70f3b03c495af4ae87cad2ec75a0749",
+      "pack": "rook"
+    },
+    {
+      "name": "KRPvK",
+      "kind": "wdl",
+      "bytes": 5136,
+      "sha256": "6bc2aa9db5ee7fcc287e6c3b006ab6cfc2be4dff4ae7ca4a524a78520eea61db",
+      "pack": "rook"
+    },
+    {
+      "name": "KQRvKR",
+      "kind": "wdl",
+      "bytes": 279824,
+      "sha256": "13477ef681468dfb19d09ab8dbeb08d259f9db57a6e5e2c7cdb902880fc2166b",
+      "pack": "rook"
+    },
+    {
+      "name": "KRRvKR",
+      "kind": "wdl",
+      "bytes": 334224,
+      "sha256": "7897a69c7ad337adc93aa39c9d22dcf1a5e215908437b36d92db5e4bebf9217e",
+      "pack": "rook"
+    },
+    {
+      "name": "KRBvKR",
+      "kind": "wdl",
+      "bytes": 2035280,
+      "sha256": "6343cff1ca9d4026aed57ede37ebd29004d11c9d8ec932351b04b4e8018ce8b9",
+      "pack": "rook"
+    },
+    {
+      "name": "KRNvKR",
+      "kind": "wdl",
+      "bytes": 1491856,
+      "sha256": "163432941d6f625c093c7291d2045453f712435e906e9d91d371105da96f97c4",
+      "pack": "rook"
+    },
+    {
+      "name": "KQRvK",
+      "kind": "wdl",
+      "bytes": 4560,
+      "sha256": "b018ece9cc195618981b027268f9cca929a1ed4c0bdd739874b7846640ef479a",
+      "pack": "rook"
+    },
+    {
+      "name": "KRRvK",
+      "kind": "wdl",
+      "bytes": 1936,
+      "sha256": "4c05ec32e6e43b690d235307de75432a3ceecdbc3d2659d8101ed15b48b8445d",
+      "pack": "rook"
+    },
+    {
+      "name": "KRBvK",
+      "kind": "wdl",
+      "bytes": 2832,
+      "sha256": "9e6eced11a37cad71b4fc1a4f62a15e191e58883b51ce8c4c45f341051c6ae8e",
+      "pack": "rook"
+    },
+    {
+      "name": "KRNvK",
+      "kind": "wdl",
+      "bytes": 2320,
+      "sha256": "4f96cab9fc0005f2679eacb92cec32edf9c932db7bb29b5dc7659be0012d6c35",
+      "pack": "rook"
+    },
+    {
+      "name": "KRvKB",
+      "kind": "wdl",
+      "bytes": 32912,
+      "sha256": "69b247cb390ffcd729cf5fe5c40f8a24803190bf67b108b8f05b8b08b26a6a72",
+      "pack": "rook"
+    },
+    {
+      "name": "KRvKN",
+      "kind": "wdl",
+      "bytes": 100048,
+      "sha256": "a8cde902b010bf6c8763c97d19b5430b422e74db9cb8e9d5e67fa07373c13c5b",
+      "pack": "rook"
+    }
+  ]
+}

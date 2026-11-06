@@ -74,3 +74,4 @@ export {
   packBytes,
 } from './manifest.js';
 export type { TableEntry, TablesManifest, TablePack } from './manifest.js';
+export * from './syzygy/index.js';
