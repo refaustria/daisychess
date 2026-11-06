@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { configureGameLedger } from '../../puzzles/gameLedger';
 import { buildMoveDetails } from '../../review/details';
 import { gameToBatch, useReviewStore } from '../../review/reviewStore';
 import { scholarSummary } from '../../review/testFixtures';
-import { installReviewTour, setTourTimer, setTourUserSide, useTourStore } from '../../review/tourStore';
+import {
+  installReviewTour,
+  setEndgameTrainHandler,
+  setTourTimer,
+  setTourUserSide,
+  useTourStore,
+} from '../../review/tourStore';
+import { usePuzzleStore } from '../../puzzles/puzzleStore';
+import type { ReviewedMove, ReviewSummary } from '@daisychess/engine-core';
 import { useGameStore } from '../../store/gameStore';
 import { usePreviewStore } from '../../store/previewStore';
 import { useUiStore } from '../../store/uiStore';
@@ -258,5 +266,86 @@ describe('ReviewTour on phones', () => {
     } finally {
       mq.restore();
     }
+  });
+});
+
+describe('ReviewTour endgame stop', () => {
+  const START = '6kr/5pp1/8/8/1P3PP1/8/6K1/R7 w - - 0 1';
+
+  /** A rook endgame from a custom start, every move "best", the engine at +4 throughout. */
+  function loadEndgame() {
+    useGameStore.getState().loadPgn(
+      `[SetUp "1"]\n[FEN "${START}"]\n[Result "0-1"]\n\n1. Ra2 Rh5 2. Rb2 Rh3 3. Rb1 Rh5 0-1`,
+    );
+    const game = useGameStore.getState();
+    const moves: ReviewedMove[] = game.moves.map((m, i) => ({
+      ply: i + 1,
+      san: m.san,
+      uci: `${m.from}${m.to}${m.promotion ?? ''}`,
+      mover: i % 2 === 0 ? 'white' : 'black',
+      evalBefore: { cp: 400 },
+      evalAfter: { cp: 400 },
+      bestMove: `${m.from}${m.to}`,
+      winProbBefore: 50,
+      winProbAfter: 50,
+      winProbLoss: 0,
+      classification: 'best',
+    }));
+    const counts = { best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, forced: 0 };
+    const summary: ReviewSummary = {
+      white: { accuracy: 100, counts },
+      black: { accuracy: 100, counts },
+      moves,
+    };
+    const moveDetails = buildMoveDetails(summary, gameToBatch(game), moves.map(() => ({})));
+    useReviewStore.setState({ status: 'done', summary, moveDetails });
+  }
+
+  afterEach(() => setEndgameTrainHandler(undefined));
+
+  /** The tour waits at its first step here, so it never shows `playing`. */
+  async function replayToStop() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Replay tour' }));
+      await waitFor(() => expect(tour().status).toBe('waiting'));
+    });
+  }
+
+  it('stops at the start of the endgame and shows the card; Next continues', async () => {
+    loadEndgame();
+    render(<ReviewTour />);
+    await replayToStop();
+    expect(tour().status).toBe('waiting');
+    expect(screen.getByText('Tour: Stop 1 of 1')).toBeTruthy();
+    const stop = screen.getByRole('region', { name: 'Tour stop' });
+    expect(stop.getAttribute('data-kind')).toBe('endgame');
+    expect(within(stop).getByText('Endgame: rook endgame')).toBeTruthy();
+    expect(within(stop).getByTestId('tour-endgame-signature').textContent).toContain('White: R+3P');
+    expect(stop.textContent).toContain('The engine rates it +4.0 for White: winning');
+    expect(stop.textContent).toContain('Black won the game nevertheless.');
+    // The trainer is not there yet: no "Train this endgame".
+    expect(within(stop).queryByTestId('tour-endgame-train')).toBeNull();
+    fireEvent.click(screen.getByTestId('tour-next'));
+    expect(tour().status).toBe('playing');
+    expect(screen.queryByRole('region', { name: 'Tour stop' })).toBeNull();
+  });
+
+  it('"Endgame puzzles" opens the puzzles with the family theme; the trainer button needs a handler', async () => {
+    const open = vi.fn(async () => {});
+    usePuzzleStore.setState({ openWithFilter: open });
+    const train = vi.fn();
+    loadEndgame();
+    render(<ReviewTour />);
+    await replayToStop();
+    fireEvent.click(screen.getByTestId('tour-endgame-puzzles'));
+    expect(open).toHaveBeenCalledWith({ endgame: 'rookEndgame' });
+    // a handler is registered later: the button appears on the next render of the card
+    setEndgameTrainHandler(train);
+    cleanup();
+    useTourStore.getState().stop();
+    render(<ReviewTour />);
+    await replayToStop();
+    fireEvent.click(screen.getByTestId('tour-endgame-train'));
+    expect(train).toHaveBeenCalledWith('rook_pawn');
   });
 });

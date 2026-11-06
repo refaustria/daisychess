@@ -2,6 +2,8 @@ import type { ReviewedMove, ReviewSummary } from '@daisychess/engine-core';
 import { CLASS_INFO } from './format';
 import type { MoveDetails } from './details';
 import type { OpeningCard } from './openingStop';
+import type { EndgameCard } from './endgameStop';
+import type { TbVerdict } from '@daisychess/endgames';
 
 /** Dwell on an ordinary move / on a notable one (ms). */
 export const SHORT_DWELL_MS = 600;
@@ -10,7 +12,7 @@ export const LONG_DWELL_MS = 2500;
 export type TourKind = 'blunder' | 'mistake' | 'great';
 
 /** Why the tour waits at a step (ADR-024 section 1). */
-export type TourStop = 'opening' | 'mistake';
+export type TourStop = 'opening' | 'endgame' | 'mistake';
 
 export interface TourStep {
   ply: number;
@@ -45,7 +47,7 @@ export interface MistakeCard {
 }
 
 /** What the tour shows at a stop. */
-export type TourCard = OpeningCard | MistakeCard;
+export type TourCard = OpeningCard | EndgameCard | MistakeCard;
 
 /** A reply (best move) to a blunder/mistake at least this big (win-probability points) is "great". */
 export const GREAT_PUNISH_LOSS = 20;
@@ -79,6 +81,17 @@ export interface ScheduleOptions {
   lastBookPly?: number;
   /** Start position of the game; a custom one has no opening stop. Default: standard. */
   startFen?: string;
+  /**
+   * First ply of the endgame (`endgameStart` over the positions after each ply, ADR-025 section 5).
+   * The endgame stop is the first step from there that is not already a stop.
+   */
+  endgamePly?: number;
+  /**
+   * Tablebase verdicts by ply (ADR-025 section 4): a `thrown` verdict of the user's side is a
+   * mistake stop whatever the engine class, a user mistake that is `kept` is no stop, an `only`
+   * verdict makes the move `great`.
+   */
+  tablebase?: Readonly<Record<number, TbVerdict>>;
 }
 
 const STANDARD_EPD = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
@@ -87,8 +100,9 @@ const isStandardStart = (fen: string): boolean =>
 
 /**
  * One step per reviewed ply, in order. Stops (ADR-024 section 1): the opening stop on
- * `lastBookPly` (standard start position, at least one book move) and a mistake stop on every
- * mistake/blunder of `userSide`. When both fall on one ply the opening stop wins (a book move).
+ * `lastBookPly` (standard start position, at least one book move), the endgame stop (the first
+ * step from `endgamePly` that is not another stop) and a mistake stop on every mistake/blunder of
+ * `userSide`. When both fall on one ply the opening stop wins (a book move).
  * The opponent's mistakes and `great` moves keep their kind (long dwell) and never stop.
  */
 export function buildSchedule(summary: ReviewSummary, opts: ScheduleOptions = {}): TourStep[] {
@@ -97,20 +111,26 @@ export function buildSchedule(summary: ReviewSummary, opts: ScheduleOptions = {}
     (opts.lastBookPly ?? 0) >= 1 && (opts.startFen === undefined || isStandardStart(opts.startFen))
       ? opts.lastBookPly
       : undefined;
-  return moves.map((m, i) => {
+  const steps = moves.map((m, i) => {
     const step: TourStep = { ply: m.ply };
-    const kind = tourKind(m, moves[i - 1]);
+    let kind = tourKind(m, moves[i - 1]);
+    const tb = opts.tablebase?.[m.ply];
+    const mine = opts.userSide !== undefined && m.mover === opts.userSide;
+    const engineMistake = m.classification === 'mistake' || m.classification === 'blunder';
+    // An exact verdict beats the engine class: thrown is a mistake, kept/only is none.
+    const mistake = tb ? mine && tb.kind === 'thrown' : mine && engineMistake;
+    if (tb?.kind === 'only' && !kind) kind = 'great';
+    if (tb?.kind === 'thrown' && mine && !kind) kind = 'mistake';
     if (kind) step.kind = kind;
     if (m.ply === openingPly) step.stop = 'opening';
-    else if (
-      opts.userSide !== undefined &&
-      m.mover === opts.userSide &&
-      (m.classification === 'mistake' || m.classification === 'blunder')
-    ) {
-      step.stop = 'mistake';
-    }
+    else if (mistake) step.stop = 'mistake';
     return step;
   });
+  if (opts.endgamePly !== undefined) {
+    const at = steps.find((s) => s.ply >= opts.endgamePly! && !s.stop);
+    if (at) at.stop = 'endgame';
+  }
+  return steps;
 }
 
 /** Number of stops in `schedule` up to and including `index` ("Stop n of N"). */

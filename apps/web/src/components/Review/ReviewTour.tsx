@@ -1,6 +1,12 @@
 import type { MouseEvent } from 'react';
 import { tourActive, type TourCard } from '../../review/tour';
-import { stepCardLine, useTourFinishText, useTourStore } from '../../review/tourStore';
+import {
+  getEndgameTrainHandler,
+  stepCardLine,
+  useTourFinishText,
+  useTourStore,
+} from '../../review/tourStore';
+import { usePuzzleStore } from '../../puzzles/puzzleStore';
 import { usePreviewStore } from '../../store/previewStore';
 import { usePhoneLayout } from '../PhoneLayout/usePhoneLayout';
 import styles from './ReviewTour.module.css';
@@ -34,6 +40,22 @@ function CardBody({ card }: { card: TourCard }) {
     return (
       <>
         <strong className={styles.title}>{card.title}</strong>
+        {card.familyText && <p className={styles.para}>{card.familyText}</p>}
+        {card.sentences.map((s, i) => (
+          <p key={i} className={styles.para}>
+            {s}
+          </p>
+        ))}
+      </>
+    );
+  }
+  if (card.kind === 'endgame') {
+    return (
+      <>
+        <strong className={styles.title}>{card.title}</strong>
+        <p className={styles.para} data-testid="tour-endgame-signature">
+          {card.signature}
+        </p>
         {card.familyText && <p className={styles.para}>{card.familyText}</p>}
         {card.sentences.map((s, i) => (
           <p key={i} className={styles.para}>
@@ -117,8 +139,37 @@ function LineStepper({ line }: { line: { fen: string; sans: string[]; label: str
   );
 }
 
+/** "Train this endgame" (only with a trainer registered) and "Endgame puzzles". */
+function EndgameButtons({ card }: { card: Extract<TourCard, { kind: 'endgame' }> }) {
+  const train = getEndgameTrainHandler();
+  const group = card.lessonFamily;
+  return (
+    <div className={styles.line}>
+      {train && group && (
+        <button
+          type="button"
+          className={styles.btn}
+          data-testid="tour-endgame-train"
+          onClick={() => train(group)}
+        >
+          Train this endgame
+        </button>
+      )}
+      <button
+        type="button"
+        className={styles.btn}
+        data-testid="tour-endgame-puzzles"
+        onClick={() => void usePuzzleStore.getState().openWithFilter({ endgame: card.puzzleTheme })}
+      >
+        Endgame puzzles
+      </button>
+    </div>
+  );
+}
+
 /** Controls under the card text (outside its status region). */
 function CardControls({ card }: { card: TourCard }) {
+  if (card.kind === 'endgame') return <EndgameButtons card={card} />;
   if (card.kind === 'opening') {
     return card.preview ? (
       <div className={styles.line}>

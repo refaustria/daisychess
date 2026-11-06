@@ -1,4 +1,12 @@
+import {
+  endgameFamily,
+  endgameStart,
+  materialSignature,
+  type LessonGroup,
+  type TbVerdict,
+} from '@daisychess/endgames';
 import { create } from 'zustand';
+import type { EndgameFamilyText } from '../endgames/data/familyTexts';
 import { isHumanGameRunning } from '../live/lock';
 import { findOpening, getBook, loadOpenings, toEpd } from '../openings';
 import { familyTextFor, loadFamilyTexts } from '../openings/familyTexts';
@@ -14,6 +22,7 @@ import type { MoveDetails } from './details';
 import { computeOpeningFocus } from './openingFocus';
 import { explainMistake } from './explain';
 import { openingStopCard } from './openingStop';
+import { endgameStopCard, tbAfterPly, type GameResult } from './endgameStop';
 import { gameKey as reviewGameKey } from './reviewCache';
 import { gameToBatch, useReviewStore } from './reviewStore';
 import { timeTroublePlies } from './timeUsage';
@@ -93,6 +102,32 @@ export function setTourTimer(t: TourTimer | undefined): void {
 export function setTourUserSide(fn: UserSideResolver | undefined): void {
   userSideResolver = fn ?? defaultUserSide;
 }
+
+type TablebaseSource = () => Readonly<Record<number, TbVerdict>> | undefined;
+let tablebaseSource: TablebaseSource | undefined;
+
+/**
+ * Hook for the tablebase overlay (M32-7, ADR-025 section 4): returns the verdicts by ply once the
+ * overlay of the reviewed game is `done`, else undefined. Without a source (or without verdicts)
+ * the tour judges by the engine eval alone.
+ */
+export function setTourTablebase(fn: TablebaseSource | undefined): void {
+  tablebaseSource = fn;
+}
+
+type TrainHandler = (group: LessonGroup) => void;
+let trainHandler: TrainHandler | undefined;
+
+/**
+ * Hook for the endgame trainer (M32-8): while set, the endgame card offers "Train this endgame"
+ * for families that have lessons. Without a handler the button is not shown.
+ */
+export function setEndgameTrainHandler(fn: TrainHandler | undefined): void {
+  trainHandler = fn;
+}
+
+/** The handler of "Train this endgame", if the trainer registered one. */
+export const getEndgameTrainHandler = (): TrainHandler | undefined => trainHandler;
 
 const afterRender = (fn: () => void): void => {
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn());
@@ -230,6 +265,64 @@ async function openingStop(
   return { lastBookPly: focus.lastBookPly, card: openingStopCard(focus, sans, family) };
 }
 
+/** The endgame stop's card for the position after `ply`. */
+function endgameCard(
+  ply: number,
+  game: GameState,
+  details: MoveDetails,
+  tablebase: Readonly<Record<number, TbVerdict>> | undefined,
+  textFor: ((family: string) => EndgameFamilyText | undefined) | undefined,
+): TourCard | undefined {
+  const detail = details[ply];
+  if (!detail) return undefined;
+  const fen = detail.fenAfter;
+  const { family } = endgameFamily(fen);
+  const mover = detail.mover;
+  return endgameStopCard({
+    fen,
+    signature: materialSignature(fen),
+    family,
+    familyText: textFor?.(family),
+    tb: tbAfterPly(tablebase, ply, mover),
+    evalWhite: detail.evalAfterWhite,
+    result: gameResult(game),
+    mover,
+  });
+}
+
+/** Result of the game: the PGN header, else a checkmate on the board. */
+function gameResult(game: GameState): GameResult | undefined {
+  const r = game.headers['Result'];
+  if (r === '1-0' || r === '0-1' || r === '1/2-1/2' || r === '*') return r;
+  if (game.moves.at(-1)?.san.endsWith('#')) return game.moves.length % 2 === 1 ? '1-0' : '0-1';
+  return undefined;
+}
+
+/** First ply of the endgame from the positions after each reviewed ply (ADR-025 section 5). */
+function endgamePlyOf(summary: { moves: { ply: number }[] }, details: MoveDetails): number | undefined {
+  const plies = summary.moves.map((m) => m.ply).sort((a, b) => a - b);
+  const fens: string[] = [];
+  for (const ply of plies) {
+    const fen = details[ply]?.fenAfter;
+    if (!fen) return undefined;
+    fens.push(fen);
+  }
+  const start = endgameStart(fens);
+  return start === undefined ? undefined : plies[start - 1];
+}
+
+/** Family texts of the endgame stop: a lazy chunk, loaded once (undefined if it fails). */
+async function loadEndgameTexts(): Promise<
+  ((family: string) => EndgameFamilyText | undefined) | undefined
+> {
+  try {
+    const m = await import('../endgames/data/familyTexts');
+    return m.endgameTextFor;
+  } catch {
+    return undefined; // offline chunk failure: a card without the family text
+  }
+}
+
 export const useTourStore = create<TourStore>()((set, get) => ({
   status: 'idle',
   total: 0,
@@ -257,6 +350,8 @@ export const useTourStore = create<TourStore>()((set, get) => ({
       }
     }
     const opening = await openingStop(game, moveDetails);
+    const endgamePly = endgamePlyOf(summary, moveDetails);
+    const textFor = endgamePly === undefined ? undefined : await loadEndgameTexts();
 
     // A newer start, a stop or another game/review while resolving: drop this start.
     const now = useGameStore.getState();
@@ -264,10 +359,13 @@ export const useTourStore = create<TourStore>()((set, get) => ({
     if (gen !== startGen || gameKey(now) !== key || r.status !== 'done' || r.summary !== summary)
       return;
 
+    const tablebase = tablebaseSource?.();
     const schedule = buildSchedule(summary, {
       userSide: side,
       lastBookPly: opening?.lastBookPly,
       startFen: game.startFen,
+      endgamePly,
+      tablebase,
     });
     const trouble = timeTroublePlies(game, summary);
     const c = new TourController(
@@ -280,7 +378,9 @@ export const useTourStore = create<TourStore>()((set, get) => ({
           const text = stepText(step, moveDetails, trouble);
           let card: TourCard | undefined;
           if (step.stop === 'opening') card = opening?.card;
-          else if (step.stop === 'mistake') {
+          else if (step.stop === 'endgame') {
+            card = endgameCard(step.ply, game, moveDetails, tablebase, textFor);
+          } else if (step.stop === 'mistake') {
             const plain = text || stepText({ ...step, kind: 'mistake' }, moveDetails, trouble);
             card = mistakeCard(step, plain, moveDetails, trouble);
           }

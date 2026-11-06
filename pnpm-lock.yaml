@@ -377,6 +377,9 @@ importers:
       '@capacitor/status-bar':
         specifier: 8.0.4
         version: 8.0.4(@capacitor/core@8.5.3)
+      '@daisychess/endgames':
+        specifier: workspace:*
+        version: link:../../packages/endgames
       '@daisychess/engine-core':
         specifier: workspace:*
         version: link:../../packages/engine-core
