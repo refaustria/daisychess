@@ -27,10 +27,15 @@ export const STARTER_MAX_BYTES = 1_000_000;
 export const TABLES_MAX_BYTES = 1_000_000;
 
 /** Core pack (WDL + DTZ) that `dist-mobile` must carry under `endgames/v1/` (ADR-025 §2). */
-export const CORE_TABLE_FILES = ['KQvK', 'KRvK', 'KPvK', 'KBBvK', 'KBNvK', 'KQvKP'].flatMap((n) => [
-  `endgames/v1/${n}.rtbw`,
-  `endgames/v1/${n}.rtbz`,
-]);
+/** Core-pack table files, from the endgames manifest (ADR-025 §2; KQvKP ships WDL only). */
+export const CORE_TABLE_FILES = JSON.parse(
+  readFileSync(new URL('../../../packages/endgames/tables.manifest.json', import.meta.url), 'utf8'),
+)
+  .tables.filter((/** @type {{ pack: string }} */ t) => t.pack === 'core')
+  .map(
+    (/** @type {{ name: string, kind: string }} */ t) =>
+      `endgames/v1/${t.name}.${t.kind === 'wdl' ? 'rtbw' : 'rtbz'}`,
+  );
 
 export const DEFAULT_STARTER = fileURLToPath(
   new URL('../../web/src/puzzles/data/starter.json', import.meta.url),

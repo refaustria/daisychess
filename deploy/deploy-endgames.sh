@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Endgame tables for https://play.daisychess.org/endgames/v1/ (ADR-025 §2, deploy/README.md "Endgame tables").
 #
-# 1. Builds @daisychess/endgames and downloads the rook pack (KRPvKR WDL, ~16 MB) with
+# 1. Builds @daisychess/endgames and downloads the rook pack (KRPvKR WDL, ~21 MB) with
 #    packages/endgames/scripts/fetch-tables.mjs --pack rook into the cache dir (resumable).
 # 2. Verifies every file of the manifest (core files from apps/web/public/endgames/v1/, rook files
 #    from the cache) against packages/endgames/tables.manifest.json: size and sha256, fail-closed.
