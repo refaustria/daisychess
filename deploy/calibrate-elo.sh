@@ -11,7 +11,7 @@
 # 2. Builds engine-core and runs apps/web/scripts/calibrate-elo.mjs, which writes
 #    apps/web/src/review/data/eloCalibration.json and SOURCE.md.
 # 3. Prints the next step: commit eloCalibration.json + SOURCE.md and redeploy the web app.
-# Installs nothing on the host; needs curl, sha256sum, node (zstd CLI only on Node < 22.15).
+# Installs nothing on the host; needs curl, sha256sum, node (zstd CLI unless the zlib decoder passes its self-check, i.e. Node < 24).
 #
 # Usage: deploy/calibrate-elo.sh [--month YYYY-MM] [--range BYTES] [--limit GAMES] [--dry-run]
 #                                [--no-install]

@@ -113,7 +113,7 @@ Development: `deploy/deploy-puzzles.sh --sample 12000000` makes a ranged downloa
 12 MB (no digest to verify), builds only the starter (`PUZZLE_STARTER=<path>` writes it elsewhere)
 and publishes nothing. The build script also runs directly:
 `node packages/puzzles/scripts/build-puzzles.mjs --input <file.csv.zst|file.csv> --out <dir> [--starter <path>] [--sample <bytes>] [--sha256 <hex>] [--dry-run]`.
-The pipeline falls back to the `zstd` CLI when `zlib.createZstdDecompress` is missing (Node < 22.15).
+The pipeline falls back to the `zstd` CLI when `zlib.createZstdDecompress` is missing or fails a self-check (Node 22's decoder drops frames after the first; use Node ≥ 24 or install `zstd`).
 
 nginx (once): the map `$daisychess_app_cors` in `daisychess-common.conf` (echoes exactly
 `https://app.daisychess.org` and `capacitor://app.daisychess.org`) and the locations
@@ -191,7 +191,7 @@ What it does:
      so use `--range`), resumable, verified fail-closed against the listed digest on every run.
      Both refuse to start when the download would leave less than `FREE_SPACE_MARGIN_MB` (2048) free.
 3. Builds engine-core (`pnpm install --frozen-lockfile` first unless `--no-install`) and runs the
-   script: it streams the dump (`zlib.createZstdDecompress` on Node ≥ 22.15, else the `zstd` CLI
+   script: it streams the dump (`zlib.createZstdDecompress` when it passes a self-check, i.e. Node ≥ 24; else the `zstd` CLI
    as a child process — Node 24 on the host has zlib zstd, nothing to install), keeps rated
    standard games with lichess's `[%eval]` annotations and established ratings of both players
    (`RatingDiff` present), replays them with chess.js in worker threads (`CALIBRATE_JOBS`, default
