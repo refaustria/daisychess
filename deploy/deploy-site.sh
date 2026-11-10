@@ -25,7 +25,8 @@ done
 # Two passes so a visitor never gets HTML that points at assets that are not there yet:
 # 1) new hashed assets and static files first (nothing deleted), 2) HTML and cleanup.
 rsync -a --exclude '*.html' apps/site/dist/ "$SITE_ROOT"/
-# --delete keeps .well-known/ (ACME webroot challenges) out of the cleanup.
-rsync -a --delete --exclude /.well-known/ apps/site/dist/ "$SITE_ROOT"/
+# --delete keeps .well-known/ (ACME webroot challenges) and media/ (hand-placed files such as the
+# App Review demo video, too large for git) out of the cleanup.
+rsync -a --delete --exclude /.well-known/ --exclude /media/ apps/site/dist/ "$SITE_ROOT"/
 
 echo "Deployed to ${SITE_URL}"
