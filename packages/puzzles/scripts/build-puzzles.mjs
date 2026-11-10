@@ -191,12 +191,50 @@ function isZstd(/** @type {string} */ path) {
   }
 }
 
-/** The decompressor: zlib when available (Node ≥ 22.15), else the `zstd` CLI. */
+/** @type {boolean | undefined} */
+let zlibZstdOk;
+
+/**
+ * Whether zlib's zstd decoder is usable for the dumps: it exists (Node ≥ 22.15) and decodes a
+ * stream of several frames behind a skippable frame, and reports a truncated frame. Node 22's
+ * experimental binding does none of the latter three — it silently stops after the first frame
+ * (an empty result after a skippable one) and returns what it has for a truncated frame — so
+ * there the `zstd` CLI is used instead. Probed once with the sync API (same binding as the stream).
+ */
+export function zlibZstdUsable() {
+  if (zlibZstdOk !== undefined) return zlibZstdOk;
+  zlibZstdOk = false;
+  if (
+    typeof zlib.createZstdDecompress !== 'function' ||
+    typeof zlib.zstdCompressSync !== 'function' ||
+    typeof zlib.zstdDecompressSync !== 'function'
+  ) {
+    return zlibZstdOk;
+  }
+  try {
+    const a = zlib.zstdCompressSync(Buffer.from('a'.repeat(64)));
+    const b = zlib.zstdCompressSync(Buffer.from('b'.repeat(64)));
+    const skippable = Buffer.from([0x50, 0x2a, 0x4d, 0x18, 1, 0, 0, 0, 0]);
+    const out = zlib.zstdDecompressSync(Buffer.concat([skippable, a, b]));
+    if (out.toString() !== 'a'.repeat(64) + 'b'.repeat(64)) return zlibZstdOk;
+    try {
+      zlib.zstdDecompressSync(Buffer.concat([a, b.subarray(0, b.length - 1)]));
+      return zlibZstdOk; // a truncated frame must fail
+    } catch {
+      zlibZstdOk = true;
+    }
+  } catch {
+    // An unusable binding: the CLI it is.
+  }
+  return zlibZstdOk;
+}
+
+/** The decompressor: zlib when it is usable ({@link zlibZstdUsable}), else the `zstd` CLI. */
 function decompress(
   /** @type {import('node:stream').Readable} */ src,
   /** @type {boolean} */ forceCli,
 ) {
-  if (!forceCli && typeof zlib.createZstdDecompress === 'function') {
+  if (!forceCli && zlibZstdUsable()) {
     const dec = zlib.createZstdDecompress();
     src.on('error', (e) => dec.destroy(e));
     src.pipe(dec);
@@ -215,7 +253,9 @@ function decompress(
     child.on('error', (e) =>
       rej(
         /** @type {NodeJS.ErrnoException} */ (e).code === 'ENOENT'
-          ? new Error('zstd CLI not found and zlib.createZstdDecompress is unavailable')
+          ? new Error(
+              'zstd CLI not found and zlib has no usable zstd decoder (Node ≥ 24 or install zstd)',
+            )
           : e,
       ),
     );

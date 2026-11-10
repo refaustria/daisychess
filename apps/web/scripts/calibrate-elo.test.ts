@@ -53,6 +53,7 @@ import {
   parseMovetext,
   readLines,
   toEpd,
+  zlibZstdUsable,
   type CalibrateOptions,
   type CalibrateSummary,
   type EligibleGame,
@@ -72,6 +73,8 @@ const hasZstdCli = has('zstd');
 // zstd in zlib: Node ≥ 22.15 (the @types/node pin predates it).
 const zstdZlib = zlib as typeof zlib & { zstdCompressSync?: (b: Buffer) => Buffer };
 const hasZlibZstd = typeof zstdZlib.zstdCompressSync === 'function';
+/** A compressor for the fixtures and a decoder readLines can use (not Node 22's zlib). */
+const canZstd = (hasZlibZstd || hasZstdCli) && (zlibZstdUsable() || hasZstdCli);
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 const engineCoreBuilt = existsSync(join(repo, 'packages/engine-core/dist/index.js'));
 
@@ -696,7 +699,7 @@ describe('stream reader', () => {
     return { lines, ...info };
   };
 
-  it.runIf(hasZlibZstd || hasZstdCli)(
+  it.runIf(canZstd)(
     'calibrates from zstd identically (month from the name)',
     async () => {
       const s = await calibrateElo(opts({ input: zstPath(), month: undefined }), quiet);
@@ -706,13 +709,35 @@ describe('stream reader', () => {
     60_000,
   );
 
+  it('zlibZstdUsable: only a zlib that decodes every frame and reports truncation', () => {
+    const usable = zlibZstdUsable();
+    if (Number(process.versions.node.split('.')[0]) >= 24) expect(usable).toBe(true);
+    const z = zlib as typeof zlib & {
+      zstdCompressSync?: (b: Buffer) => Buffer;
+      zstdDecompressSync?: (b: Buffer) => Buffer;
+    };
+    if (!z.zstdCompressSync || !z.zstdDecompressSync) {
+      expect(usable).toBe(false);
+      return;
+    }
+    const text = Buffer.from(fixtureText);
+    const multi = Buffer.concat([
+      z.zstdCompressSync(text.subarray(0, 4096)),
+      z.zstdCompressSync(text.subarray(4096)),
+    ]);
+    const decodesAll = z.zstdDecompressSync(multi).equals(text);
+    if (usable) expect(decodesAll).toBe(true);
+    // Node 22's binding drops every frame after the first: the probe must refuse it.
+    if (!decodesAll) expect(usable).toBe(false);
+  });
+
   it.runIf(hasZstdCli)('decompresses with the zstd CLI fallback', async () => {
     const r = await collect(zstPath(), { zstdCli: true });
     expect(r.lines.join('\n')).toBe(fixtureText.replace(/\n$/, ''));
   });
 
   for (const cli of [false, true]) {
-    it.runIf(cli ? hasZstdCli : hasZlibZstd || hasZstdCli)(
+    it.runIf(cli ? hasZstdCli : canZstd)(
       `a truncated zstd file fails without --sample and is tolerated with it (${cli ? 'CLI' : 'zlib'})`,
       async () => {
         const full = readFileSync(zstPath());
@@ -730,7 +755,7 @@ describe('stream reader', () => {
     );
   }
 
-  it.runIf(hasZlibZstd || hasZstdCli)(
+  it.runIf(canZstd)(
     'calibrates a ranged sample, dropping the cut game',
     async () => {
       const p = zstPath();
@@ -802,134 +827,131 @@ describe.runIf(engineCoreBuilt)('the CLI', () => {
 
 const deployTools = ['bash', 'curl', 'sha256sum', 'pnpm', 'df'].every(has);
 
-describe.runIf(engineCoreBuilt && deployTools && (hasZlibZstd || hasZstdCli))(
-  'deploy/calibrate-elo.sh',
-  () => {
-    let dir = '';
-    let env: Record<string, string> = {};
-    let dump = '';
-    const name = 'lichess_db_standard_rated_2026-09.pgn.zst';
+describe.runIf(engineCoreBuilt && deployTools && canZstd)('deploy/calibrate-elo.sh', () => {
+  let dir = '';
+  let env: Record<string, string> = {};
+  let dump = '';
+  const name = 'lichess_db_standard_rated_2026-09.pgn.zst';
 
-    const run = (args: string[] = [], extra: Record<string, string> = {}) =>
-      spawnSync('bash', [deployScript, '--no-install', '--month', '2026-09', ...args], {
-        encoding: 'utf8',
-        env: { ...process.env, ...env, ...extra },
-        timeout: 120_000,
-      });
-    const sums = (digest: string) =>
-      writeFileSync(
-        join(dir, 'remote/sha256sums.txt'),
-        `${'0'.repeat(64)}  lichess_db_standard_rated_2026-08.pgn.zst\n${digest}  ${name}\n`,
-      );
-
-    beforeAll(() => {
-      dir = join(tmp, 'deploy');
-      mkdirSync(join(dir, 'remote'), { recursive: true });
-      dump = join(dir, 'remote', name);
-      writeFileSync(dump, zstd(Buffer.from(fixtureText)));
-      sums(sha256(readFileSync(dump)));
-      env = {
-        PUZZLE_CACHE_DIR: join(dir, 'cache'),
-        ELO_CALIBRATION_OUT: join(dir, 'repo-data/eloCalibration.json'),
-        LICHESS_DB_BASE_URL: `file://${join(dir, 'remote')}`,
-        CALIBRATE_MIN_SAMPLES: '20',
-        CALIBRATE_JOBS: '1',
-        FREE_SPACE_MARGIN_MB: '0',
-        // engine-core was built before the tests; rebuilding dist here would race other tests.
-        ELO_SKIP_BUILD: '1',
-      };
+  const run = (args: string[] = [], extra: Record<string, string> = {}) =>
+    spawnSync('bash', [deployScript, '--no-install', '--month', '2026-09', ...args], {
+      encoding: 'utf8',
+      env: { ...process.env, ...env, ...extra },
+      timeout: 120_000,
     });
+  const sums = (digest: string) =>
+    writeFileSync(
+      join(dir, 'remote/sha256sums.txt'),
+      `${'0'.repeat(64)}  lichess_db_standard_rated_2026-08.pgn.zst\n${digest}  ${name}\n`,
+    );
 
-    it('downloads, verifies and writes the table + SOURCE.md', () => {
-      const r = run();
-      expect(r.stderr).toBe('');
-      expect(r.status).toBe(0);
-      expect(r.stdout).toMatch(/Downloading/);
-      expect(r.stdout).toMatch(/eloCalibration\.json \+ SOURCE\.md/);
-      const table = EloCalibrationSchema.parse(
-        JSON.parse(readFileSync(env.ELO_CALIBRATION_OUT!, 'utf8')),
-      );
-      expect(table.source).toEqual({
-        month: '2026-09',
-        games: base.used,
-        sha256: sha256(readFileSync(dump)),
-      });
-      expect(table.speeds).toEqual(base.table.speeds);
-      const md = readFileSync(join(dir, 'repo-data/SOURCE.md'), 'utf8');
-      expect(md).toContain(`file://${dump}`);
-    }, 120_000);
+  beforeAll(() => {
+    dir = join(tmp, 'deploy');
+    mkdirSync(join(dir, 'remote'), { recursive: true });
+    dump = join(dir, 'remote', name);
+    writeFileSync(dump, zstd(Buffer.from(fixtureText)));
+    sums(sha256(readFileSync(dump)));
+    env = {
+      PUZZLE_CACHE_DIR: join(dir, 'cache'),
+      ELO_CALIBRATION_OUT: join(dir, 'repo-data/eloCalibration.json'),
+      LICHESS_DB_BASE_URL: `file://${join(dir, 'remote')}`,
+      CALIBRATE_MIN_SAMPLES: '20',
+      CALIBRATE_JOBS: '1',
+      FREE_SPACE_MARGIN_MB: '0',
+      // engine-core was built before the tests; rebuilding dist here would race other tests.
+      ELO_SKIP_BUILD: '1',
+    };
+  });
 
-    it('uses the verified cache when the listed digest is unchanged', () => {
-      rmSync(dump);
-      const r = run();
-      expect(r.stderr).toBe('');
-      expect(r.status).toBe(0);
-      expect(r.stdout).toMatch(/Cached dump is current/);
-      writeFileSync(dump, zstd(Buffer.from(fixtureText)));
-    }, 120_000);
-
-    it('fails closed on a digest mismatch and on a tampered cache, writing nothing', () => {
-      const before = readFileSync(env.ELO_CALIBRATION_OUT!);
-      sums('a'.repeat(64));
-      const r = run();
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/expected a{64}/);
-      expect(existsSync(join(env.PUZZLE_CACHE_DIR!, `${name}.part`))).toBe(false);
-      sums(sha256(readFileSync(dump)));
-      const cached = join(env.PUZZLE_CACHE_DIR!, name);
-      writeFileSync(cached, Buffer.concat([readFileSync(cached), Buffer.from('x')]));
-      const t = run();
-      expect(t.status).toBe(1);
-      expect(t.stderr).toMatch(/marked stale/);
-      expect(readFileSync(env.ELO_CALIBRATION_OUT!)).toEqual(before);
-      // The next run downloads again and succeeds.
-      rmSync(cached);
-      expect(run().status).toBe(0);
-    }, 120_000);
-
-    it('refuses a month lichess does not list', () => {
-      const r = spawnSync('bash', [deployScript, '--no-install', '--month', '2026-07'], {
-        encoding: 'utf8',
-        env: { ...process.env, ...env },
-      });
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/lists 0 digests/);
+  it('downloads, verifies and writes the table + SOURCE.md', () => {
+    const r = run();
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Downloading/);
+    expect(r.stdout).toMatch(/eloCalibration\.json \+ SOURCE\.md/);
+    const table = EloCalibrationSchema.parse(
+      JSON.parse(readFileSync(env.ELO_CALIBRATION_OUT!, 'utf8')),
+    );
+    expect(table.source).toEqual({
+      month: '2026-09',
+      games: base.used,
+      sha256: sha256(readFileSync(dump)),
     });
+    expect(table.speeds).toEqual(base.table.speeds);
+    const md = readFileSync(join(dir, 'repo-data/SOURCE.md'), 'utf8');
+    expect(md).toContain(`file://${dump}`);
+  }, 120_000);
 
-    it('--range downloads a resumable prefix and calibrates it as a sample', () => {
-      const size = statSync(dump).size;
-      const range = Math.floor(size * 0.7);
-      const prefix = join(env.PUZZLE_CACHE_DIR!, `range-${range}-${name}`);
-      // An interrupted earlier run left the first 1000 bytes.
-      mkdirSync(dirname(prefix), { recursive: true });
-      writeFileSync(prefix, readFileSync(dump).subarray(0, 1000));
-      writeFileSync(`${prefix}.dump-sha256`, `${sha256(readFileSync(dump))}\n`);
-      const out = join(dir, 'range-data/eloCalibration.json');
-      const r = run(['--range', String(range)], { ELO_CALIBRATION_OUT: out });
-      expect(r.stderr).toBe('');
-      expect(r.status).toBe(0);
-      expect(r.stdout).toMatch(/bytes 1000-/);
-      expect(readFileSync(prefix)).toEqual(readFileSync(dump).subarray(0, range));
-      const md = readFileSync(join(dir, 'range-data/SOURCE.md'), 'utf8');
-      expect(md).toMatch(/Partial read/);
-      expect(md).toContain(sha256(readFileSync(dump)));
-      // Cached and complete on the second run; discarded when the dump digest changes.
-      expect(run(['--range', String(range)], { ELO_CALIBRATION_OUT: out }).stdout).toMatch(
-        /Cached prefix is complete/,
-      );
-      sums('b'.repeat(64));
-      const changed = run(['--range', String(range), '--dry-run']);
-      expect(changed.stdout).toMatch(/another version of the dump: discarded/);
-      sums(sha256(readFileSync(dump)));
-    }, 120_000);
+  it('uses the verified cache when the listed digest is unchanged', () => {
+    rmSync(dump);
+    const r = run();
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Cached dump is current/);
+    writeFileSync(dump, zstd(Buffer.from(fixtureText)));
+  }, 120_000);
 
-    it('refuses a download that does not fit the free disk space', () => {
-      const r = run(['--range', '1000'], {
-        PUZZLE_CACHE_DIR: join(dir, 'cache2'),
-        FREE_SPACE_MARGIN_MB: String(1024 * 1024 * 1024),
-      });
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/MB free/);
+  it('fails closed on a digest mismatch and on a tampered cache, writing nothing', () => {
+    const before = readFileSync(env.ELO_CALIBRATION_OUT!);
+    sums('a'.repeat(64));
+    const r = run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/expected a{64}/);
+    expect(existsSync(join(env.PUZZLE_CACHE_DIR!, `${name}.part`))).toBe(false);
+    sums(sha256(readFileSync(dump)));
+    const cached = join(env.PUZZLE_CACHE_DIR!, name);
+    writeFileSync(cached, Buffer.concat([readFileSync(cached), Buffer.from('x')]));
+    const t = run();
+    expect(t.status).toBe(1);
+    expect(t.stderr).toMatch(/marked stale/);
+    expect(readFileSync(env.ELO_CALIBRATION_OUT!)).toEqual(before);
+    // The next run downloads again and succeeds.
+    rmSync(cached);
+    expect(run().status).toBe(0);
+  }, 120_000);
+
+  it('refuses a month lichess does not list', () => {
+    const r = spawnSync('bash', [deployScript, '--no-install', '--month', '2026-07'], {
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
     });
-  },
-);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/lists 0 digests/);
+  });
+
+  it('--range downloads a resumable prefix and calibrates it as a sample', () => {
+    const size = statSync(dump).size;
+    const range = Math.floor(size * 0.7);
+    const prefix = join(env.PUZZLE_CACHE_DIR!, `range-${range}-${name}`);
+    // An interrupted earlier run left the first 1000 bytes.
+    mkdirSync(dirname(prefix), { recursive: true });
+    writeFileSync(prefix, readFileSync(dump).subarray(0, 1000));
+    writeFileSync(`${prefix}.dump-sha256`, `${sha256(readFileSync(dump))}\n`);
+    const out = join(dir, 'range-data/eloCalibration.json');
+    const r = run(['--range', String(range)], { ELO_CALIBRATION_OUT: out });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/bytes 1000-/);
+    expect(readFileSync(prefix)).toEqual(readFileSync(dump).subarray(0, range));
+    const md = readFileSync(join(dir, 'range-data/SOURCE.md'), 'utf8');
+    expect(md).toMatch(/Partial read/);
+    expect(md).toContain(sha256(readFileSync(dump)));
+    // Cached and complete on the second run; discarded when the dump digest changes.
+    expect(run(['--range', String(range)], { ELO_CALIBRATION_OUT: out }).stdout).toMatch(
+      /Cached prefix is complete/,
+    );
+    sums('b'.repeat(64));
+    const changed = run(['--range', String(range), '--dry-run']);
+    expect(changed.stdout).toMatch(/another version of the dump: discarded/);
+    sums(sha256(readFileSync(dump)));
+  }, 120_000);
+
+  it('refuses a download that does not fit the free disk space', () => {
+    const r = run(['--range', '1000'], {
+      PUZZLE_CACHE_DIR: join(dir, 'cache2'),
+      FREE_SPACE_MARGIN_MB: String(1024 * 1024 * 1024),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/MB free/);
+  });
+});

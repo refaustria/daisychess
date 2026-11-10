@@ -17,11 +17,11 @@ test('review with opening focus: the Evergreen game leaves the Evans Gambit book
   await page.goto('/');
   await expect(page.locator('cg-board')).toBeVisible();
 
-  // The ten tabs stay on one line at 1280 px.
+  // The eleven tabs (Endgames since M32) stay on one line at 1280 px.
   const tops = await page
     .getByRole('tab')
     .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-  expect(tops).toHaveLength(10);
+  expect(tops).toHaveLength(11);
   expect(new Set(tops).size).toBe(1);
   // …and all of them are visible without scrolling the row (the 520px panel).
   const row = await page

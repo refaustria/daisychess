@@ -28,6 +28,7 @@ import {
   illegalRows,
   parseArgs,
   streamLines,
+  zlibZstdUsable,
   type BuildOptions,
 } from './build-puzzles.mjs';
 
@@ -44,6 +45,8 @@ const hasZstdCli = has('zstd');
 // zstd in zlib: Node ≥ 22.15 (the @types/node pin predates it).
 const zstdZlib = zlib as typeof zlib & { zstdCompressSync?: (b: Buffer) => Buffer };
 const hasZlibZstd = typeof zstdZlib.zstdCompressSync === 'function';
+/** A decoder streamLines can use: a conforming zlib (not Node 22's) or the CLI. */
+const canDecodeZstd = zlibZstdUsable() || hasZstdCli;
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
 /** Frame by frame (4 kB each), like a large dump: a truncated file still decodes its head. */
@@ -187,7 +190,7 @@ describe('streamLines', () => {
     return p;
   };
 
-  it.runIf(hasZlibZstd || hasZstdCli)('decompresses zstd with zlib (or the CLI)', async () => {
+  it.runIf(canDecodeZstd)('decompresses zstd with zlib (or the CLI)', async () => {
     const r = await collect(zstPath());
     expect(r.lines).toEqual(fixtureLines);
     expect(r.partial).toBe(false);
@@ -196,6 +199,30 @@ describe('streamLines', () => {
   it.runIf(hasZstdCli)('decompresses zstd with the zstd CLI fallback', async () => {
     const r = await collect(zstPath(), { zstdCli: true });
     expect(r.lines).toEqual(fixtureLines);
+  });
+
+  it('zlibZstdUsable: only a zlib that decodes every frame and reports truncation', () => {
+    const usable = zlibZstdUsable();
+    expect(zlibZstdUsable()).toBe(usable); // memoised
+    if (Number(process.versions.node.split('.')[0]) >= 24) expect(usable).toBe(true);
+    const z = zlib as typeof zlib & {
+      zstdCompressSync?: (b: Buffer) => Buffer;
+      zstdDecompressSync?: (b: Buffer) => Buffer;
+    };
+    if (!z.zstdCompressSync || !z.zstdDecompressSync) {
+      expect(usable).toBe(false);
+      return;
+    }
+    // The probe agrees with a larger multi-frame stream like the fixture's.
+    const text = Buffer.from(fixtureText);
+    const multi = Buffer.concat([
+      z.zstdCompressSync(text.subarray(0, 4096)),
+      z.zstdCompressSync(text.subarray(4096)),
+    ]);
+    const decodesAll = z.zstdDecompressSync(multi).equals(text);
+    if (usable) expect(decodesAll).toBe(true);
+    // Node 22's binding drops every frame after the first: the probe must refuse it.
+    if (!decodesAll) expect(usable).toBe(false);
   });
 
   it.runIf(hasZstdCli)('reads a zstd stream that starts with a skippable frame', async () => {
@@ -209,7 +236,7 @@ describe('streamLines', () => {
   });
 
   for (const cli of [false, true]) {
-    it.runIf(cli ? hasZstdCli : hasZlibZstd || hasZstdCli)(
+    it.runIf(cli ? hasZstdCli : canDecodeZstd)(
       `a truncated zstd file fails without --sample and is tolerated with it (${cli ? 'CLI' : 'zlib'})`,
       async () => {
         const p = zstPath();
@@ -403,23 +430,26 @@ describe('buildPuzzles on the fixture', () => {
     }
   });
 
-  it('builds from a truncated zstd sample (the ranged download of the real dump)', async () => {
-    const zst = zstd(Buffer.from(fixtureText));
-    const p = join(tmp, 'sample.csv.zst');
-    writeFileSync(p, zst);
-    const sample = Math.floor(zst.length * 0.6);
-    const starter = join(tmp, 'sample-out/starter.json');
-    const s = await buildPuzzles(
-      opts({ input: p, sample, out: join(tmp, 'sample-out'), starter }),
-      quiet,
-    );
-    expect(s.partial).toBe(true);
-    expect(s.bytes).toBe(sample);
-    expect(s.sha256).toBe(sha256(zst.subarray(0, sample)));
-    expect(s.rows).toBeGreaterThan(50);
-    expect(s.rows).toBeLessThan(300);
-    expect(readFileSync(join(tmp, 'sample-out/SOURCE.md'), 'utf8')).toContain('Sample build');
-  });
+  it.runIf((hasZlibZstd || hasZstdCli) && canDecodeZstd)(
+    'builds from a truncated zstd sample (the ranged download of the real dump)',
+    async () => {
+      const zst = zstd(Buffer.from(fixtureText));
+      const p = join(tmp, 'sample.csv.zst');
+      writeFileSync(p, zst);
+      const sample = Math.floor(zst.length * 0.6);
+      const starter = join(tmp, 'sample-out/starter.json');
+      const s = await buildPuzzles(
+        opts({ input: p, sample, out: join(tmp, 'sample-out'), starter }),
+        quiet,
+      );
+      expect(s.partial).toBe(true);
+      expect(s.bytes).toBe(sample);
+      expect(s.sha256).toBe(sha256(zst.subarray(0, sample)));
+      expect(s.rows).toBeGreaterThan(50);
+      expect(s.rows).toBeLessThan(300);
+      expect(readFileSync(join(tmp, 'sample-out/SOURCE.md'), 'utf8')).toContain('Sample build');
+    },
+  );
 
   it('the CLI exits 2 on usage errors and 1 on failures', () => {
     expect(spawnSync(process.execPath, [script], { encoding: 'utf8' }).status).toBe(2);
@@ -441,138 +471,144 @@ describe('buildPuzzles on the fixture', () => {
 
 const deployTools = ['bash', 'curl', 'rsync', 'sha256sum', 'pnpm'].every(has);
 
-describe.runIf(deployTools && (hasZlibZstd || hasZstdCli))('deploy/deploy-puzzles.sh', () => {
-  let base = '';
-  let env: Record<string, string> = {};
-  let dump = '';
+describe.runIf(deployTools && (hasZlibZstd || hasZstdCli) && canDecodeZstd)(
+  'deploy/deploy-puzzles.sh',
+  () => {
+    let base = '';
+    let env: Record<string, string> = {};
+    let dump = '';
 
-  const run = (args: string[] = [], extra: Record<string, string> = {}) =>
-    spawnSync('bash', [deployScript, '--no-install', ...args], {
-      encoding: 'utf8',
-      env: { ...process.env, ...env, ...extra },
-      timeout: 120_000,
+    const run = (args: string[] = [], extra: Record<string, string> = {}) =>
+      spawnSync('bash', [deployScript, '--no-install', ...args], {
+        encoding: 'utf8',
+        env: { ...process.env, ...env, ...extra },
+        timeout: 120_000,
+      });
+    const sums = (digest: string) =>
+      writeFileSync(
+        join(base, 'remote/sha256sums.txt'),
+        `${'0'.repeat(64)}  lichess_db_puzzle.csv.zst.other\n${digest}  lichess_db_puzzle.csv.zst\n`,
+      );
+
+    beforeAll(() => {
+      base = join(tmp, 'deploy');
+      mkdirSync(join(base, 'remote'), { recursive: true });
+      dump = join(base, 'remote/lichess_db_puzzle.csv.zst');
+      const zst = zstd(Buffer.from(fixtureText));
+      writeFileSync(dump, zst);
+      sums(sha256(zst));
+      env = {
+        PUZZLE_CACHE_DIR: join(base, 'cache'),
+        PUZZLE_ROOT: join(base, 'www/puzzles/v1'),
+        PUZZLE_STARTER: join(base, 'repo-data/starter.json'),
+        LICHESS_PUZZLE_URL: `file://${dump}`,
+        LICHESS_SUMS_URL: `file://${join(base, 'remote/sha256sums.txt')}`,
+        // The package was built before the tests; rebuilding dist here would race other test files.
+        PUZZLES_SKIP_BUILD: '1',
+      };
     });
-  const sums = (digest: string) =>
-    writeFileSync(
-      join(base, 'remote/sha256sums.txt'),
-      `${'0'.repeat(64)}  lichess_db_puzzle.csv.zst.other\n${digest}  lichess_db_puzzle.csv.zst\n`,
-    );
 
-  beforeAll(() => {
-    base = join(tmp, 'deploy');
-    mkdirSync(join(base, 'remote'), { recursive: true });
-    dump = join(base, 'remote/lichess_db_puzzle.csv.zst');
-    const zst = zstd(Buffer.from(fixtureText));
-    writeFileSync(dump, zst);
-    sums(sha256(zst));
-    env = {
-      PUZZLE_CACHE_DIR: join(base, 'cache'),
-      PUZZLE_ROOT: join(base, 'www/puzzles/v1'),
-      PUZZLE_STARTER: join(base, 'repo-data/starter.json'),
-      LICHESS_PUZZLE_URL: `file://${dump}`,
-      LICHESS_SUMS_URL: `file://${join(base, 'remote/sha256sums.txt')}`,
-      // The package was built before the tests; rebuilding dist here would race other test files.
-      PUZZLES_SKIP_BUILD: '1',
-    };
-  });
+    it('downloads, verifies, publishes shards + index and writes the starter', () => {
+      const r = run();
+      expect(r.stderr).toBe('');
+      expect(r.status).toBe(0);
+      expect(r.stdout).toMatch(/Downloading/);
+      expect(r.stdout).toMatch(/Next steps/);
+      const { index, files } = readOut(env.PUZZLE_ROOT!);
+      expect(index.dataset.sha256).toBe(sha256(readFileSync(dump)));
+      expect(index.dataset.source).toBe(env.LICHESS_PUZZLE_URL);
+      expect(index.shards).toHaveLength(files.length);
+      expect(existsSync(env.PUZZLE_STARTER!)).toBe(true);
+      expect(existsSync(join(dirname(env.PUZZLE_STARTER!), 'SOURCE.md'))).toBe(true);
+      expect(
+        readFileSync(
+          join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.sha256'),
+          'utf8',
+        ).trim(),
+      ).toBe(index.dataset.sha256);
+    }, 120_000);
 
-  it('downloads, verifies, publishes shards + index and writes the starter', () => {
-    const r = run();
-    expect(r.stderr).toBe('');
-    expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/Downloading/);
-    expect(r.stdout).toMatch(/Next steps/);
-    const { index, files } = readOut(env.PUZZLE_ROOT!);
-    expect(index.dataset.sha256).toBe(sha256(readFileSync(dump)));
-    expect(index.dataset.source).toBe(env.LICHESS_PUZZLE_URL);
-    expect(index.shards).toHaveLength(files.length);
-    expect(existsSync(env.PUZZLE_STARTER!)).toBe(true);
-    expect(existsSync(join(dirname(env.PUZZLE_STARTER!), 'SOURCE.md'))).toBe(true);
-    expect(
-      readFileSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.sha256'), 'utf8').trim(),
-    ).toBe(index.dataset.sha256);
-  }, 120_000);
+    it('uses the cache when the listed digest is unchanged (no download)', () => {
+      // Same file name, but the URL points nowhere: only the cached, re-verified dump can pass.
+      const ok = run([], {
+        LICHESS_PUZZLE_URL: `file://${join(base, 'gone/lichess_db_puzzle.csv.zst')}`,
+      });
+      expect(ok.stderr).toBe('');
+      expect(ok.status).toBe(0);
+      expect(ok.stdout).toMatch(/Cached dump is current/);
+      expect(ok.stdout).not.toMatch(/Downloading/);
+    }, 120_000);
 
-  it('uses the cache when the listed digest is unchanged (no download)', () => {
-    // Same file name, but the URL points nowhere: only the cached, re-verified dump can pass.
-    const ok = run([], {
-      LICHESS_PUZZLE_URL: `file://${join(base, 'gone/lichess_db_puzzle.csv.zst')}`,
-    });
-    expect(ok.stderr).toBe('');
-    expect(ok.status).toBe(0);
-    expect(ok.stdout).toMatch(/Cached dump is current/);
-    expect(ok.stdout).not.toMatch(/Downloading/);
-  }, 120_000);
+    it('fails closed on a digest mismatch and on a pin mismatch, publishing nothing', () => {
+      const before = readFileSync(join(env.PUZZLE_ROOT!, 'index.json'));
+      sums('a'.repeat(64));
+      const r = run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/expected a{64}/);
+      expect(existsSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.part'))).toBe(false);
+      sums(sha256(readFileSync(dump)));
+      const pinned = run([], { LICHESS_PUZZLE_SHA256: 'b'.repeat(64) });
+      expect(pinned.status).toBe(1);
+      expect(pinned.stderr).toMatch(/LICHESS_PUZZLE_SHA256/);
+      expect(readFileSync(join(env.PUZZLE_ROOT!, 'index.json'))).toEqual(before);
+    }, 120_000);
 
-  it('fails closed on a digest mismatch and on a pin mismatch, publishing nothing', () => {
-    const before = readFileSync(join(env.PUZZLE_ROOT!, 'index.json'));
-    sums('a'.repeat(64));
-    const r = run();
-    expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/expected a{64}/);
-    expect(existsSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.part'))).toBe(false);
-    sums(sha256(readFileSync(dump)));
-    const pinned = run([], { LICHESS_PUZZLE_SHA256: 'b'.repeat(64) });
-    expect(pinned.status).toBe(1);
-    expect(pinned.stderr).toMatch(/LICHESS_PUZZLE_SHA256/);
-    expect(readFileSync(join(env.PUZZLE_ROOT!, 'index.json'))).toEqual(before);
-  }, 120_000);
+    it('detects a tampered cache file', () => {
+      const cached = join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst');
+      const good = readFileSync(cached);
+      writeFileSync(cached, Buffer.concat([good, Buffer.from('x')]));
+      const r = run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/marked stale/);
+      // The next run downloads again and succeeds.
+      rmSync(cached);
+      const ok = run();
+      expect(ok.status).toBe(0);
+      expect(ok.stdout).toMatch(/Downloading/);
+    }, 120_000);
 
-  it('detects a tampered cache file', () => {
-    const cached = join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst');
-    const good = readFileSync(cached);
-    writeFileSync(cached, Buffer.concat([good, Buffer.from('x')]));
-    const r = run();
-    expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/marked stale/);
-    // The next run downloads again and succeeds.
-    rmSync(cached);
-    const ok = run();
-    expect(ok.status).toBe(0);
-    expect(ok.stdout).toMatch(/Downloading/);
-  }, 120_000);
+    it('resumes a partial download of the same dump', () => {
+      rmSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst'));
+      rmSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.sha256'));
+      const full = readFileSync(dump);
+      const part = join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.part');
+      writeFileSync(part, full.subarray(0, 1000));
+      writeFileSync(`${part}.sha256`, `${sha256(full)}\n`);
+      const r = run();
+      expect(r.status).toBe(0);
+      expect(readFileSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst'))).toEqual(full);
+    }, 120_000);
 
-  it('resumes a partial download of the same dump', () => {
-    rmSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst'));
-    rmSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.sha256'));
-    const full = readFileSync(dump);
-    const part = join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst.part');
-    writeFileSync(part, full.subarray(0, 1000));
-    writeFileSync(`${part}.sha256`, `${sha256(full)}\n`);
-    const r = run();
-    expect(r.status).toBe(0);
-    expect(readFileSync(join(env.PUZZLE_CACHE_DIR!, 'lichess_db_puzzle.csv.zst'))).toEqual(full);
-  }, 120_000);
+    it('prunes unreferenced shards only after the grace period, never referenced ones', () => {
+      const shards = join(env.PUZZLE_ROOT!, 'shards');
+      writeFileSync(join(shards, '1500-00000000000000aa.json'), '{}');
+      writeFileSync(join(shards, '1500-00000000000000bb.json'), '{}');
+      const state = join(env.PUZZLE_CACHE_DIR!, 'unreferenced.txt');
+      const old = Math.floor(Date.now() / 1000) - 31 * 86400;
+      writeFileSync(state, `1500-00000000000000aa.json ${old}\n`);
+      const r = run();
+      expect(r.status).toBe(0);
+      expect(r.stdout).toMatch(/pruned: 1/);
+      expect(existsSync(join(shards, '1500-00000000000000aa.json'))).toBe(false);
+      expect(existsSync(join(shards, '1500-00000000000000bb.json'))).toBe(true);
+      expect(readFileSync(state, 'utf8')).toMatch(/^1500-00000000000000bb\.json \d+\n$/);
+      const { index, files } = readOut(env.PUZZLE_ROOT!);
+      for (const e of index.shards) expect(files).toContain(e.file.slice('shards/'.length));
+    }, 120_000);
 
-  it('prunes unreferenced shards only after the grace period, never referenced ones', () => {
-    const shards = join(env.PUZZLE_ROOT!, 'shards');
-    writeFileSync(join(shards, '1500-00000000000000aa.json'), '{}');
-    writeFileSync(join(shards, '1500-00000000000000bb.json'), '{}');
-    const state = join(env.PUZZLE_CACHE_DIR!, 'unreferenced.txt');
-    const old = Math.floor(Date.now() / 1000) - 31 * 86400;
-    writeFileSync(state, `1500-00000000000000aa.json ${old}\n`);
-    const r = run();
-    expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/pruned: 1/);
-    expect(existsSync(join(shards, '1500-00000000000000aa.json'))).toBe(false);
-    expect(existsSync(join(shards, '1500-00000000000000bb.json'))).toBe(true);
-    expect(readFileSync(state, 'utf8')).toMatch(/^1500-00000000000000bb\.json \d+\n$/);
-    const { index, files } = readOut(env.PUZZLE_ROOT!);
-    for (const e of index.shards) expect(files).toContain(e.file.slice('shards/'.length));
-  }, 120_000);
-
-  it('--dry-run publishes nothing; --sample builds the starter from a ranged download only', () => {
-    const before = readFileSync(join(env.PUZZLE_ROOT!, 'index.json'));
-    const dry = run(['--dry-run']);
-    expect(dry.status).toBe(0);
-    expect(dry.stdout).toMatch(/Dry run/);
-    const starter = join(base, 'sample-data/starter.json');
-    const sample = run(['--sample', String(Math.floor(statSync(dump).size * 0.6))], {
-      PUZZLE_STARTER: starter,
-    });
-    expect(sample.status).toBe(0);
-    expect(sample.stdout).toMatch(/not published/);
-    expect(readFileSync(join(dirname(starter), 'SOURCE.md'), 'utf8')).toContain('Sample build');
-    expect(readFileSync(join(env.PUZZLE_ROOT!, 'index.json'))).toEqual(before);
-  }, 120_000);
-});
+    it('--dry-run publishes nothing; --sample builds the starter from a ranged download only', () => {
+      const before = readFileSync(join(env.PUZZLE_ROOT!, 'index.json'));
+      const dry = run(['--dry-run']);
+      expect(dry.status).toBe(0);
+      expect(dry.stdout).toMatch(/Dry run/);
+      const starter = join(base, 'sample-data/starter.json');
+      const sample = run(['--sample', String(Math.floor(statSync(dump).size * 0.6))], {
+        PUZZLE_STARTER: starter,
+      });
+      expect(sample.status).toBe(0);
+      expect(sample.stdout).toMatch(/not published/);
+      expect(readFileSync(join(dirname(starter), 'SOURCE.md'), 'utf8')).toContain('Sample build');
+      expect(readFileSync(join(env.PUZZLE_ROOT!, 'index.json'))).toEqual(before);
+    }, 120_000);
+  },
+);

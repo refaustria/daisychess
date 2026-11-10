@@ -150,9 +150,9 @@
   /* Fill a wide row evenly; never shrink below the label (the row scrolls instead). */
   flex: 1 0 auto;
   white-space: nowrap;
-  /* Ten tabs fit the 520px desktop panel without scrolling (opening-review e2e). */
-  padding: 0.4rem 0.2rem;
-  font-size: 0.85rem;
+  /* Eleven tabs fit the 520px desktop panel without scrolling (opening-review e2e). */
+  padding: 0.4rem 0.12rem;
+  font-size: 0.78rem;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;

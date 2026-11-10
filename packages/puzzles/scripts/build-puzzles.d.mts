@@ -50,6 +50,8 @@ export function illegalRows(
 ): Promise<Set<number>>;
 export class UsageError extends Error {}
 export function parseArgs(argv: string[]): BuildOptions;
+/** zlib's zstd decoder exists and handles multi-frame, skippable and truncated input. */
+export function zlibZstdUsable(): boolean;
 export function hashFile(path: string, limit: number): Promise<string>;
 export function streamLines(
   path: string,
